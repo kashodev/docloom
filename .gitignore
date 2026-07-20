@@ -1,0 +1,44 @@
+# ─── Secrets ────────────────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*-service-account*.json
+gcp-credentials*.json
+
+# ─── Source templates (CONTAIN REAL PERSONAL DATA) ──────────────────────────
+# These PDFs are reference material only. They are deleted once the HTML
+# archetypes are built. They must never be committed — see DESIGN.md.
+templates/*.pdf
+
+# ─── Generated artefacts ────────────────────────────────────────────────────
+out/
+catalog/
+*.parquet
+*.jsonl
+*.jsonl.gz
+
+# ─── Python ─────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# ─── Tooling / OS ───────────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+
+# Belt-and-suspenders: ignore source PDFs in any case, anywhere (personal data).
+# Case-insensitive matching is on by default on macOS but NOT on Linux, so the
+# explicit glob protects a Linux clone too.
+*.pdf
+*.Pdf
+*.PDF
