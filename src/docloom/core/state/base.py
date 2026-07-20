@@ -77,11 +77,18 @@ class StateStore(Protocol):
 
     # ── Work units ──────────────────────────────────────────────────────────
     def claim_next_unit(self, run_id: str) -> WorkUnit | None:
-        """Atomically take the next pending unit and mark it running.
+        """Atomically take the next **pending** unit and mark it running.
 
-        Returns ``None`` when nothing is claimable (all done, or the run is
-        paused/cancelled). Concurrency-safe: two workers calling this at the
+        Returns ``None`` when nothing is claimable (all done/failed, or the run
+        is paused/cancelled). Concurrency-safe: two workers calling this at the
         same moment get different units or one gets ``None``.
+
+        Only ``pending`` units are claimed — never ``failed``. A worker draining
+        continuously must not re-claim a unit that just failed (it would retry
+        it forever, since a failed unit has the lowest claimable index). Failed
+        units re-enter the pool only on an explicit :meth:`reset_failed_units`,
+        which resume calls — so a retry is a deliberate act, not an accidental
+        hot loop.
         """
         ...
 
@@ -89,9 +96,15 @@ class StateStore(Protocol):
         ...
 
     def fail_unit(self, run_id: str, unit_index: int, error: str) -> None:
-        """Mark a unit failed and record why. A failed unit returns to the
-        claimable pool on resume so a transient error is retried rather than
-        silently dropping its documents."""
+        """Mark a unit failed and record why. It stays failed — and out of the
+        claimable pool — until :meth:`reset_failed_units` returns it, so the
+        current worker moves on rather than immediately retrying."""
+        ...
+
+    def reset_failed_units(self, run_id: str) -> int:
+        """Return every failed unit to ``pending``; returns how many. Called by
+        resume, so a re-run retries what failed without re-doing what
+        succeeded."""
         ...
 
     def units(self, run_id: str) -> Iterator[WorkUnit]:

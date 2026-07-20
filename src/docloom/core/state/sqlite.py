@@ -6,8 +6,9 @@ takes a write lock before selecting, so two workers can never claim the same
 unit. That is enough for local runs and small deployments; the Cloud Run +
 Firestore path (phase 4) uses the same protocol for high concurrency.
 
-A resumed run reclaims both ``pending`` and ``failed`` units, so pause/resume
-loses no work and a transient failure is retried rather than dropped.
+The claim takes ``pending`` units only. Resume calls :meth:`reset_failed_units`
+first, which returns failed units to ``pending`` — so a re-run retries what
+failed without a single worker hot-looping on a unit that keeps failing.
 """
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ CREATE INDEX IF NOT EXISTS idx_units_claimable
     ON work_units(run_id, state, unit_index);
 """
 
-_CLAIMABLE = (WorkUnitState.PENDING.value, WorkUnitState.FAILED.value)
+_CLAIMABLE = (WorkUnitState.PENDING.value,)
 
 
 def _now() -> str:
@@ -106,7 +107,7 @@ class SqliteStateStore:
             self._conn.execute("BEGIN IMMEDIATE")   # take the write lock first
             row = self._conn.execute(
                 "SELECT unit_index FROM work_units "
-                "WHERE run_id=? AND state IN (?, ?) ORDER BY unit_index LIMIT 1",
+                "WHERE run_id=? AND state=? ORDER BY unit_index LIMIT 1",
                 (run_id, *_CLAIMABLE),
             ).fetchone()
             if row is None:
@@ -131,6 +132,14 @@ class SqliteStateStore:
             "WHERE run_id=? AND unit_index=?",
             (WorkUnitState.FAILED.value, error, _now(), run_id, unit_index),
         )
+
+    def reset_failed_units(self, run_id: str) -> int:
+        cur = self._conn.execute(
+            "UPDATE work_units SET state=?, error=NULL, updated_at=? "
+            "WHERE run_id=? AND state=?",
+            (WorkUnitState.PENDING.value, _now(), run_id, WorkUnitState.FAILED.value),
+        )
+        return cur.rowcount
 
     def units(self, run_id: str) -> Iterator[WorkUnit]:
         rows = self._conn.execute(

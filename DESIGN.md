@@ -414,7 +414,7 @@ docloom/
       state/                     ✅ StateStore: sqlite · firestore (atomic claim)
       sinks/                     ✅ GoldenSink: parquet · duckdb · bigquery + arrow
       providers/                 ✅ TextProvider mix: deepseek/qwen · anthropic · ollama
-      pipeline.py                ⏳ claim → generate → render → persist → complete
+      pipeline/                  ✅ plan → claim → generate → render → persist → shard
       cli.py                     ⏳ docloom generate | export
     packs/
       invoice/                   ✅ the reference pack
@@ -486,6 +486,58 @@ catalogue step.
 
 Not yet wired: the catalogue runner that drives the mix over ~70k items, and the
 Anthropic Batch API (50% off for the offline Haiku slice).
+
+### Generation pipeline — the spine (built)
+
+The loop that turns the tested components into a run:
+
+```
+plan → create → [ claim → generate → render → persist → shard → complete ]* → done
+```
+
+```mermaid
+flowchart LR
+    P["plan_units<br/>total → work units"] --> C["create_run<br/>state store"]
+    C --> W{{"worker loop"}}
+    W -->|"claim_next_unit<br/>(atomic)"| U["work unit<br/>index range"]
+    U --> G["source.generate<br/>hash(run_id, index)"]
+    G --> R["renderer.render<br/>record → bytes"]
+    R --> B["blob.put<br/>document"]
+    G --> SH["golden shard<br/>JSONL.gz per table"]
+    SH --> B
+    B --> D["complete_unit<br/>(or fail_unit)"]
+    D --> W
+```
+
+* **Two seams keep the loop document-agnostic.** `DocumentSource.generate(run_id,
+  index)` (a pack supplies it — an invoice sampler) and `DocumentRenderer.render`
+  (the render kernel supplies `HtmlRenderer`; the Playwright PDF renderer drops in
+  behind the same protocol). The worker knows the loop, not the document.
+* **The unit is one boundary for three things** — the atomic claim, the golden
+  shard, and the export read granularity. A worker regenerates its unit from
+  `hash(run_id, index)` alone, so units are independent and reproducible and
+  nothing passes between the planner and the workers.
+* **Golden shards are exact.** One gzipped-JSONL shard per (unit, table), written
+  to blob storage beside the documents. A type-preserving codec tags `Decimal`
+  and `date` (`{"__decimal__": "327.02"}`) so export rebuilds Parquet `decimal128`
+  from real Decimals, not floats — the cent-exact join survives the JSON round
+  trip. JSONL (not Parquet) so a shard is bytes to any BlobStore and stays
+  human-inspectable.
+* **Failure is per-unit, not per-run.** A failed unit is recorded and left out of
+  the claimable pool; the worker moves to the next rather than aborting the run or
+  hot-looping on the failure. Resume calls `reset_failed_units` — the only path
+  that re-queues a failure — so a retry is deliberate. (This corrected the phase-3
+  claim, which reclaimed failed units directly and would have retried a failing
+  unit forever.)
+* **Concurrency is free.** Many workers run the same loop against one StateStore;
+  the atomic claim guarantees no unit is done twice — verified by a two-worker
+  no-overlap test. Intra-unit parallel rendering slots in with the async PDF
+  renderer without touching persistence or accounting.
+
+A live local run generates 250 documents across three locales, writes 250 golden
+invoice rows across 5 shards, and marks the run `completed` — with no cloud and no
+browser (HTML standing in for PDF). Still pending: the Playwright PDF renderer and
+the catalogue-based invoice sampler that replaces the deterministic test source.
 
 ---
 

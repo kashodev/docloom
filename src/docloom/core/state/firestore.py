@@ -24,7 +24,7 @@ from typing import Any
 from docloom.core.enums import RunState, WorkUnitState
 from docloom.core.state.base import Run, WorkUnit
 
-_CLAIMABLE = (WorkUnitState.PENDING.value, WorkUnitState.FAILED.value)
+_CLAIMABLE = WorkUnitState.PENDING.value   # claim pending only; see StateStore
 
 
 # ── Pure mapping (unit-tested without the SDK) ──────────────────────────────
@@ -141,6 +141,20 @@ class FirestoreStateStore:
             {"state": WorkUnitState.FAILED.value, "error": error, "updated_at": _now()}
         )
 
+    def reset_failed_units(self, run_id: str) -> int:
+        query = self._units_col(run_id).where("state", "==", WorkUnitState.FAILED.value)
+        batch = self._client.batch()
+        count = 0
+        for snap in query.stream():
+            batch.update(
+                snap.reference,
+                {"state": WorkUnitState.PENDING.value, "error": None, "updated_at": _now()},
+            )
+            count += 1
+        if count:
+            batch.commit()
+        return count
+
     def units(self, run_id: str) -> Iterator[WorkUnit]:
         snaps = self._units_col(run_id).order_by("unit_index").stream()
         return iter([doc_to_unit(run_id, s.to_dict()) for s in snaps])
@@ -171,7 +185,7 @@ def _claim_in_transaction(transaction: Any, units_col: Any, run_id: str) -> Work
     @firestore.transactional
     def _claim(txn: Any) -> WorkUnit | None:
         query = (
-            units_col.where("state", "in", list(_CLAIMABLE))
+            units_col.where("state", "==", _CLAIMABLE)
             .order_by("unit_index")
             .limit(1)
         )

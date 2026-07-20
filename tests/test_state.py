@@ -72,18 +72,34 @@ def test_complete_and_fail_update_progress(tmp_path: Path) -> None:
     assert progress[WorkUnitState.RUNNING] == 1
 
 
-def test_failed_units_are_reclaimed_on_resume(tmp_path: Path) -> None:
-    """A transient failure must be retried, not silently drop its documents."""
+def test_failed_units_are_not_claimed_until_reset(tmp_path: Path) -> None:
+    """A failed unit stays out of the pool so a draining worker moves on rather
+    than hot-looping on it. Resume calls reset_failed_units to retry it."""
     store = SqliteStateStore(tmp_path / "s.db")
     make_run(store, units=2)
-    u = store.claim_next_unit("run_1")
-    assert u is not None
-    store.fail_unit("run_1", u.unit_index, "network blip")
-    # Resume: the failed unit is claimable again, with attempts incremented.
+    u = store.claim_next_unit("run_1")           # unit 0
+    assert u is not None and u.unit_index == 0
+    store.fail_unit("run_1", 0, "network blip")
+
+    # Draining continues past the failure to the next pending unit, never back
+    # to the failed one.
+    nxt = store.claim_next_unit("run_1")
+    assert nxt is not None and nxt.unit_index == 1
+    store.complete_unit("run_1", 1)
+    assert store.claim_next_unit("run_1") is None   # failed unit is NOT reclaimed
+
+    # Resume: reset returns the failed unit to the pool, attempts preserved.
+    assert store.reset_failed_units("run_1") == 1
     reclaimed = store.claim_next_unit("run_1")
     assert reclaimed is not None
-    assert reclaimed.unit_index == u.unit_index
-    assert reclaimed.attempts == 2
+    assert reclaimed.unit_index == 0
+    assert reclaimed.attempts == 2                   # 1 from first claim + 1 now
+
+
+def test_reset_failed_units_returns_zero_when_none_failed(tmp_path: Path) -> None:
+    store = SqliteStateStore(tmp_path / "s.db")
+    make_run(store, units=2)
+    assert store.reset_failed_units("run_1") == 0
 
 
 def test_paused_run_yields_no_claims(tmp_path: Path) -> None:
