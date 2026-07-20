@@ -1,0 +1,204 @@
+{# Reusable blocks shared by every archetype.
+
+   Macros never compute anything — the golden record already holds the ground
+   truth, and a template that recalculated a total could silently disagree with
+   it. They only lay out and format values that were computed upstream. #}
+
+
+{# ── Party blocks ─────────────────────────────────────────────────────── #}
+{% macro party_block(party, heading_key) %}
+<div class="party">
+  {% if heading_key %}<div class="muted small">{{ heading_key | label }}</div>{% endif %}
+  <div class="party-name">{{ party.name }}</div>
+  {% for line in party.address_lines %}<div>{{ line }}</div>{% endfor %}
+  {% if party.city %}
+  <div>{{ [party.city, party.region, party.postal_code] | select | join(", ") }}</div>
+  {% endif %}
+  {% if party.phone %}<div>{{ party.phone }}</div>{% endif %}
+  {% if party.email %}<div>{{ party.email }}</div>{% endif %}
+  {% if party.website %}<div>{{ party.website }}</div>{% endif %}
+</div>
+{% endmacro %}
+
+
+{% macro logo(profile, issuer) %}
+{% if profile.has_logo %}
+<div class="logo-lockup logo-{{ profile.logo_lockup }}">
+  {% if profile.logo_svg is defined and profile.logo_svg %}
+    {{ profile.logo_svg }}
+  {% else %}
+    <div class="logo-wordmark">{{ issuer.name }}</div>
+  {% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{# ── Invoice metadata ─────────────────────────────────────────────────── #}
+{% macro meta_block(invoice) %}
+<div class="meta">
+  <dl>
+    <dt>{{ "invoice_number" | label }}</dt><dd>{{ invoice.invoice_number }}</dd>
+    <dt>{{ "issue_date" | label }}</dt><dd>{{ invoice.issue_date | date }}</dd>
+    {% if invoice.due_date %}
+    <dt>{{ "due_date" | label }}</dt><dd>{{ invoice.due_date | date }}</dd>
+    {% endif %}
+    {% if invoice.purchase_order %}
+    <dt>{{ "purchase_order" | label }}</dt><dd>{{ invoice.purchase_order }}</dd>
+    {% endif %}
+    {% if invoice.customer_reference %}
+    <dt>{{ "customer_id" | label }}</dt><dd>{{ invoice.customer_reference }}</dd>
+    {% endif %}
+    {% if invoice.billing_period_start and invoice.billing_period_end %}
+    <dt>{{ "service_date" | label }}</dt>
+    <dd>{{ invoice.billing_period_start | date }} – {{ invoice.billing_period_end | date }}</dd>
+    {% endif %}
+  </dl>
+</div>
+{% endmacro %}
+
+
+{# ── Line-item table ──────────────────────────────────────────────────── #}
+{% macro items_header(cols, show_part_number, show_reference, show_quantity, show_unit_price) %}
+<thead>
+  <tr>
+    {% if show_reference and cols.reference is defined %}<th>{{ cols.reference }}</th>{% endif %}
+    {% if show_part_number and cols.part_number is defined %}<th>{{ cols.part_number }}</th>{% endif %}
+    <th>{{ cols.description }}</th>
+    {% if show_quantity and cols.quantity is defined %}<th class="num">{{ cols.quantity }}</th>{% endif %}
+    {% if show_unit_price and cols.unit_price is defined %}<th class="num">{{ cols.unit_price }}</th>{% endif %}
+    <th class="num">{{ cols.amount }}</th>
+  </tr>
+</thead>
+{% endmacro %}
+
+
+{% macro item_row(line, cols, show_part_number, show_reference, show_quantity, show_unit_price) %}
+<tr class="line-parent{% if line.is_credit %} credit{% endif %}">
+  {% if show_reference and cols.reference is defined %}<td>{{ line.sku or "" }}</td>{% endif %}
+  {% if show_part_number and cols.part_number is defined %}
+  <td>{{ line.part_number or line.code or "" }}</td>
+  {% endif %}
+  <td>
+    {# When the vocabulary has no part-number column, the identifier is
+       prefixed to the description rather than dropped — ERP systems do this,
+       and it keeps the code visible to an extractor. #}
+    {% if not show_part_number and (line.part_number or line.code) %}
+    <span class="inline-code">{{ line.part_number or line.code }}</span> —
+    {% endif %}
+    {{ line.description }}
+    {% if line.period_start and line.period_end %}
+    <div class="period">{{ line.period_start | date }} – {{ line.period_end | date }}</div>
+    {% endif %}
+    {% if line.included_quantity is not none %}
+    <div class="period">
+      {{ line.included_quantity | qty }} included · {{ line.overage_quantity | qty }} additional
+    </div>
+    {% endif %}
+    {% if line.is_prorated %}<div class="period">prorated</div>{% endif %}
+  </td>
+  {% if show_quantity and cols.quantity is defined %}<td class="num">{{ line.quantity | qty }}</td>{% endif %}
+  {% if show_unit_price and cols.unit_price is defined %}<td class="num">{{ line.unit_price | money }}</td>{% endif %}
+  <td class="num">{{ line.extended_amount | money }}</td>
+</tr>
+{# Tier bands print as indented sub-rows beneath their parent. #}
+{% for tier in line.tiers %}
+<tr class="tier">
+  {% if show_reference and cols.reference is defined %}<td></td>{% endif %}
+  {% if show_part_number and cols.part_number is defined %}<td></td>{% endif %}
+  <td>
+    {{ tier.lower_bound | qty }}{% if tier.upper_bound is not none %} – {{ tier.upper_bound | qty }}{% else %}+{% endif %}
+    {% if line.usage_unit.value != "none" %} {{ line.usage_unit.value | replace("_", " ") }}{% endif %}
+  </td>
+  {% if show_quantity and cols.quantity is defined %}<td class="num">{{ tier.units_in_tier | qty }}</td>{% endif %}
+  {% if show_unit_price and cols.unit_price is defined %}<td class="num">{{ tier.rate | money }}</td>{% endif %}
+  <td class="num">{{ tier.amount | money }}</td>
+</tr>
+{% endfor %}
+{% endmacro %}
+
+
+{# ── Totals ───────────────────────────────────────────────────────────── #}
+{% macro totals_block(totals, tax_buckets, has_discount, has_shipping, has_deposit) %}
+<div class="totals">
+  <table>
+    <tbody>
+      <tr>
+        <th>{{ "subtotal" | label }}</th>
+        <td>{{ totals.subtotal | money }}</td>
+      </tr>
+      {% if has_discount %}
+      <tr>
+        <th>{{ "discount" | label }}</th>
+        <td>- {{ totals.discount_total | money }}</td>
+      </tr>
+      {% endif %}
+      {% if has_shipping %}
+      <tr>
+        <th>{{ "shipping" | label }}</th>
+        <td>{{ totals.shipping_total | money }}</td>
+      </tr>
+      {% endif %}
+      {% for bucket in tax_buckets %}
+      <tr>
+        <th>{{ bucket.label }}</th>
+        <td>{{ bucket.amount | money }}</td>
+      </tr>
+      {% endfor %}
+      {% if has_deposit %}
+      <tr>
+        <th>{{ "deposit" | label }}</th>
+        <td>- {{ totals.deposit | money }}</td>
+      </tr>
+      {% endif %}
+      <tr class="grand">
+        {# The closing line is a "balance due" only when a deposit has been
+           subtracted; otherwise it is the total. This matches the source
+           corpus, where every template printing "Less Deposit" closes with
+           "Balance Due" and the rest close with a total. The label itself is
+           localised by the dictionaries: Total / Total général / Total TTC. #}
+        <th>{{ ("balance_due" if has_deposit else "total") | label }}</th>
+        <td>{{ totals.grand_total | money }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+
+{# ── Footer ───────────────────────────────────────────────────────────── #}
+{% macro terms_block(invoice, registrations, requires_late_penalty) %}
+<div class="terms">
+  {% if invoice.payment_terms %}
+  <div><strong>{{ "payment_terms" | label }}</strong> — {{ invoice.payment_terms }}</div>
+  {% endif %}
+  {% if invoice.notes %}<div>{{ invoice.notes }}</div>{% endif %}
+  {% if registrations %}
+  <div class="legal">
+    <strong>{{ "registrations" | label }}</strong> —
+    {% for reg in registrations %}{{ reg.kind }} : {{ reg.value }}{% if not loop.last %} · {% endif %}{% endfor %}
+  </div>
+  {% endif %}
+  {# Legally mandatory on a French invoice (Code de commerce L441-10). #}
+  {% if requires_late_penalty %}
+  <div class="legal">{{ "late_penalty" | label }}</div>
+  {% endif %}
+</div>
+<div class="thanks">{{ "thank_you" | label }}</div>
+{% endmacro %}
+
+
+{# ── Running header ───────────────────────────────────────────────────── #}
+{# Extracted by the PDF renderer and handed to Chromium's headerTemplate, which
+   is the only reliable way to get "Page N of M" — CSS @page margin boxes are
+   not supported in Chromium's print pipeline. #}
+{% macro running_header(invoice) %}
+<template id="running-header">
+  <div class="rh">
+    <span class="rh-issuer">{{ invoice.issuer.name }}</span>
+    <span class="rh-number">{{ "invoice_number" | label }} {{ invoice.invoice_number }}</span>
+    <span class="rh-date">{{ invoice.issue_date | date }}</span>
+    <span class="rh-page">{{ "page_of" | label }}</span>
+  </div>
+</template>
+{% endmacro %}

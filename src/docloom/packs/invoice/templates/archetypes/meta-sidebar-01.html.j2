@@ -1,0 +1,19 @@
+{# Flat single-table invoice.
+
+   Serves the majority of business types — retail, professional services,
+   repair, medical, SaaS — because the differences between those are content,
+   not structure. Visual variation comes from the modifier classes on <body>,
+   so this one archetype covers many distinct appearances. #}
+{% extends "_base.html.j2" %}
+{% import "_macros.j2" as m with context %}
+
+{% block items %}
+<table class="items">
+  {{ m.items_header(cols, show_part_number, show_reference, show_quantity, show_unit_price) }}
+  <tbody>
+    {% for line in lines %}
+    {{ m.item_row(line, cols, show_part_number, show_reference, show_quantity, show_unit_price) }}
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

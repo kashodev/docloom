@@ -1,0 +1,92 @@
+{# Itemised telecom bill — the high-line-count archetype.
+
+   Modelled on the 23-page, 895-row source. Four levels: account -> subscriber
+   (group) -> category (section) -> event row. Each section is its own <table>
+   so that its header repeats via `display: table-header-group` when the
+   section spans a page break, which is the behaviour that makes a long bill
+   readable and is a genuine test of whether an extractor treats the repeated
+   header as a new table.
+
+   The `.contd` span is left empty here. Marking which sections actually
+   continued needs post-layout knowledge of where breaks landed, so the PDF
+   renderer fills it in after measuring; empty spans are hidden by CSS. #}
+{% extends "_base.html.j2" %}
+{% import "_macros.j2" as m with context %}
+
+{% block extra_styles %}
+/* Denser than the flat archetype — the source averages 54 rows per page. */
+table.items td, table.items th { padding: 3px 6px; }
+body { font-size: 8.5pt; }
+.usage-cols th { white-space: nowrap; }
+.group-subtotal td { font-weight: 700; border-top: 0.8pt solid var(--rule-strong); }
+.section-subtotal td { border-top: 0.5pt solid var(--rule); }
+{% endblock %}
+
+{% block items %}
+{% for group in groups %}
+  {% if group.label %}
+  <table class="items">
+    <tbody>
+      <tr class="group-head"><td colspan="7">{{ group.label }}</td></tr>
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% for section in group.sections %}
+  <table class="items">
+    <thead>
+      {% if section.name %}
+      <tr class="section-head">
+        <td colspan="7">
+          {{ section.name }}<span class="contd"></span>
+        </td>
+      </tr>
+      {% endif %}
+      <tr class="usage-cols">
+        <th>{{ "issue_date" | label }}</th>
+        <th>{{ cols.description }}</th>
+        <th class="num">{{ "quantity" | label }}</th>
+        <th>{{ "reference" | label }}</th>
+        <th class="num">{{ cols.amount }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in section.lines %}
+      <tr{% if line.is_credit %} class="credit"{% endif %}>
+        <td>{{ line.usage_start or "" }}</td>
+        <td>{{ line.description }}</td>
+        <td class="num">
+          {% if line.volume is not none %}
+            {{ line.volume | qty }} {{ line.usage_unit.value | replace("_", " ") }}
+          {% elif line.duration_seconds is not none %}
+            {{ line.duration_seconds }}s
+          {% else %}
+            {{ line.quantity | qty }}
+          {% endif %}
+        </td>
+        <td>{{ line.usage_type or "" }}</td>
+        <td class="num">{{ line.extended_amount | money }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="section-subtotal">
+        <td colspan="4">{{ section.name or "" }} {{ "subtotal" | label }}</td>
+        <td class="num">{{ section.subtotal | money }}</td>
+      </tr>
+    </tfoot>
+  </table>
+  {% endfor %}
+
+  {% if group.label %}
+  <table class="items">
+    <tbody>
+      <tr class="group-subtotal">
+        <td colspan="4">{{ group.label }} — {{ "subtotal" | label }}</td>
+        <td class="num">{{ group.subtotal | money }}</td>
+      </tr>
+    </tbody>
+  </table>
+  {% endif %}
+{% endfor %}
+{% endblock %}

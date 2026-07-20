@@ -1,0 +1,192 @@
+# docloom — template manifest
+#
+# Slugs are NEUTRAL and STRUCTURAL. The source PDFs happen to depict particular
+# industries, but that is irrelevant: templates supply layout only, and any
+# archetype may render any company type. Naming them by vertical would encode a
+# coupling that does not exist.
+#
+# `src_*` fields describe the source PDF as-found. Everything under
+# `code_layer` is added during PDF -> HTML conversion.
+#
+# ⚠ The source PDFs contain real personal data. They are gitignored, and are
+#   deleted once the HTML archetypes are built. See DESIGN.md § Personal data.
+
+version: 2
+source_count: 39
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Corpus coverage
+# ─────────────────────────────────────────────────────────────────────────────
+corpus:
+  languages_present: [en, fr-CA]        # fr-FR has no source template (code layer)
+  jurisdictions_present: [US, CA-ON, CA-QC]
+  currencies_present: [USD, CAD]        # no GBP or EUR exemplar (code layer)
+  page_sizes: [A4, Letter]
+  templates_with_tax_row: 14
+  templates_with_discount_row: 3
+  templates_with_shipping_row: 2
+  multipage_templates: 3                # 31, 34, 37
+  max_line_items_observed: 895          # telecom-itemized-37
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Column vocabularies observed across the corpus
+# ─────────────────────────────────────────────────────────────────────────────
+column_vocabularies:
+  - {id: standard,      headers: [Description, Quantity, "Unit Price", Amount]}
+  - {id: caps,          headers: [DESCRIPTION, QUANTITY, "UNIT PRICE", AMOUNT]}
+  - {id: unit_cost,     headers: [Description, "Unit Cost", Qty, Amount]}
+  - {id: item,          headers: ["Item Description", Price, QTY, Amount]}
+  - {id: partno_first,  headers: [QTY, "Item No.", Description, Cost]}
+  - {id: minimal,       headers: ["Item Name", Cost]}
+  - {id: no_unit_price, headers: [Description, Quantity, Amount]}
+  - {id: titre,         headers: [Référence, Quantité, Désignation, Prix, Montant]}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Templates
+# ─────────────────────────────────────────────────────────────────────────────
+templates:
+
+  # ── Metadata-block placement variants (A4) ──────────────────────────────
+  - {slug: meta-sidebar-01,     size: A4, cols: caps,          totals: [Subtotal, "Less Deposit", "BALANCE DUE"], layout: meta sidebar left of table}
+  - {slug: meta-topsplit-02,    size: A4, cols: unit_cost,     totals: ["Sub total", "Less Deposit", "Balance due"], layout: contact left / dates right}
+  - {slug: meta-rightrail-03,   size: A4, cols: standard,      totals: [Subtotal, "Less Deposit", "Balance Due"], layout: recipient left / meta right rail}
+  - {slug: meta-stacked-04,     size: A4, cols: caps,          totals: [Subtotal, "Less Deposit", "BALANCE DUE"], layout: vertically stacked caps labels}
+  - {slug: meta-topbar-06,      size: A4, cols: standard,      totals: [Subtotal, "Less Deposit", "Balance Due"], layout: centered contact bar above title}
+  - {slug: meta-topright-07,    size: A4, cols: standard,      totals: [Subtotal, "Less Deposit", "Balance Due"], layout: issuer block top-right}
+  - {slug: meta-toprow-09,      size: A4, cols: standard,      totals: [Subtotal, "Less Deposit", "Balance Due"], layout: meta as a row across the top}
+  - {slug: meta-toprow-caps-10, size: A4, cols: caps,          totals: [Subtotal, "Less Deposit", "BALANCE DUE"], layout: 4-column caps meta row}
+  - {slug: meta-topmeta-16,     size: A4, cols: unit_cost,     totals: ["Sub Total", "Less Deposit", "Balance Due"], layout: contact top-left / meta mid-right}
+  - {slug: meta-leftrail-20,    size: A4, cols: caps,          totals: [Subtotal, "Less Deposit", BALANCE], layout: full-height left meta rail}
+
+  # ── Page-division variants ───────────────────────────────────────────────
+  - {slug: layout-splitcol-08,  size: A4, cols: unit_cost,     totals: ["Sub total", "Less Deposit", "Balance due"], layout: meta left rail / table right 2-3}
+  - {slug: layout-compact-11,   size: A4, cols: unit_cost,     totals: ["Sub total", "Less Deposit", "Balance due"], layout: compact side-by-side header}
+  - {slug: layout-splitcol-12,  size: A4, cols: unit_cost,     totals: ["Sub total", "Less Deposit", "Balance due"], layout: meta left / table right, 3-col footer}
+  - {slug: layout-indent-13,    size: A4, cols: unit_cost,     totals: ["Sub total", "Less Deposit", "Balance due"], layout: indented title, issued-to right}
+  - {slug: layout-minimal-29,   size: A4, cols: minimal,       totals: [Total], layout: near-empty, 2 amount rows, no tax}
+
+  # ── Totals-presentation variants ─────────────────────────────────────────
+  - {slug: totals-fullwidth-05, size: A4, cols: unit_cost,     totals: ["Sub total", "Less Deposit", "Balance due"], layout: totals as full-width rows}
+  - {slug: totals-fullwidth-17, size: A4, cols: unit_cost,     totals: ["Sub total", "Less Deposit", "Balance due"], layout: full-width totals, pipe-separated footer}
+
+  # ── Table-styling variants ───────────────────────────────────────────────
+  - {slug: table-boxed-14,      size: A4,     cols: unit_cost, totals: ["Sub Total", "Less Deposit", "Balance Due"], layout: bordered rows}
+  - {slug: table-narrow-15,     size: A4,     cols: unit_cost, totals: ["Sub Total", "Less Deposit", "Balance Due"], layout: narrow centered column}
+  - {slug: table-wide-19,       size: A4,     cols: unit_cost, totals: ["Sub Total", "Less Deposit", "Balance Due"], layout: wide table, terms left of totals}
+  - {slug: table-letterboxed-21, size: Letter, cols: unit_cost, totals: ["Sub Total", "Less Deposit", "Balance Due"], layout: labelled meta rows, bordered table}
+
+  # ── Column-set variants ──────────────────────────────────────────────────
+  - {slug: cols-noprice-18,     size: A4,     cols: no_unit_price, totals: [Subtotal, "Less Deposit", "Balance Due"], layout: no unit-price column}
+  - {slug: cols-minimal-23,     size: Letter, cols: minimal,       totals: [Total], layout: no quantity or unit price}
+  - {slug: cols-partno-24,      size: Letter, cols: partno_first,  totals: [Subtotal, "Tax (9%)", Total], src_has_tax: true, layout: QTY leads, dedicated part-number column}
+
+  # ── Tax-treatment exemplars ──────────────────────────────────────────────
+  - {slug: tax-single-22,       size: Letter, cols: item,      totals: [Subtotal, "Tax (6%)", "Total Due"], src_has_tax: true}
+  - {slug: tax-single-25,       size: Letter, cols: standard,  totals: [Subtotal, TAX, Total], src_has_tax: true}
+  - {slug: tax-multi-30,        size: Letter, cols: standard,  src_has_tax: true, src_tax_codes: [GST, HST, VAT], src_currency: USD}
+  - {slug: discount-inline-27,  size: Letter, cols: standard,  src_has_tax: true, src_has_discount: true, layout: inline DISCOUNT column}
+
+  # ── Canadian exemplars ───────────────────────────────────────────────────
+  - {slug: ca-hst-26,           size: Letter, src_has_tax: true, src_tax_codes: [HST]}
+  - {slug: ca-hst-detailed-28,  size: Letter, src_has_tax: true, src_tax_codes: [HST], layout: itemised storage invoice}
+  - {slug: ca-cad-32,           size: Letter, src_has_tax: true, src_tax_codes: [HST], src_currency: CAD}
+  - {slug: ca-bilingual-multitax-31, size: A4, pages: 2, src_has_tax: true, src_has_discount: true,
+     src_has_shipping: true, src_tax_codes: [GST, HST, PST, QST],
+     notes: richest tax model in the corpus; bilingual Discount/Remise}
+  - {slug: multipage-catax-34,  size: Letter, pages: 2, src_has_tax: true, src_tax_codes: [GST, HST, PST, QST],
+     notes: 13 amount rows across 2 pages — smallest true pagination exemplar}
+
+  # ── Receipt-style (short, consumer) ──────────────────────────────────────
+  - {slug: receipt-rideshare-33,    size: Letter, src_has_tax: true, src_tax_codes: [GST, HST, QST], src_currency: CAD}
+  - {slug: receipt-minimal-35,      cols: minimal, totals: [Total], layout: 2 amount rows, no tax}
+  - {slug: receipt-subscription-36, size: Letter, cols: minimal, layout: 3 amount rows, no tax}
+
+  # ── Quebec French (fr-CA) ────────────────────────────────────────────────
+  - slug: frca-full-38
+    size: Letter
+    language: fr-CA
+    cols: titre
+    totals: ["Frais de livraison", "Montant total", Rabais, TPS, TVQ, "Total général"]
+    src_has_tax: true
+    src_has_discount: true
+    src_has_shipping: true
+    src_registrations: [TPS, TVQ]
+    notes: >
+      Only template in the corpus with shipping + discount + two tax buckets.
+      Québécois conventions throughout — Rabais not Remise, TPS/TVQ not TVA,
+      $ not €, Télécopie/Courriel. Primary fr-CA reference.
+
+  - slug: frca-simple-39
+    size: Letter
+    language: fr-CA
+    cols: prix_unite
+    totals: ["Sous-total", Taxes, "Total global"]
+    notes: minimal fr-CA; Virement Interac payment instruction
+
+  # ── Telecom — the high-line-count archetype ──────────────────────────────
+  - slug: telecom-itemized-37
+    size: Letter
+    pages: 23
+    src_has_tax: true
+    src_tax_codes: [GST, HST, QST]
+    src_currency: CAD
+    amount_rows: 895
+    columns: [Date, Time, "Duration (min:sec)", Details, "Data Volume", "Call type",
+              "Rate per MB", Amount]
+    features:
+      running_header: [Account owner, "Account no.", "Bill date", "Customer ID", "Page N of M"]
+      hierarchy: [account, subscriber (MSISDN), category, event row]
+      categories: ["Monthly charges & credits", "Products & services",
+                   "One-time charges & credits", "Usage", "Itemized usage",
+                   "Packet data", "Roamer packet data", "Event details"]
+      section_continuation: "(cont'd) marker when a section spans a page break"
+      negative_line_items: true          # e.g. "Less Autopay credit"
+      page_density_varies: true          # 9-12 lines on p4-5 vs 54-55 on p7-22
+    notes: >
+      The most complex archetype by a wide margin and the only source for the
+      2,000-8,000 line-item requirement. Four-level hierarchy, running headers,
+      and cross-page section continuation make it the hardest extraction case
+      in the dataset — model it faithfully.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Added by the code layer (not inherited from any source PDF)
+# ─────────────────────────────────────────────────────────────────────────────
+code_layer:
+
+  pagination:
+    applies_to: all archetypes
+    mechanism: >
+      thead { display: table-header-group } for repeating headers;
+      page-break-inside: avoid on rows; @page margin boxes for "Page N of M";
+      (cont'd) markers on sections that span a break.
+
+  tax_rows:
+    applies_to: 25 of 39 archetypes lack one
+    mechanism: conditional tax-bucket rows driven by the jurisdiction profile
+
+  discount_rows:
+    applies_to: 36 of 39 archetypes lack one
+    mechanism: >
+      Both inline per-line column and separate summary row. Kept distinct from
+      "Less Deposit", which is a prepayment and is modelled separately.
+
+  shipping_rows:
+    applies_to: 37 of 39 archetypes lack one
+
+  fr_FR:
+    status: no source template — fully code-generated
+    mechanism: >
+      Own label dictionary and totals structure (Total HT / TVA / Total TTC),
+      EUR formatting (1 234,56 €), DD/MM/YYYY dates, and the legally mandatory
+      SIRET + TVA intracommunautaire + late-payment penalty notice.
+      50/50 split with fr-CA across French-language invoices.
+
+  gbp_eur:
+    status: no source template — code layer
+    mechanism: GBP/EUR currency profiles applied to existing English archetypes
+
+  variation_matrix:
+    fixed_per_company: [archetype, meta_position, totals_style, column_vocabulary,
+                        table_style, typeface, accent_color, logo_lockup]
+    varies_per_invoice: [line_item_count, discount_scheme, shipping_present,
+                         tax_bucket_count, page_count, condition]

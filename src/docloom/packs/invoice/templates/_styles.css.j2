@@ -1,0 +1,148 @@
+{# Shared stylesheet. Inlined into every archetype so the rendered HTML is
+   self-contained and Chromium needs no file:// resolution. Per-company values
+   arrive as CSS custom properties; per-company *structure* arrives as modifier
+   classes on <body>. One archetype plus these axes covers many appearances. #}
+:root {
+  --accent: {{ profile.accent_color }};
+  --font-body: {{ profile.typeface }}, "Helvetica Neue", Arial, sans-serif;
+  --ink: #16181d;
+  --ink-soft: #5b6270;
+  --rule: #d7dbe2;
+  --rule-strong: #9aa2b1;
+  --zebra: #f5f7fa;
+  --pad-y: 6px;
+  --pad-x: 9px;
+}
+
+@page {
+  size: {{ page_size | default("A4") }};
+  /* Top margin leaves room for the running header that the PDF renderer
+     supplies via Chromium's headerTemplate. */
+  margin: 18mm 14mm 16mm 14mm;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: var(--font-body);
+  font-size: 10pt;
+  line-height: 1.42;
+  color: var(--ink);
+  margin: 0;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ── Document header ─────────────────────────────────────────────────────── */
+.doc-title {
+  font-size: 24pt;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  margin: 0 0 4mm;
+}
+.logo { max-height: 16mm; max-width: 52mm; }
+.logo-wordmark { font-size: 15pt; font-weight: 700; color: var(--accent); }
+
+.party-name { font-weight: 700; }
+.muted { color: var(--ink-soft); }
+.small { font-size: 8.5pt; }
+
+/* Metadata block — the label/value pairs beside or above the table. */
+.meta dl { display: grid; grid-template-columns: auto 1fr; gap: 1mm 4mm; margin: 0; }
+.meta dt { color: var(--ink-soft); font-size: 8.5pt; text-transform: uppercase;
+           letter-spacing: 0.05em; }
+.meta dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+/* ── Variation axis: metadata-block placement ────────────────────────────── */
+.layout { display: grid; gap: 6mm; }
+.meta-top-left  .layout { grid-template-areas: "meta issuer" "table table"; grid-template-columns: 1fr 1fr; }
+.meta-top-right .layout { grid-template-areas: "issuer meta" "table table"; grid-template-columns: 1fr 1fr; }
+.meta-top-row   .layout { grid-template-areas: "issuer issuer" "meta meta" "table table"; grid-template-columns: 1fr 1fr; }
+.meta-left-rail .layout { grid-template-areas: "meta table"; grid-template-columns: 52mm 1fr; }
+.meta-right-rail .layout { grid-template-areas: "table meta"; grid-template-columns: 1fr 52mm; }
+.meta-split     .layout { grid-template-areas: "meta issuer" "table table"; grid-template-columns: 3fr 2fr; }
+
+.layout > .meta   { grid-area: meta; }
+.layout > .issuer { grid-area: issuer; }
+.layout > .body   { grid-area: table; }
+
+/* ── Line-item table ─────────────────────────────────────────────────────── */
+table.items { width: 100%; border-collapse: collapse; margin-top: 4mm; }
+table.items th {
+  text-align: left;
+  font-size: 8.5pt;
+  letter-spacing: 0.05em;
+  padding: var(--pad-y) var(--pad-x);
+  border-bottom: 1.2pt solid var(--rule-strong);
+}
+table.items td { padding: var(--pad-y) var(--pad-x); vertical-align: top; }
+table.items .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.items .credit { color: #8a1c1c; }
+
+/* Variation axis: table styling. */
+.table-rules      table.items tbody tr { border-bottom: 0.5pt solid var(--rule); }
+.table-bordered   table.items th,
+.table-bordered   table.items td { border: 0.5pt solid var(--rule); }
+.table-zebra      table.items tbody tr:nth-child(even) { background: var(--zebra); }
+.table-borderless table.items th { border-bottom: 0.8pt solid var(--accent); }
+
+/* Tier bands are indented sub-rows of their parent line. They are printed
+   rows, so they are golden rows — see DESIGN.md. */
+tr.tier td:first-child { padding-left: calc(var(--pad-x) + 6mm); }
+tr.tier { font-size: 9pt; color: var(--ink-soft); }
+
+tr.section-head td {
+  font-weight: 700;
+  padding-top: 3mm;
+  border-bottom: 0.5pt solid var(--rule);
+}
+tr.group-head td {
+  font-weight: 700;
+  color: var(--accent);
+  padding-top: 4mm;
+}
+.period { font-size: 8.5pt; color: var(--ink-soft); }
+
+/* ── Totals ──────────────────────────────────────────────────────────────── */
+.totals { margin-top: 5mm; }
+.totals table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.totals th { text-align: left; font-weight: 400; padding: var(--pad-y) var(--pad-x); }
+.totals td { text-align: right; padding: var(--pad-y) var(--pad-x); white-space: nowrap; }
+.totals tr.grand th, .totals tr.grand td {
+  font-weight: 700;
+  font-size: 11pt;
+  border-top: 1.2pt solid var(--rule-strong);
+}
+
+/* Variation axis: totals presentation. */
+.totals-right-stack .totals { display: flex; justify-content: flex-end; }
+.totals-right-stack .totals table { min-width: 68mm; }
+.totals-full-width  .totals table { width: 100%; }
+.totals-boxed       .totals table { min-width: 68mm; border: 0.8pt solid var(--rule-strong); }
+.totals-boxed       .totals { display: flex; justify-content: flex-end; }
+.totals-inline      .totals { display: flex; justify-content: space-between; align-items: flex-end; }
+
+/* ── Footer / terms ──────────────────────────────────────────────────────── */
+.terms { margin-top: 6mm; font-size: 8.5pt; color: var(--ink-soft); }
+.terms .legal { margin-top: 2mm; }
+.thanks { margin-top: 4mm; font-style: italic; }
+
+/* ── Pagination ──────────────────────────────────────────────────────────── */
+/* Repeating the table head on every page is what makes a 23-page itemised
+   bill readable — and what an extractor must not mistake for a new table. */
+table.items thead { display: table-header-group; }
+table.items tfoot { display: table-footer-group; }
+table.items tr    { break-inside: avoid; page-break-inside: avoid; }
+
+/* Keep a parent line with at least its first tier band. */
+tr.line-parent { break-after: avoid; page-break-after: avoid; }
+
+/* The totals block should not be orphaned onto a page of its own. */
+.totals { break-inside: avoid; page-break-inside: avoid; }
+
+/* A "(cont'd)" marker on sections that span a page break cannot be resolved by
+   CSS alone — it needs post-layout knowledge of where breaks landed. The
+   renderer injects it into this element after measuring; it stays empty (and
+   therefore invisible) otherwise. */
+.contd:empty { display: none; }
+.contd { font-weight: 400; color: var(--ink-soft); margin-left: 2mm; }

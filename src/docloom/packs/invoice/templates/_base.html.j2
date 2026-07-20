@@ -1,0 +1,37 @@
+{% import "_macros.j2" as m with context %}<!doctype html>
+{# BCP-47 tag: the full locale, not the bare language. en-US and en-GB share a
+   label vocabulary but are different documents. #}
+<html lang="{{ locale.value }}">
+<head>
+<meta charset="utf-8">
+<title>{{ "invoice" | label }} {{ invoice.invoice_number }}</title>
+<style>
+{% include "_styles.css.j2" %}
+{% block extra_styles %}{% endblock %}
+</style>
+</head>
+<body class="{{ body_classes }}">
+{{ m.running_header(invoice) }}
+
+<div class="layout">
+  <div class="issuer">
+    {{ m.logo(profile, issuer) }}
+    <h1 class="doc-title">{{ "invoice" | label }}</h1>
+    {{ m.party_block(issuer, none) }}
+  </div>
+
+  <div class="meta">
+    {{ m.meta_block(invoice) }}
+    {{ m.party_block(recipient, "bill_to") }}
+  </div>
+
+  <div class="body">
+    {% block items %}{% endblock %}
+
+    {{ m.totals_block(totals, tax_buckets, has_discount, has_shipping, has_deposit) }}
+
+    {{ m.terms_block(invoice, registrations, requires_late_penalty) }}
+  </div>
+</div>
+</body>
+</html>
