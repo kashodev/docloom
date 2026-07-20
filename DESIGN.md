@@ -397,40 +397,95 @@ third parties use, so `pip install docloom-contract` works with no change to doc
 
 ### Repository layout
 
-Python 3.12. Package layout:
+Python 3.12. `✅` built and tested, `⏳` designed but unbuilt.
 
 ```
 docloom/
-  DESIGN.md
-  pyproject.toml
-  .env.example              # copy to .env; all keys and run params
-  .gitignore                # excludes .env AND templates/*.pdf (personal data)
-  Dockerfile
-  deploy.sh                 # --mode=generate|export
+  DESIGN.md  README.md  TODO.md  pyproject.toml  .env.example  .gitignore  Dockerfile
   src/docloom/
-    schema/                 # ✅ golden record — the shared contract
-      enums.py              #    closed vocabularies (Parquet column values)
-      money.py              #    Decimal arithmetic, ROUND_HALF_UP
-      invoice.py            #    GoldenInvoice + flattening to the two tables
-    i18n/                   # ✅ localisation
-      jurisdictions.py      #    tax models: US, CA-ON/QC/BC/AB, GB, FR
-      labels.py             #    en / fr-CA / fr-FR dictionaries + column vocabs
-      formatting.py         #    currency, date, rate, quantity per locale
-    catalog/                # LLM catalogue generation (DeepSeek/Qwen/Haiku)
-    logos/                  # SVG wordmarks + FLUX abstract marks
-    generate/               # sampling, rendering, GCS + Firestore writes
-    export/                 # JSONL shards -> Parquet -> BQ external tables
-    cli.py                  # docloom generate | export
+    core/                        ✅ kernel — document-agnostic
+      money.py                   ✅ Decimal arithmetic, ROUND_HALF_UP
+      enums.py                   ✅ Jurisdiction, DocumentCondition, Run/WorkUnitState
+      record.py                  ✅ GoldenRecord protocol + TableRows (to_rows)
+      pack.py  registry.py       ✅ DocumentPack protocol + pack discovery
+      locale/                    ✅ Language, Locale, LOCALE_FORMATS, LabelRegistry
+      render/                    ✅ Jinja env, locale filters, render_record()
+      storage/                   ✅ BlobStore: local · gcs · s3
+      state/                     ✅ StateStore: sqlite · firestore (atomic claim)
+      sinks/                     ✅ GoldenSink: parquet · duckdb · bigquery + arrow
+      providers/                 ✅ TextProvider mix: deepseek/qwen · anthropic · ollama
+      pipeline.py                ⏳ claim → generate → render → persist → complete
+      cli.py                     ⏳ docloom generate | export
+    packs/
+      invoice/                   ✅ the reference pack
+        record.py  enums.py      ✅ GoldenInvoice + billing vocabularies
+        jurisdictions.py         ✅ tax profiles (keyed by core Jurisdiction)
+        labels.py  context.py    ✅ en / fr-CA / fr-FR + record→context
+        templates/               ✅ archetypes + variation matrix (2 of ~15 archetypes)
+      contract/                  ⏳ future pack, same shape
+    catalog/                     ⏳ catalogue runner (drives the provider mix)
+    logos/                       ⏳ SVG wordmarks + FLUX abstract marks
   templates/
-    manifest.yaml           # ✅ 39 templates, structural slugs
-    *.pdf                   # ⚠ personal data — gitignored, deleted after Step 1
-    html/                   # archetypes + variation matrix
-  config/
-    run-*.yaml
+    manifest.yaml                ✅ 39 source templates, structural slugs
+    *.pdf                        ⚠ personal data — gitignored, deleted after Step 1
+  config/run-*.yaml
+  tests/                         ✅ 167 tests + 1 emulator-gated skip
 ```
 
-`src/schema/` imported by both `generate/` and `export/` is the point of the single
-repo — the writer and reader of the golden record cannot drift apart.
+`core/record.py` and `core/pack.py`, imported by both the (future) generator and
+exporter, are the point of the single repo — writer and reader of the golden record
+cannot drift apart.
+
+### Infrastructure — local-first, cloud-optional (phases 3–4)
+
+Storage, run state, and the golden sink are each **one protocol with an adapter chosen
+by URI scheme**. Defaults need no cloud account; the same interfaces carry the GCP path
+(and AWS) with no change to calling code.
+
+| Concern | Protocol | Default (built) | Cloud (built) | Selected by |
+|---|---|---|---|---|
+| Documents & golden shards | `BlobStore` | `file://` | `gs://` · `s3://` | `storage:` URI |
+| Run / work-unit state | `StateStore` | `sqlite://` | `firestore://` | `state:` URI |
+| Golden export target | `GoldenSink` | `parquet://` · `duckdb://` | `bigquery://` | `export.sink:` URI |
+
+Three properties are load-bearing and tested:
+
+* **Exactness.** `Decimal` → Parquet `decimal128` (scale = widest in the column, so
+  money's 2dp and AI rates' 4dp coexist) → back through SQL unchanged. The evaluation
+  JOIN catches a one-cent discrepancy rather than floating it away.
+* **Atomic claim.** SQLite `BEGIN IMMEDIATE` + `UPDATE … RETURNING` (Firestore: a
+  document transaction) means two workers never generate the same shard; failed units
+  return to the pool on resume. Coordination lives here, not in the compute platform —
+  which is why the workers run equally on Cloud Run, AWS Batch/ECS, or bare EC2 (see
+  TODO.md for the multi-cloud deployment guide and the crashed-worker lease gap).
+* **DuckDB == BigQuery, locally.** The same `JOIN … USING (record_id)` evaluation runs
+  against a DuckDB view over local Parquet and a BigQuery external table in the cloud.
+
+Cloud adapters lazy-import their SDK and accept an injected client, so the modules load
+with no SDK present and are fully tested against dependency-injected fakes. A missing
+extra fails with an actionable message (`pip install 'docloom[gcp]'`).
+
+**Docker** is optional locally; it exists for reproducible Chromium rendering (pinned
+via the Playwright base image) and as the one Cloud Run deploy artifact.
+
+### LLM providers — the pluggable mix (phase 5)
+
+Content generation runs through a configurable provider mix; **document generation makes
+no LLM calls** — it reads the finished catalogue, so this touches only the offline
+catalogue step.
+
+* One `TextProvider` protocol (*complete* + *estimate cost*), three adapters: DeepSeek
+  and Qwen share an OpenAI-compatible client; Claude uses its first-party SDK (not a
+  compat shim); Ollama runs local models free.
+* `ProviderMix` routes each item to a **seed-deterministic** provider, so the 40/40/20
+  split is reproducible and a weak slice regenerates without reshuffling which model
+  wrote what. The mix is a *quality* decision (blended voices resist a learned style),
+  not a cost one.
+* `BudgetGuard` enforces the hard $ ceiling — pre-flight estimate before each call,
+  actual cost after — so a run stops *at* the limit. Costs stay raw `Decimal`.
+
+Not yet wired: the catalogue runner that drives the mix over ~70k items, and the
+Anthropic Batch API (50% off for the offline Haiku slice).
 
 ---
 
