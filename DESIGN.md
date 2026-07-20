@@ -536,8 +536,18 @@ flowchart LR
 
 A live local run generates 250 documents across three locales, writes 250 golden
 invoice rows across 5 shards, and marks the run `completed` — with no cloud and no
-browser (HTML standing in for PDF). Still pending: the Playwright PDF renderer and
-the catalogue-based invoice sampler that replaces the deterministic test source.
+browser (HTML standing in for PDF). The Playwright **PDF renderer** now fills the same seam: golden record →
+archetype HTML → Chromium → PDF, reusing one warm browser (process spawn
+dominates per-document cost), with running "Page N of M" headers via Chromium's
+header template — localised through the same label dictionary, so a French bill
+reads "Page 2 sur 23". A real 40×-inflated telecom bill paginates to 8 pages with
+the header repeating. It lazy-imports Playwright and takes an injectable browser,
+so its orchestration is unit-tested with no Chromium and a real render is gated
+on Chromium's presence.
+
+Still pending: the catalogue-based invoice sampler that replaces the
+deterministic test source with real scenario sampling, and the `(cont'd)`
+page-continuation marker (deferred — see TODO.md).
 
 ---
 

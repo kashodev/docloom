@@ -56,8 +56,19 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
 ## Backlog
 - [ ] Cloud adapters end-to-end verification against emulators
       (fake-gcs-server, Firestore emulator) and a real BigQuery project.
+- [ ] **`(cont'd)` markers on page-spanning sections** (telecom archetype).
+      Needs post-layout knowledge of where breaks landed, which Chromium does
+      not expose simply. The repeating `<thead>` already gives an extractor the
+      structural continuation cue, so this is a realism nicety, deferred. CSS
+      hides the empty placeholder in the meantime.
+- [ ] **Move running-header composition into the pack.** The PDF renderer reads
+      `issuer`/`invoice_number` off the record via getattr — invoice-specific.
+      When a second document type needs a different header, add a pack hook
+      (e.g. `header_fields(record)`) rather than growing the getattr list.
 - [ ] Remaining invoice archetypes (~13) from the source corpus.
-- [ ] Playwright PDF renderer (running headers, `(cont'd)` markers).
-- [ ] Generator pipeline tying storage + state + sink into a run.
-- [ ] LLM provider abstraction + weighted mix (phase 5).
-- [ ] Catalogue + logo generation.
+- [ ] Invoice sampler — the catalogue-based `DocumentSource` that replaces the
+      deterministic test source with real scenario sampling.
+- [ ] Catalogue runner (drives the provider mix over ~70k items under budget;
+      Anthropic Batch API for the offline Haiku slice) + logo generation.
+- [ ] Export mode (JSONL shards → GoldenSink) + `docloom generate|export` CLI.
+- [ ] Scan-degradation + handwriting variants (post-process rendered PDFs).

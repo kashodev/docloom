@@ -9,6 +9,7 @@ codec are the kernel's.
 """
 
 from docloom.core.pipeline.golden import decode_shard, encode_shard
+from docloom.core.pipeline.pdf import PdfRenderer
 from docloom.core.pipeline.planner import plan_units
 from docloom.core.pipeline.renderer import DocumentRenderer, HtmlRenderer, RenderedDocument
 from docloom.core.pipeline.run import create_run, resume_run, work_run
@@ -20,6 +21,7 @@ __all__ = [
     "DocumentSource",
     "GenerationWorker",
     "HtmlRenderer",
+    "PdfRenderer",
     "RenderedDocument",
     "WorkerStats",
     "create_run",
