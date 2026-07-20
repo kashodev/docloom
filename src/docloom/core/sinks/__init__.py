@@ -1,17 +1,20 @@
 """Golden sinks: one protocol, backends chosen by URI scheme.
 
-    parquet:///path/to/dir        Parquet files on disk (default)
-    ./golden  or  /abs/golden     shorthand for parquet://
-    duckdb:///path/to/golden.db   DuckDB — local SQL evaluation
-    bigquery://project/dataset    BigQuery  (pip install 'docloom[gcp]')
+    parquet:///path/to/dir                       Parquet files on disk (default)
+    ./golden  or  /abs/golden                    shorthand for parquet://
+    duckdb:///path/to/golden.db                  DuckDB — local SQL evaluation
+    bigquery://project/dataset?staging=gs://…    BigQuery  (pip install 'docloom[gcp]')
 
 The default (Parquet + DuckDB) gives the same JOIN-on-``record_id`` evaluation
 locally that BigQuery gives in the cloud, with no account required.
+
+BigQuery reads Parquet in place as an external table, so it needs a GCS
+``staging`` location for that Parquet — passed as a query parameter.
 """
 
 from __future__ import annotations
 
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from docloom.core.sinks.base import GoldenSink
 from docloom.core.sinks.parquet import ParquetSink
@@ -33,12 +36,19 @@ def open_sink(uri: str) -> GoldenSink:
         return DuckDBSink(parsed.path)
 
     if scheme == "bigquery":
-        try:
-            from docloom.core.sinks.bigquery import BigQuerySink
-        except ImportError as exc:
-            raise ImportError(
-                "bigquery:// sink needs the GCP extra — pip install 'docloom[gcp]'"
-            ) from exc
-        return BigQuerySink(project=parsed.netloc, dataset=parsed.path.lstrip("/"))
+        from docloom.core.sinks.bigquery import BigQuerySink
+        from docloom.core.storage import open_store
+
+        staging = parse_qs(parsed.query).get("staging", [None])[0]
+        if not staging:
+            raise ValueError(
+                "bigquery:// needs a GCS staging location for its Parquet, e.g. "
+                "bigquery://project/dataset?staging=gs://bucket/prefix"
+            )
+        return BigQuerySink(
+            project=parsed.netloc,
+            dataset=parsed.path.lstrip("/"),
+            staging=open_store(staging),
+        )
 
     raise ValueError(f"unsupported sink scheme {scheme!r} in {uri!r}")

@@ -97,7 +97,14 @@ def test_factory_defaults_to_parquet(tmp_path: Path) -> None:
 
 
 def test_factory_bigquery_needs_gcp_extra() -> None:
+    # A GCS staging location is required; reaching it (or the BQ client) needs
+    # the GCP extra, so the actionable message fires either way.
     with pytest.raises(ImportError, match=r"docloom\[gcp\]"):
+        open_sink("bigquery://my-project/docloom_golden?staging=gs://bucket/staging")
+
+
+def test_factory_bigquery_without_staging_explains_why() -> None:
+    with pytest.raises(ValueError, match="staging"):
         open_sink("bigquery://my-project/docloom_golden")
 
 
