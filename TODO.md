@@ -27,15 +27,14 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       README § "Local-first is a property of the pack" capture the intent.
 
 ## Rendering fidelity
-- [ ] **Bundle OFL fonts for portable typography.** The pack draws from semantic
-      font *stacks* (serif-classic, sans-geometric, mono-invoice, …) that resolve
-      to distinct families where the fonts exist — true on a normal machine and
-      in the Playwright Docker image, but NOT in a bare chromium-headless-shell.
-      For byte-identical rendering everywhere, drop OFL woff2 files into
-      `src/docloom/packs/invoice/fonts/` and have `fonts.font_face_css` embed them
-      as base64 @font-face (the hook and the mechanism are verified to work — an
-      embedded font loaded correctly in headless-shell). Downloads were blocked in
-      the build env, so this is a drop-in follow-up.
+- [x] **Bundle OFL fonts for portable typography.** Four keys (serif-classic →
+      Noto Serif, sans-neutral → Inter, slab → Zilla Slab, mono-invoice →
+      JetBrains Mono) now embed a bundled OFL woff2 (weights 400/700) as base64
+      `@font-face` via `fonts.font_face_css`, and `font_stack` leads with the
+      embedded family — byte-identical rendering for those typefaces on any host.
+      Files + licence in `src/docloom/packs/invoice/fonts/`. Remaining keys still
+      resolve from their semantic fallback stack; add more the same way (drop
+      woff2 into `fonts/files/`, extend `BUNDLED`, note it in `OFL.txt`).
 
 ## Concurrency & multi-cloud portability
 - [ ] **Lease + reclaim for crashed workers.** The atomic claim marks a unit

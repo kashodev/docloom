@@ -65,7 +65,8 @@ def test_font_stack_is_not_html_escaped() -> None:
     producing invalid CSS so every invoice fell back to one default font."""
     html = render_record(PACK, invoice(simple_lines(),
                                        render_profile=profile(typeface="serif-classic")))
-    assert "--font-body: Georgia, 'Times New Roman'" in html
+    # The bundled family leads, then the semantic fallback chain — quotes intact.
+    assert "--font-body: 'DL Noto Serif', Georgia, 'Times New Roman'" in html
     assert "&#39;" not in html
 
 
