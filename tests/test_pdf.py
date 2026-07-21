@@ -16,14 +16,47 @@ import pytest
 
 import docloom.packs  # noqa: F401  — registers the invoice pack
 from docloom.core import Currency, Jurisdiction, Locale, get_pack
-from docloom.core.pipeline.pdf import PdfRenderer
+from docloom.core.pipeline.pdf import PdfRenderer, fit_scale
 from tests.factories import invoice, simple_lines, telecom_lines
+
+
+# ── page-fill scaling (pure) ────────────────────────────────────────────────
+def test_fit_scale_leaves_single_page_alone() -> None:
+    assert fit_scale(content_px=500, printable_px=1000) == 1.0
+    assert fit_scale(content_px=1000, printable_px=1000) == 1.0
+
+
+def test_fit_scale_leaves_a_well_filled_last_page_alone() -> None:
+    # 1.5 pages: last page 50% full — above the 25% threshold, no change.
+    assert fit_scale(content_px=1500, printable_px=1000) == 1.0
+
+
+def test_fit_scale_compresses_a_sliver_onto_one_fewer_page() -> None:
+    # 1.05 pages: last page only 5% full → shrink to fit one page.
+    scale = fit_scale(content_px=1050, printable_px=1000)
+    assert scale < 1.0
+    assert 1050 * scale <= 1000 + 0.5   # now fits a single page
+
+
+def test_fit_scale_will_not_shrink_below_the_floor() -> None:
+    # With the default 25% target the shrink can never exceed 20% (1/1.25 = 0.8),
+    # so the floor only bites under an aggressive fill target — where it caps the
+    # shrink and we accept the extra page rather than an unreadable squeeze.
+    assert fit_scale(content_px=1400, printable_px=1000, min_fill=0.5) == 0.80
 
 
 # ── Fake Chromium — records what the renderer asked it to do ────────────────
 class FakePage:
     def __init__(self, log: dict) -> None:
         self._log = log
+
+    def set_viewport_size(self, size: dict) -> None:
+        self._log["viewport"] = size
+
+    def evaluate(self, expr: str) -> float:
+        # Short content → the fit pass leaves scale at 1.0, keeping the
+        # orchestration assertions independent of the page-fill logic.
+        return self._log.get("scroll_height", 200.0)
 
     def emulate_media(self, media: str) -> None:
         self._log["media"] = media
@@ -142,6 +175,35 @@ def test_real_render_produces_a_valid_pdf() -> None:
         doc = r.render(invoice(simple_lines()))
     assert doc.data.startswith(b"%PDF-")
     assert len(pikepdf.open(io.BytesIO(doc.data)).pages) == 1
+
+
+@requires_chromium
+def test_fit_pass_reclaims_a_near_empty_trailing_page() -> None:
+    """End to end, against real Chromium pagination: the fit pass must never
+    make a document longer, and for a document that would otherwise spill a
+    near-empty trailing page it pulls the content back onto fewer pages."""
+    import pikepdf
+
+    def page_count(renderer: PdfRenderer, record) -> int:  # noqa: ANN001
+        return len(pikepdf.open(io.BytesIO(renderer.render(record).data)).pages)
+
+    pack = get_pack("invoice")
+    reclaimed = False
+    # One renderer (one warm browser — two live sync-Playwright instances would
+    # collide on the event loop); flip the fit flag between the two renders.
+    with PdfRenderer(pack) as r:
+        for n in range(18, 52):   # grow the row count across the page boundary
+            lines = [simple_lines()[0].model_copy(update={"line_no": i + 1}) for i in range(n)]
+            inv = invoice(lines)
+            r._fit_pages = False
+            without_fit = page_count(r, inv)
+            r._fit_pages = True
+            with_fit = page_count(r, inv)
+            assert with_fit <= without_fit, f"fit pass added pages at {n} rows"
+            if with_fit < without_fit:
+                reclaimed = True
+                break
+    assert reclaimed, "fit pass never reclaimed a trailing page across the sweep"
 
 
 @requires_chromium

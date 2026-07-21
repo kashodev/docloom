@@ -31,6 +31,7 @@ placeholder). See TODO.md.
 from __future__ import annotations
 
 import html
+import math
 from typing import Any
 
 from docloom.core.pack import DocumentPack
@@ -42,6 +43,37 @@ from docloom.core.render import render_record
 # header/footer; horizontal padding on the header aligns it with the body.
 _MARGIN = {"top": "18mm", "bottom": "16mm", "left": "14mm", "right": "14mm"}
 _SIDE_PAD_MM = 14
+_MARGIN_V_MM = 18 + 16   # total vertical margin removed from the printable area
+_MARGIN_H_MM = 14 + 14   # total horizontal margin removed from the printable area
+_PX_PER_MM = 96 / 25.4   # CSS pixels per millimetre at 96 dpi
+_PAGE_HEIGHT_MM = {"A4": 297.0, "Letter": 279.4}
+_PAGE_WIDTH_MM = {"A4": 210.0, "Letter": 215.9}
+_MIN_LAST_PAGE_FILL = 0.25   # a trailing page must be at least this full
+_MIN_FIT_SCALE = 0.80        # never shrink content below this to avoid a sliver
+
+
+def fit_scale(
+    content_px: float,
+    printable_px: float,
+    *,
+    min_fill: float = _MIN_LAST_PAGE_FILL,
+    min_scale: float = _MIN_FIT_SCALE,
+) -> float:
+    """The PDF scale that avoids a near-empty trailing page.
+
+    If content spills onto a last page that is less than ``min_fill`` full, shrink
+    it just enough to land on one fewer page — but never below ``min_scale`` (a
+    hard-to-read shrink is worse than an extra page). Single-page and
+    already-well-filled documents render at 1.0.
+    """
+    if content_px <= printable_px or printable_px <= 0:
+        return 1.0
+    pages = math.ceil(content_px / printable_px)
+    last_fill = (content_px - (pages - 1) * printable_px) / printable_px
+    if last_fill >= min_fill:
+        return 1.0
+    scale = (pages - 1) * printable_px / content_px
+    return max(round(scale, 4), min_scale)
 
 
 class PdfRenderer:
@@ -53,10 +85,12 @@ class PdfRenderer:
         *,
         page_size: str = "A4",
         browser: Any | None = None,
+        fit_pages: bool = True,
     ) -> None:
         self._pack = pack
         self._page_size = page_size
         self._browser = browser
+        self._fit_pages = fit_pages
         self._playwright: Any | None = None
         self._owns_browser = browser is None
 
@@ -74,17 +108,12 @@ class PdfRenderer:
         return self._browser
 
     def render(self, record: GoldenRecord) -> RenderedDocument:
-        html_str = render_record(self._pack, record)
-        browser = self._ensure_browser()
-        page = browser.new_page()
+        page = self._prepared_page(render_record(self._pack, record))
         try:
-            # print media so the archetypes' @print rules (table-header-group,
-            # break-inside) take effect, and backgrounds so accent/zebra show.
-            page.emulate_media(media="print")
-            page.set_content(html_str, wait_until="load")
             pdf_bytes = page.pdf(
                 format=self._page_size,
                 margin=_MARGIN,
+                scale=self._fit_scale(page),
                 print_background=True,
                 display_header_footer=True,
                 header_template=self._header_template(record),
@@ -95,6 +124,40 @@ class PdfRenderer:
         return RenderedDocument(
             data=pdf_bytes, content_type="application/pdf", extension=".pdf"
         )
+
+    def _prepared_page(self, html_str: str) -> Any:
+        """A page laid out exactly as it will print, ready to measure or emit.
+
+        The viewport is pinned to the *printable* width — page width minus the
+        left/right margins — so ``scrollHeight`` reflects how the content wraps
+        and stacks under print pagination. Measuring at the browser's default
+        (much wider) viewport gives a height that has nothing to do with the
+        printed page and makes the fit pass wildly wrong.
+        """
+        page = self._ensure_browser().new_page()
+        w, h = self._printable_size()
+        page.set_viewport_size({"width": max(int(round(w)), 1), "height": max(int(round(h)), 1)})
+        # print media so the archetypes' @print rules (table-header-group,
+        # break-inside) take effect, and backgrounds so accent/zebra show.
+        page.emulate_media(media="print")
+        page.set_content(html_str, wait_until="load")
+        return page
+
+    def _printable_size(self) -> tuple[float, float]:
+        page_h = _PAGE_HEIGHT_MM.get(self._page_size, _PAGE_HEIGHT_MM["A4"])
+        page_w = _PAGE_WIDTH_MM.get(self._page_size, _PAGE_WIDTH_MM["A4"])
+        return (page_w - _MARGIN_H_MM) * _PX_PER_MM, (page_h - _MARGIN_V_MM) * _PX_PER_MM
+
+    def _printable_px(self) -> float:
+        return self._printable_size()[1]
+
+    def _fit_scale(self, page: Any) -> float:
+        """Measure the laid-out content and choose a scale that avoids a
+        near-empty trailing page (see :func:`fit_scale`)."""
+        if not self._fit_pages:
+            return 1.0
+        content_px = float(page.evaluate("document.documentElement.scrollHeight"))
+        return fit_scale(content_px, self._printable_px())
 
     def _header_template(self, record: GoldenRecord) -> str:
         """The running header: issuer + invoice number left, page count right.
