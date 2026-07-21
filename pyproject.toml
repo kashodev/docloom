@@ -5,7 +5,7 @@ description = "Weave templates and generated data into realistic documents with 
 requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "kashodev", email = "kasho.dev@gmail.com" }]
+authors = [{ name = "Adam Okasha", email = "kasho.dev@gmail.com" }]
 readme = "README.md"
 keywords = ["synthetic-data", "invoices", "ocr", "document-ai", "golden-dataset", "evaluation"]
 classifiers = [
