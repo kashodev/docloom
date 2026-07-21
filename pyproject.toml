@@ -3,6 +3,21 @@ name = "docloom"
 version = "0.1.0"
 description = "Weave templates and generated data into realistic documents with a computed golden dataset"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "kashodev", email = "kasho.dev@gmail.com" }]
+readme = "README.md"
+keywords = ["synthetic-data", "invoices", "ocr", "document-ai", "golden-dataset", "evaluation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
 
 # Core deps run the whole local-first path — generate, render, export, and
 # evaluate — with NO cloud account. Cloud SDKs and LLM providers are extras, so
