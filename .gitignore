@@ -5,11 +5,6 @@
 *-service-account*.json
 gcp-credentials*.json
 
-# ─── Source templates (CONTAIN REAL PERSONAL DATA) ──────────────────────────
-# These PDFs are reference material only. They are deleted once the HTML
-# archetypes are built. They must never be committed — see DESIGN.md.
-templates/*.pdf
-
 # ─── Generated artefacts ────────────────────────────────────────────────────
 out/
 catalog/
@@ -36,9 +31,18 @@ htmlcov/
 .idea/
 .vscode/
 
-# Belt-and-suspenders: ignore source PDFs in any case, anywhere (personal data).
+# Belt-and-suspenders: ignore PDFs anywhere by default. The original reason was
+# the source templates, which carried real personal data and have since been
+# removed from the repo — but the blanket rule stays, so a stray real-world PDF
+# dropped anywhere in the tree can never be committed by accident.
 # Case-insensitive matching is on by default on macOS but NOT on Linux, so the
 # explicit glob protects a Linux clone too.
 *.pdf
 *.Pdf
 *.PDF
+
+# ...with one deliberate exception: samples/ holds generated showcase documents.
+# They are synthetic end to end — procedural catalogue data, no personal data —
+# and are committed so the rendering can be reviewed without running a job.
+!samples/**/*.pdf
+!samples/**/*.PDF
