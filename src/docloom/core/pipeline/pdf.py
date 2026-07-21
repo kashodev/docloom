@@ -219,32 +219,18 @@ class PdfRenderer:
         )
 
     def _header_template(self, record: GoldenRecord) -> str:
-        """The running header: issuer + invoice number left, page count right.
+        """The running header: the pack's ``primary`` text left, page count right.
 
-        The page-count phrasing comes from the pack's ``page_of`` label with the
-        ``{page}`` / ``{pages}`` placeholders swapped for Chromium's counters, so
-        it localises for free — "Page 2 of 23" / "Page 2 sur 23".
+        Document-agnostic — the pack composes and localises which identifiers
+        appear (see :meth:`DocumentPack.header_fields`); the renderer only escapes
+        the plain text and swaps Chromium's counters into the page-label template,
+        so it reads "Page 2 of 23" / "Page 2 sur 23" for free.
         """
-        labels = self._pack.labels
-        language = record.locale.language   # kernel-level: every record has a locale
-        # Issuer and invoice number are invoice-specific; read defensively so the
-        # renderer stays document-agnostic (a record without them gets a header
-        # of just the page counter). When a second document type needs a
-        # different header, this composition should move to the pack — see
-        # TODO.md. Not abstracted for a single pack.
-        issuer = html.escape(getattr(getattr(record, "issuer", None), "name", "") or "")
-        number = html.escape(getattr(record, "invoice_number", "") or "")
-        try:
-            number_label = html.escape(labels.get(language, "invoice_number"))
-            page_label = labels.get(language, "page_of")
-        except KeyError:
-            number_label, page_label = "", "Page {page} of {pages}"
-
-        page_html = page_label.replace(
+        header = self._pack.header_fields(record)
+        left = html.escape(header.primary)
+        page_html = header.page_label.replace(
             "{page}", '<span class="pageNumber"></span>'
         ).replace("{pages}", '<span class="totalPages"></span>')
-
-        left = f"{issuer} — {number_label} {number}" if issuer else f"{number_label} {number}"
         return (
             f'<div style="font-size:8px; color:#666; width:100%; '
             f'padding:0 {_SIDE_PAD_MM}mm; display:flex; justify-content:space-between;">'

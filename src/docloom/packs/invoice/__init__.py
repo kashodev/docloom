@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from docloom.core.locale.labels import LabelRegistry
+from docloom.core.pack import RunningHeader
 from docloom.core.record import GoldenRecord
 from docloom.packs.invoice.catalog import (
     BusinessSpec,
@@ -86,6 +87,21 @@ class InvoicePack:
     def archetype_for(self, record: GoldenRecord) -> str:
         assert isinstance(record, GoldenInvoice)
         return record.render_profile.archetype
+
+    def header_fields(self, record: GoldenRecord) -> RunningHeader:
+        """Issuer + invoice number on the left, localised page counter template
+        on the right. The renderer composes nothing invoice-specific itself."""
+        assert isinstance(record, GoldenInvoice)
+        language = record.locale.language
+        try:
+            number_label = LABEL_REGISTRY.get(language, "invoice_number")
+            page_label = LABEL_REGISTRY.get(language, "page_of")
+        except KeyError:
+            number_label, page_label = "", "Page {page} of {pages}"
+        issuer = record.issuer.name or ""
+        number = record.invoice_number or ""
+        primary = f"{issuer} — {number_label} {number}" if issuer else f"{number_label} {number}"
+        return RunningHeader(primary=primary, page_label=page_label)
 
     def default_source(self) -> InvoiceSampler:
         """The sampler over the procedural seed catalogue — no API keys."""

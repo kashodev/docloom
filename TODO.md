@@ -98,10 +98,13 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       the marker necessarily shows on every page of a spanning section including
       the first; true per-page differentiation would require renderer-side table
       splitting, not worth the golden-data risk for a cosmetic nicety.
-- [ ] **Move running-header composition into the pack.** The PDF renderer reads
-      `issuer`/`invoice_number` off the record via getattr — invoice-specific.
-      When a second document type needs a different header, add a pack hook
-      (e.g. `header_fields(record)`) rather than growing the getattr list.
+- [x] **Move running-header composition into the pack.** Added
+      `DocumentPack.header_fields(record) -> RunningHeader` (kernel dataclass:
+      `primary` text + localised `page_label` template). The invoice pack composes
+      issuer + invoice number and localises both; the PDF renderer just escapes
+      `primary` and swaps Chromium's counters into the page label — no more
+      record-shape getattr in the renderer. A second document type supplies its
+      own header without touching the renderer.
 - [ ] Catalogue runner (drives the provider mix over ~70k items under budget;
       Anthropic Batch API for the offline Haiku slice) + logo generation.
 - [ ] Scan-degradation + handwriting variants (post-process rendered PDFs).

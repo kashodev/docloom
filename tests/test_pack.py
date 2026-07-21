@@ -12,9 +12,11 @@ from __future__ import annotations
 import pytest
 
 from docloom.core import DocumentPack, GoldenRecord, available_packs, get_pack, render_record
+from docloom.core.pack import RunningHeader
 from docloom.core.registry import register_pack
 from docloom.packs.invoice import GoldenInvoice, InvoicePack
 from tests.factories import invoice, simple_lines, tiered_line
+from docloom.core import Currency, Jurisdiction, Locale
 
 PACK = get_pack("invoice")
 
@@ -118,6 +120,27 @@ def test_labels_registry_is_reachable_from_the_pack() -> None:
 def test_archetype_selection_comes_from_the_record() -> None:
     inv = invoice(simple_lines())
     assert PACK.archetype_for(inv) == inv.render_profile.archetype
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Running header — composed by the pack, not the renderer
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_header_fields_composes_issuer_and_number() -> None:
+    header = PACK.header_fields(invoice(simple_lines()))
+    assert isinstance(header, RunningHeader)
+    assert "Northwind Supply" in header.primary
+    assert "INV-2026-0042" in header.primary
+    # The page-label template carries placeholders for the renderer to fill.
+    assert "{page}" in header.page_label and "{pages}" in header.page_label
+
+
+def test_header_fields_is_localised_by_the_pack() -> None:
+    fr = invoice(simple_lines(), locale=Locale.FR_FR,
+                 jurisdiction=Jurisdiction.FR, currency=Currency.EUR)
+    header = PACK.header_fields(fr)
+    assert "sur" in header.page_label          # fr-FR: "Page {page} sur {pages}"
+    assert "Facture" in header.primary          # fr-FR invoice-number label
 
 
 def test_render_record_goes_end_to_end_through_the_pack() -> None:

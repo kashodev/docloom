@@ -13,11 +13,31 @@ second pack needs something, hoist it then — not before.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from docloom.core.locale.labels import LabelRegistry
 from docloom.core.record import GoldenRecord
+
+
+@dataclass(frozen=True, slots=True)
+class RunningHeader:
+    """The per-page running header a pack supplies to the PDF renderer.
+
+    The renderer is document-agnostic: it lays out ``primary`` on the left and the
+    page counter on the right, and knows nothing about issuers or invoice numbers.
+    The pack composes and localises both fields.
+
+    * ``primary`` — plain text for the left side (the renderer HTML-escapes it),
+      e.g. ``"Northwind Supply — Invoice INV-2026-0042"``.
+    * ``page_label`` — the localised page-counter template with ``{page}`` and
+      ``{pages}`` placeholders the renderer swaps for Chromium's counters, e.g.
+      ``"Page {page} of {pages}"`` / ``"Page {page} sur {pages}"``.
+    """
+
+    primary: str
+    page_label: str
 
 if TYPE_CHECKING:
     # Forward-referenced to avoid a package import cycle: core.pipeline imports
@@ -66,6 +86,15 @@ class DocumentPack(Protocol):
 
     def archetype_for(self, record: GoldenRecord) -> str:
         """Template name (without extension) to render this record with."""
+        ...
+
+    def header_fields(self, record: GoldenRecord) -> RunningHeader:
+        """The running header for this record — see :class:`RunningHeader`.
+
+        Owns the document-specific composition (which identifiers go in the
+        header) and its localisation, so the PDF renderer needs no knowledge of
+        any pack's record shape.
+        """
         ...
 
     def default_source(self) -> DocumentSource:
