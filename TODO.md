@@ -65,7 +65,6 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       `issuer`/`invoice_number` off the record via getattr — invoice-specific.
       When a second document type needs a different header, add a pack hook
       (e.g. `header_fields(record)`) rather than growing the getattr list.
-- [ ] Remaining invoice archetypes (~13) from the source corpus.
 - [ ] Catalogue runner (drives the provider mix over ~70k items under budget;
       Anthropic Batch API for the offline Haiku slice) + logo generation.
 - [ ] Scan-degradation + handwriting variants (post-process rendered PDFs).

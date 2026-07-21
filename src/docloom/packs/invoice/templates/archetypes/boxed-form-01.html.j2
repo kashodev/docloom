@@ -1,0 +1,78 @@
+{# Framed "form" invoice — a utility/government-form aesthetic.
+
+   The other genuinely distinct skeleton: an outer frame around the whole
+   document, metadata in a grid of labelled bordered cells, a fully bordered
+   line-item table, a boxed totals panel. Structurally different from the open
+   flat archetype — bordered cells vs. free-floating blocks — so it reads as a
+   different kind of document. Covers the boxed/letterboxed corpus feel taken to
+   a full framed page. #}
+{% import "_macros.j2" as m with context %}<!doctype html>
+<html lang="{{ locale.value }}">
+<head>
+<meta charset="utf-8">
+<title>{{ "invoice" | label }} {{ invoice.invoice_number }}</title>
+<style>
+{% include "_styles.css.j2" %}
+/* Boxed-form: everything framed. */
+.form { border: 1.2pt solid var(--rule-strong); }
+.form-title { background: var(--accent); color: #fff; padding: 3mm 4mm;
+              font-size: 16pt; letter-spacing: 0.08em; }
+.form-meta { display: grid; grid-template-columns: repeat(4, 1fr);
+             border-bottom: 0.8pt solid var(--rule-strong); }
+.form-meta .cell { border-right: 0.5pt solid var(--rule); padding: 2mm 3mm; }
+.form-meta .cell:last-child { border-right: 0; }
+.form-meta dt { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.05em;
+                color: var(--ink-soft); }
+.form-meta dd { margin: 0.5mm 0 0; font-variant-numeric: tabular-nums; }
+.form-parties { display: grid; grid-template-columns: 1fr 1fr;
+                border-bottom: 0.8pt solid var(--rule-strong); }
+.form-parties .box { padding: 3mm 4mm; }
+.form-parties .box:first-child { border-right: 0.5pt solid var(--rule); }
+.form-body { padding: 4mm; }
+.archetype-boxed table.items th,
+.archetype-boxed table.items td { border: 0.5pt solid var(--rule); }
+.archetype-boxed .totals table { border: 0.8pt solid var(--rule-strong); min-width: 70mm; }
+.archetype-boxed .totals { display: flex; justify-content: flex-end; }
+.form-foot { border-top: 0.8pt solid var(--rule-strong); padding: 3mm 4mm; }
+</style>
+</head>
+<body class="{{ body_classes }} archetype-boxed">
+{{ m.running_header(invoice) }}
+
+<div class="form">
+  <div class="form-title">{{ "invoice" | label }}</div>
+
+  <div class="form-meta">
+    <div class="cell"><dt>{{ "invoice_number" | label }}</dt><dd>{{ invoice.invoice_number }}</dd></div>
+    <div class="cell"><dt>{{ "issue_date" | label }}</dt><dd>{{ invoice.issue_date | date }}</dd></div>
+    <div class="cell"><dt>{{ "due_date" | label }}</dt><dd>{{ invoice.due_date | date }}</dd></div>
+    <div class="cell">
+      <dt>{{ "customer_id" | label }}</dt>
+      <dd>{{ invoice.customer_reference or recipient.party_id }}</dd>
+    </div>
+  </div>
+
+  <div class="form-parties">
+    <div class="box">{{ m.party_block(issuer, "issued_by") }}</div>
+    <div class="box">{{ m.party_block(recipient, "bill_to") }}</div>
+  </div>
+
+  <div class="form-body">
+    <table class="items">
+      {{ m.items_header(cols, show_part_number, show_reference, show_quantity, show_unit_price) }}
+      <tbody>
+        {% for line in lines %}
+        {{ m.item_row(line, cols, show_part_number, show_reference, show_quantity, show_unit_price) }}
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {{ m.totals_block(totals, tax_buckets, has_discount, has_shipping, has_deposit) }}
+  </div>
+
+  <div class="form-foot">
+    {{ m.terms_block(invoice, registrations, requires_late_penalty) }}
+  </div>
+</div>
+</body>
+</html>

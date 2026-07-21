@@ -27,6 +27,7 @@ from docloom.core.pipeline.source import stable_seed
 from docloom.packs.invoice.catalog import Catalogue, Company, ProductTemplate, SeedCatalogue
 from docloom.packs.invoice.enums import (
     BillingModel,
+    BusinessType,
     DiscountScheme,
     DiscountTiming,
     LineItemKind,
@@ -144,6 +145,35 @@ def _graduated_line(rng: Random, common: dict, product: ProductTemplate) -> Line
     return LineItem(**common, quantity=total, extended_amount=extended, tiers=tuple(tiers))
 
 
+_TELECOM_SECTION = {
+    "megabytes": "Data usage", "gigabytes": "Data usage",
+    "minutes": "Voice", "seconds": "Voice", "messages": "Messaging",
+}
+
+
+def _telecom_grouping(rng: Random, lines: tuple[LineItem, ...]) -> tuple[LineItem, ...]:
+    """Reshape flat telecom lines into a subscriber → category → event hierarchy.
+
+    Amounts are untouched (grouping is presentational), so the totals still
+    reconcile; it just gives the telecom archetype the group/section/timestamp
+    structure it renders. Without this, generated telecom invoices would render
+    as one flat table and the archetype's hierarchy would never be exercised.
+    """
+    subscribers = [
+        f"({rng.randint(200, 989)}) 555-{rng.randint(1000, 9999):04d}"
+        for _ in range(rng.randint(1, 3))
+    ]
+    out = []
+    for li in lines:
+        sub = rng.choice(subscribers)
+        section = _TELECOM_SECTION.get(li.usage_unit.value, "Usage")
+        stamp = f"{rng.randint(1, 28):02d} {rng.randint(0, 23):02d}:{rng.randint(0, 59):02d}"
+        out.append(li.model_copy(update={
+            "group_key": sub, "group_label": sub, "section": section, "usage_start": stamp,
+        }))
+    return tuple(out)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Totals — discount, shipping, deposit, tax
 # ─────────────────────────────────────────────────────────────────────────────
@@ -202,6 +232,8 @@ class InvoiceSampler:
         lines = tuple(
             _build_line(rng, i + 1, rng.choice(spec.products)) for i in range(n)
         )
+        if company.business_type is BusinessType.TELECOM:
+            lines = _telecom_grouping(rng, lines)   # subscriber → category → event
         subtotal = sum_money([li.extended_amount for li in lines])
 
         scheme, timing, discount = _discount(rng, subtotal)

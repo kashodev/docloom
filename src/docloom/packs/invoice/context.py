@@ -38,15 +38,17 @@ def body_classes(invoice: GoldenInvoice) -> str:
     templates without losing visual diversity.
     """
     p = invoice.render_profile
-    return " ".join(
-        [
-            f"meta-{p.meta_position}",
-            f"totals-{p.totals_style}",
-            f"table-{p.table_style}",
-            f"lang-{invoice.language.value.lower().replace('-', '_')}",
-            "has-logo" if p.has_logo else "no-logo",
-        ]
-    )
+    classes = [
+        f"meta-{p.meta_position}",
+        f"totals-{p.totals_style}",
+        f"table-{p.table_style}",
+        f"lang-{invoice.language.value.lower().replace('-', '_')}",
+        "has-logo" if p.has_logo else "no-logo",
+    ]
+    # The top-row meta position flows its labels horizontally — the banner look.
+    if p.meta_position == "top-row":
+        classes.append("meta-banner")
+    return " ".join(classes)
 
 
 def group_line_items(items: tuple[LineItem, ...]) -> list[dict[str, Any]]:

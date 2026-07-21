@@ -422,7 +422,7 @@ docloom/
         record.py  enums.py      ✅ GoldenInvoice + billing vocabularies
         jurisdictions.py         ✅ tax profiles (keyed by core Jurisdiction)
         labels.py  context.py    ✅ en / fr-CA / fr-FR + record→context
-        templates/               ✅ archetypes + variation matrix (2 of ~15 archetypes)
+        templates/               ✅ 4 archetypes + variation matrix (corpus collapses to these)
       contract/                  ⏳ future pack, same shape
     catalog/                     ⏳ catalogue runner (drives the provider mix)
     logos/                       ⏳ SVG wordmarks + FLUX abstract marks
@@ -584,7 +584,7 @@ one-cent error. The `docloom` CLI wires it end to end — `generate`, `export`,
 Parquet/DuckDB, no keys), scaling by pointing the URIs at cloud.
 
 Still pending: the rich LLM catalogue (the catalogue runner, keys + budget),
-the remaining ~13 archetypes, scan-degradation/handwriting variants, and the
+scan-degradation/handwriting variants, and the
 `(cont'd)` marker (deferred — see TODO.md).
 
 ---

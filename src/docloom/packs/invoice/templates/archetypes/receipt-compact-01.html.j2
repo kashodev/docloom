@@ -1,0 +1,82 @@
+{# Compact consumer receipt — a genuinely different skeleton.
+
+   Covers the receipt-* corpus family (rideshare, subscription, transaction):
+   narrow centred column, no formal issuer/recipient split, minimal metadata,
+   a tight amount table. Standalone rather than extending _base, because the
+   structure differs from the flat archetype — an extractor should see a
+   recognisably different document type, not the same layout restyled. #}
+{% import "_macros.j2" as m with context %}<!doctype html>
+<html lang="{{ locale.value }}">
+<head>
+<meta charset="utf-8">
+<title>{{ "invoice" | label }} {{ invoice.invoice_number }}</title>
+<style>
+{% include "_styles.css.j2" %}
+/* Receipt-specific: a narrow, centred slip. */
+body { font-size: 9.5pt; }
+.receipt { max-width: 82mm; margin: 0 auto; }
+.r-head { text-align: center; margin-bottom: 4mm; }
+.r-head .logo-wordmark { font-size: 13pt; }
+.r-issuer { font-weight: 700; font-size: 12pt; color: var(--accent); }
+.r-contact { color: var(--ink-soft); font-size: 8pt; }
+.r-meta { display: flex; justify-content: space-between; font-size: 8.5pt;
+          color: var(--ink-soft); border-top: 0.5pt dashed var(--rule-strong);
+          border-bottom: 0.5pt dashed var(--rule-strong); padding: 2mm 0; margin-bottom: 3mm; }
+.receipt table.items { margin-top: 0; }
+.receipt table.items th { border-bottom: 0.8pt solid var(--rule-strong); }
+.receipt table.items td { padding: 3px 2px; }
+.receipt .totals { margin-top: 3mm; }
+.receipt .totals table { width: 100%; }
+.r-foot { text-align: center; margin-top: 5mm; font-size: 8pt; color: var(--ink-soft);
+          border-top: 0.5pt dashed var(--rule-strong); padding-top: 3mm; }
+</style>
+</head>
+<body class="{{ body_classes }} archetype-receipt">
+{{ m.running_header(invoice) }}
+
+<div class="receipt">
+  <div class="r-head">
+    {{ m.logo(profile, issuer) }}
+    <div class="r-issuer">{{ issuer.name }}</div>
+    {% if issuer.city %}<div class="r-contact">{{ issuer.city }}</div>{% endif %}
+    {% if issuer.website %}<div class="r-contact">{{ issuer.website }}</div>{% endif %}
+  </div>
+
+  <div class="r-meta">
+    <span>{{ invoice.invoice_number }}</span>
+    <span>{{ invoice.issue_date | date }}</span>
+  </div>
+
+  <table class="items">
+    <thead>
+      <tr>
+        <th>{{ cols.description }}</th>
+        {% if show_quantity and cols.quantity is defined %}<th class="num">{{ cols.quantity }}</th>{% endif %}
+        <th class="num">{{ cols.amount }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in lines %}
+      <tr{% if line.is_credit %} class="credit"{% endif %}>
+        <td>
+          {{ line.description }}
+          {% if show_unit_price and line.unit_price %}
+          <div class="small muted">{{ line.quantity | qty }} × {{ line.unit_price | money }}</div>
+          {% endif %}
+        </td>
+        {% if show_quantity and cols.quantity is defined %}<td class="num">{{ line.quantity | qty }}</td>{% endif %}
+        <td class="num">{{ line.extended_amount | money }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {{ m.totals_block(totals, tax_buckets, has_discount, has_shipping, has_deposit) }}
+
+  <div class="r-foot">
+    {% if requires_late_penalty %}<div>{{ "late_penalty" | label }}</div>{% endif %}
+    <div>{{ "thank_you" | label }}</div>
+  </div>
+</div>
+</body>
+</html>

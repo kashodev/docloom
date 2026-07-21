@@ -60,7 +60,6 @@ class BusinessSpec:
     """How one business type bills: its products, archetype, and line-count range."""
 
     business_type: BusinessType
-    archetype: str
     products: tuple[ProductTemplate, ...]
     line_count_low: int = 3
     line_count_high: int = 12
@@ -214,8 +213,13 @@ _GENERIC = (
                     code_system=CodeSystem.NONE),
 )
 
-_ARCHETYPE = {BusinessType.TELECOM: "telecom-itemized-37"}   # else the flat archetype
-_FLAT_ARCHETYPE = "meta-sidebar-01"
+# Archetype is structural, not sectoral — any layout renders any business. So a
+# company's archetype is drawn for visual variety, weighted toward the flat
+# skeleton, with the hierarchical telecom archetype reserved for telecom (the one
+# business type whose sampler produces grouped, sectioned line items).
+_TELECOM_ARCHETYPE = "telecom-itemized-37"
+_GENERAL_ARCHETYPES = ("meta-sidebar-01", "boxed-form-01", "receipt-compact-01")
+_GENERAL_WEIGHTS = (0.60, 0.25, 0.15)
 
 _NAME_PARTS = (
     "Northwind", "Cedar", "Ironclad", "Bluepeak", "Vantage", "Meridian", "Aurora",
@@ -298,9 +302,8 @@ class SeedCatalogue:
 
     def business_spec(self, business_type: BusinessType) -> BusinessSpec:
         products = _PRODUCTS.get(business_type, _GENERIC)
-        archetype = _ARCHETYPE.get(business_type, _FLAT_ARCHETYPE)
-        low, high = (200, 1500) if business_type is BusinessType.TELECOM else (3, 12)
-        return BusinessSpec(business_type, archetype, products, low, high)
+        low, high = (60, 400) if business_type is BusinessType.TELECOM else (3, 12)
+        return BusinessSpec(business_type, products, low, high)
 
     # ── company construction ────────────────────────────────────────────────
     def _make_company(self, rng: Random, cid: str, juris: Jurisdiction,
@@ -321,7 +324,8 @@ class SeedCatalogue:
             website=f"www.{slug}.example",
             registrations=self._registrations(rng, juris),
         )
-        archetype = _ARCHETYPE.get(business_type, _FLAT_ARCHETYPE)
+        archetype = (_TELECOM_ARCHETYPE if business_type is BusinessType.TELECOM
+                     else rng.choices(_GENERAL_ARCHETYPES, weights=_GENERAL_WEIGHTS)[0])
         profile = RenderProfile(
             archetype=archetype,
             meta_position=rng.choice(_META_POSITIONS),

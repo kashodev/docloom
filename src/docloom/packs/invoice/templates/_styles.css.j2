@@ -53,6 +53,12 @@ body {
            letter-spacing: 0.05em; }
 .meta dd { margin: 0; font-variant-numeric: tabular-nums; }
 
+/* Banner meta: the metadata as a horizontal row of labelled cells across the
+   top, instead of a vertical sidebar list — the meta-toprow / metacaps look. */
+.meta-banner .meta dl { display: flex; flex-wrap: wrap; gap: 3mm 8mm; }
+.meta-banner .meta dt { display: block; }
+.meta-banner .meta dd { margin-bottom: 1mm; }
+
 /* ── Variation axis: metadata-block placement ────────────────────────────── */
 .layout { display: grid; gap: 6mm; }
 .meta-top-left  .layout { grid-template-areas: "meta issuer" "table table"; grid-template-columns: 1fr 1fr; }

@@ -190,3 +190,47 @@ code_layer:
                         table_style, typeface, accent_color, logo_lockup]
     varies_per_invoice: [line_item_count, discount_scheme, shipping_present,
                          tax_bucket_count, page_count, condition]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Archetype coverage — how the 39 source slugs map onto built templates.
+#
+# The 39 are not 39 distinct skeletons. Most are the same flat layout with a
+# different metadata position, totals style, table style, or column vocabulary —
+# all of which are CSS modifier classes + context flags on ONE archetype, not
+# separate files. Building 39 near-duplicate templates would be strictly worse
+# than the variation matrix (more code, less diversity). So the corpus collapses
+# to a small set of genuinely distinct skeletons, each covering a family:
+# ─────────────────────────────────────────────────────────────────────────────
+archetype_coverage:
+  built:
+    - id: meta-sidebar-01
+      skeleton: flat single-table
+      covers: >
+        The bulk of the corpus — every meta-* (block placement), layout-*
+        (division), totals-* (presentation), table-* (styling), cols-* (column
+        set), tax-* / ca-* (tax variants), and frca-* (fr-CA) slug. Their
+        differences are the variation matrix: 6 meta positions × 4 totals styles
+        × 4 table styles × per-locale column vocabularies × typeface × accent,
+        drawn per company. Thousands of appearances from one template.
+    - id: boxed-form-01
+      skeleton: framed form (bordered outer frame, labelled meta cells, bordered table)
+      covers: the table-boxed / table-letterboxed "framed document" feel, as a full page
+    - id: receipt-compact-01
+      skeleton: compact consumer receipt (narrow, centred, minimal metadata)
+      covers: receipt-minimal, receipt-rideshare, receipt-subscription
+    - id: telecom-itemized-37
+      skeleton: four-level hierarchy (account → subscriber → category → event)
+      covers: telecom-itemized; the sampler now emits grouped/sectioned lines so it renders
+
+  variation_matrix:
+    meta_position: [top-left, top-right, top-row (banner), left-rail, right-rail, split]
+    totals_style: [right-stack, full-width, boxed, inline]
+    table_style: [rules, bordered, zebra, borderless]
+    column_vocabulary: >
+      per-locale — en (standard/caps/unit_cost/item/product), fr-CA
+      (standard/titre/prix_unite), fr-FR (standard/reference/with_vat_col)
+    note: >
+      Adding a genuinely new skeleton is a new archetype file; adding a visual
+      variant is a modifier class. Neither requires touching the sampler or the
+      record. More archetypes can be added when a new *structure* appears in a
+      source template, not for every restyling.
