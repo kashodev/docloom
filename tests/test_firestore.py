@@ -111,21 +111,70 @@ def test_run_is_claimable_false_for_missing_run() -> None:
 
 
 # ── Real transaction — emulator only ────────────────────────────────────────
-@pytest.mark.skipif(
+requires_emulator = pytest.mark.skipif(
     not os.environ.get("FIRESTORE_EMULATOR_HOST"),
     reason="needs the Firestore emulator (set FIRESTORE_EMULATOR_HOST)",
 )
-def test_atomic_claim_against_emulator() -> None:  # pragma: no cover - emulator only
+
+
+def _emu_store(lease_seconds: float = 900):  # noqa: ANN202 - emulator only
     from docloom.core.state.firestore import FirestoreStateStore
 
-    store = FirestoreStateStore(project="docloom-test")
-    run = a_run(run_id="emu_run", total_units=2)
-    store.create_run(run, [
-        WorkUnit(run_id="emu_run", unit_index=i, start_index=i * 1000, count=1000)
-        for i in range(2)
+    return FirestoreStateStore(project="docloom-test", lease_seconds=lease_seconds)
+
+
+def _emu_run(store, units: int, *, lease_seconds: float = 900) -> str:  # noqa: ANN001
+    import uuid
+    run_id = f"emu_{uuid.uuid4().hex[:10]}"
+    store.create_run(a_run(run_id=run_id, total_units=units), [
+        WorkUnit(run_id=run_id, unit_index=i, start_index=i * 1000, count=1000)
+        for i in range(units)
     ])
+    return run_id
+
+
+@requires_emulator
+def test_atomic_claim_against_emulator() -> None:  # pragma: no cover - emulator only
+    store = _emu_store()
+    run_id = _emu_run(store, 2)
     seen = []
-    while (u := store.claim_next_unit("emu_run")) is not None:
+    while (u := store.claim_next_unit(run_id)) is not None:
         seen.append(u.unit_index)
     assert sorted(seen) == [0, 1]
     assert len(seen) == len(set(seen))   # never claimed twice
+
+
+@requires_emulator
+def test_claim_stamps_lease_and_complete_clears_it_against_emulator() -> None:  # pragma: no cover
+    store = _emu_store()
+    run_id = _emu_run(store, 1)
+    unit = store.claim_next_unit(run_id)
+    assert unit is not None and unit.lease_expires_at is not None
+    store.complete_unit(run_id, 0)
+    done = next(u for u in store.units(run_id) if u.unit_index == 0)
+    assert done.state is WorkUnitState.DONE
+    assert done.lease_expires_at is None
+    assert store.progress(run_id)[WorkUnitState.DONE] == 1
+
+
+@requires_emulator
+def test_reclaim_recovers_a_crashed_unit_against_emulator() -> None:  # pragma: no cover
+    # lease_seconds=0 -> the claimed unit's lease is already expired.
+    store = _emu_store(lease_seconds=0)
+    run_id = _emu_run(store, 2)
+    crashed = store.claim_next_unit(run_id)              # unit 0, never completed
+    assert crashed is not None and crashed.unit_index == 0
+    assert store.reclaim_expired_units(run_id) == 1      # abandoned unit recovered
+    assert store.reclaim_expired_units(run_id) == 0      # idempotent
+    again = store.claim_next_unit(run_id)
+    assert again is not None and again.unit_index == 0
+    assert again.attempts == 2                           # attempts preserved
+
+
+@requires_emulator
+def test_reclaim_leaves_live_leases_alone_against_emulator() -> None:  # pragma: no cover
+    store = _emu_store(lease_seconds=900)
+    run_id = _emu_run(store, 1)
+    store.claim_next_unit(run_id)
+    assert store.reclaim_expired_units(run_id) == 0      # lease still valid
+    assert store.progress(run_id)[WorkUnitState.RUNNING] == 1

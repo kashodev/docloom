@@ -86,6 +86,14 @@ def run_is_claimable(run: Run | None) -> bool:
     return run is not None and run.state not in (RunState.PAUSED, RunState.CANCELLED)
 
 
+def _where_state(col: Any, value: str) -> Any:
+    """``col`` filtered to a single ``state`` value, via the keyword ``filter=``
+    form (positional ``where`` args are deprecated in the Firestore SDK)."""
+    from google.cloud.firestore_v1.base_query import FieldFilter
+
+    return col.where(filter=FieldFilter("state", "==", value))
+
+
 def doc_lease_is_expired(doc: dict[str, Any], now: datetime) -> bool:
     """True for a ``running`` unit document whose lease has lapsed as of ``now``.
 
@@ -167,7 +175,7 @@ class FirestoreStateStore:
         )
 
     def reset_failed_units(self, run_id: str) -> int:
-        query = self._units_col(run_id).where("state", "==", WorkUnitState.FAILED.value)
+        query = _where_state(self._units_col(run_id), WorkUnitState.FAILED.value)
         batch = self._client.batch()
         count = 0
         for snap in query.stream():
@@ -186,7 +194,7 @@ class FirestoreStateStore:
         # then filter expired leases in Python — the running set is small next to
         # the whole run, and this keeps the reclaim index-free.
         cutoff = now or datetime.now(UTC)
-        query = self._units_col(run_id).where("state", "==", WorkUnitState.RUNNING.value)
+        query = _where_state(self._units_col(run_id), WorkUnitState.RUNNING.value)
         batch = self._client.batch()
         count = 0
         for snap in query.stream():
@@ -238,7 +246,7 @@ def _claim_in_transaction(
     @firestore.transactional
     def _claim(txn: Any) -> WorkUnit | None:
         query = (
-            units_col.where("state", "==", _CLAIMABLE)
+            _where_state(units_col, _CLAIMABLE)
             .order_by("unit_index")
             .limit(1)
         )

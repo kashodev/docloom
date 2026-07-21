@@ -78,8 +78,14 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       Cross-links the deployment guide (still TODO).
 
 ## Backlog
-- [ ] Cloud adapters end-to-end verification against emulators
-      (fake-gcs-server, Firestore emulator) and a real BigQuery project.
+- [x] Cloud adapters end-to-end verification against emulators. GCS
+      (`GcsBlobStore`) is verified against **fake-gcs-server** and Firestore
+      (`FirestoreStateStore`, including the lease/reclaim lifecycle) against the
+      **Firestore emulator** — real SDK calls, env-gated, skipped without the
+      emulator. BigQuery has no local emulator (external tables read real GCS),
+      so its end-to-end test is gated on a real project
+      (`DOCLOOM_BQ_PROJECT/DATASET/STAGING`). Also fixed a deprecated positional
+      Firestore `where()` call surfaced by the emulator run.
 - [ ] **`(cont'd)` markers on page-spanning sections** (telecom archetype).
       Needs post-layout knowledge of where breaks landed, which Chromium does
       not expose simply. The repeating `<thead>` already gives an extractor the
