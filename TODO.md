@@ -10,6 +10,17 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
 - [ ] Review the README framing given the repo generates realistic synthetic
       financial documents: make the testing/eval intent unmistakable up front.
 
+## Rendering fidelity
+- [ ] **Bundle OFL fonts for portable typography.** The pack draws from semantic
+      font *stacks* (serif-classic, sans-geometric, mono-invoice, …) that resolve
+      to distinct families where the fonts exist — true on a normal machine and
+      in the Playwright Docker image, but NOT in a bare chromium-headless-shell.
+      For byte-identical rendering everywhere, drop OFL woff2 files into
+      `src/docloom/packs/invoice/fonts/` and have `fonts.font_face_css` embed them
+      as base64 @font-face (the hook and the mechanism are verified to work — an
+      embedded font loaded correctly in headless-shell). Downloads were blocked in
+      the build env, so this is a drop-in follow-up.
+
 ## Concurrency & multi-cloud portability
 - [ ] **Lease + reclaim for crashed workers.** The atomic claim marks a unit
       `running` with no lease or heartbeat, so a *silently crashed* worker (vs.

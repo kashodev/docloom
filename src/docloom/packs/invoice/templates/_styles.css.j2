@@ -2,9 +2,15 @@
    self-contained and Chromium needs no file:// resolution. Per-company values
    arrive as CSS custom properties; per-company *structure* arrives as modifier
    classes on <body>. One archetype plus these axes covers many appearances. #}
+{# Embedded @font-face rules for a bundled font, if any (empty until fonts are
+   bundled — the stack below already gives visible variety). Marked safe: this
+   is trusted CSS the pack generates, and autoescape would mangle the quotes in
+   the font-family stack into &#39; and break it. #}
+{{ font_face_css | safe }}
 :root {
   --accent: {{ profile.accent_color }};
-  --font-body: {{ profile.typeface }}, "Helvetica Neue", Arial, sans-serif;
+  --font-body: {{ font_stack | safe }};
+  --font-scale: {{ profile.font_scale | default(1.0) }};
   --ink: #16181d;
   --ink-soft: #5b6270;
   --rule: #d7dbe2;
@@ -25,7 +31,7 @@
 
 body {
   font-family: var(--font-body);
-  font-size: 10pt;
+  font-size: calc(10pt * var(--font-scale));   /* per-company size variety */
   line-height: 1.42;
   color: var(--ink);
   margin: 0;

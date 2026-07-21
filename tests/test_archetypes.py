@@ -59,6 +59,33 @@ def test_rail_layouts_use_a_single_narrow_rail() -> None:
     assert 'grid-template-columns: 1fr 44mm' in html   # right-rail
 
 
+# ── fonts: distinct stacks, not escaped, size axis ──────────────────────────
+def test_font_stack_is_not_html_escaped() -> None:
+    """Regression: autoescape turned the quotes in the font stack into &#39;,
+    producing invalid CSS so every invoice fell back to one default font."""
+    html = render_record(PACK, invoice(simple_lines(),
+                                       render_profile=profile(typeface="serif-classic")))
+    assert "--font-body: Georgia, 'Times New Roman'" in html
+    assert "&#39;" not in html
+
+
+def test_typefaces_resolve_to_distinct_stacks() -> None:
+    from docloom.packs.invoice.fonts import font_stack
+    serif = render_record(PACK, invoice(simple_lines(),
+                                        render_profile=profile(typeface="serif-classic")))
+    mono = render_record(PACK, invoice(simple_lines(),
+                                       render_profile=profile(typeface="mono-invoice")))
+    assert font_stack("serif-classic") != font_stack("mono-invoice")
+    assert "Georgia" in serif and "Courier New" in mono
+
+
+def test_font_scale_varies_body_size() -> None:
+    html = render_record(PACK, invoice(simple_lines(),
+                                       render_profile=profile(font_scale=1.08)))
+    assert "--font-scale: 1.08" in html
+    assert "calc(10pt * var(--font-scale))" in html
+
+
 # ── the two new skeletons render ────────────────────────────────────────────
 def test_receipt_archetype_is_a_compact_slip() -> None:
     out = render_with("receipt-compact-01")

@@ -27,6 +27,7 @@ from random import Random
 from typing import Protocol, runtime_checkable
 
 from docloom.core.locale.enums import Currency, Locale
+from docloom.packs.invoice.fonts import TYPEFACE_KEYS
 from docloom.packs.invoice.enums import (
     BillingModel,
     BusinessType,
@@ -235,8 +236,7 @@ _NAME_TAIL = {
     Jurisdiction.GB: ("Ltd", "PLC"),
     Jurisdiction.FR: ("SARL", "SAS", "SA"),
 }
-_TYPEFACES = ("Inter", "Source Serif Pro", "IBM Plex Sans", "Georgia", "Libre Franklin",
-              "Merriweather", "Work Sans", "Lora", "Rubik", "Spectral")
+_TYPEFACES = TYPEFACE_KEYS
 _ACCENTS = ("#2D6A4F", "#1F4E5F", "#7A3B2E", "#3B4C7A", "#5B3A70", "#8A6D1C",
             "#2B2B2B", "#134E4A", "#7C2D12", "#1E3A5F")
 _META_POSITIONS = ("top-left", "top-right", "top-row", "left-rail", "right-rail", "split")
@@ -336,6 +336,7 @@ class SeedCatalogue:
             accent_color=rng.choice(_ACCENTS),
             logo_lockup=rng.choice(_LOGO_LOCKUPS),
             has_logo=rng.random() > 0.2,   # ~20% text-only, like real invoices
+            font_scale=round(rng.uniform(0.92, 1.12), 3),
         )
         return Company(company_id=cid, name=name, business_type=business_type,
                        jurisdiction=juris, locale=locale, currency=currency,

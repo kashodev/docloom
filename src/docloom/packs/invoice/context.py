@@ -13,6 +13,7 @@ from decimal import Decimal
 from typing import Any
 
 from docloom.core.money import money
+from docloom.packs.invoice.fonts import font_face_css, font_stack
 from docloom.packs.invoice.jurisdictions import profile_for
 from docloom.packs.invoice.labels import LABEL_REGISTRY
 from docloom.packs.invoice.record import GoldenInvoice, LineItem
@@ -121,6 +122,8 @@ def build_context(invoice: GoldenInvoice) -> dict[str, Any]:
         # Presentation
         "profile": invoice.render_profile.model_dump(),
         "body_classes": body_classes(invoice),
+        "font_stack": font_stack(invoice.render_profile.typeface),
+        "font_face_css": font_face_css(invoice.render_profile.typeface),
         "cols": column_headers(invoice),
         "totals_labels": totals_labels,
         # Jurisdiction behaviour

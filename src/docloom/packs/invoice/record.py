@@ -252,6 +252,7 @@ class RenderProfile(_Base):
     accent_color: str
     logo_lockup: str
     has_logo: bool = True
+    font_scale: float = 1.0   # per-company body-text scale (~0.92–1.12), for size variety
 
 
 class GoldenInvoice(_Base):
@@ -424,6 +425,7 @@ class GoldenInvoice(_Base):
             "table_style": self.render_profile.table_style,
             "column_vocabulary": self.render_profile.column_vocabulary,
             "typeface": self.render_profile.typeface,
+            "font_scale": self.render_profile.font_scale,
             "has_logo": self.render_profile.has_logo,
             "gcs_pdf_path": self.gcs_pdf_path,
             "gcs_golden_shard": self.gcs_golden_shard,
