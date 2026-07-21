@@ -13,7 +13,7 @@ from docloom.core.pipeline.pdf import PdfRenderer
 from docloom.core.pipeline.planner import plan_units
 from docloom.core.pipeline.renderer import DocumentRenderer, HtmlRenderer, RenderedDocument
 from docloom.core.pipeline.run import create_run, resume_run, work_run
-from docloom.core.pipeline.source import DocumentSource
+from docloom.core.pipeline.source import DocumentSource, stable_seed
 from docloom.core.pipeline.worker import GenerationWorker, WorkerStats
 
 __all__ = [
@@ -29,5 +29,6 @@ __all__ = [
     "encode_shard",
     "plan_units",
     "resume_run",
+    "stable_seed",
     "work_run",
 ]

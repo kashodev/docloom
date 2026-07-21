@@ -545,8 +545,36 @@ the header repeating. It lazy-imports Playwright and takes an injectable browser
 so its orchestration is unit-tested with no Chromium and a real render is gated
 on Chromium's presence.
 
-Still pending: the catalogue-based invoice sampler that replaces the
-deterministic test source with real scenario sampling, and the `(cont'd)`
+### Invoice sampler & seed catalogue — content, no keys (built)
+
+The invoice pack's `DocumentSource`: a document index → a computed
+`GoldenInvoice`. Draw a company (weighted, so some issue far more), draw its
+lines from the catalogue with billing-model-correct arithmetic, apply discount /
+shipping / deposit and jurisdiction tax, assemble totals that reconcile.
+
+* **Deterministic and key-free.** The RNG seeds from `stable_seed(run_id, index)`
+  — SHA-256, **not** the salted built-in `hash()`, which would differ per worker
+  and silently break reproducibility. The same index always yields the same
+  invoice.
+* **A procedural `SeedCatalogue`** supplies the content: a company roster with
+  weighted selection (an anchor issuing ~20%, French companies in fr-CA and
+  fr-FR, the rest spread across jurisdictions), per-business-type product pools,
+  and a render profile fixed per company so a vendor's invoices look consistent.
+  No LLM, no API keys — this is what lets docloom produce a full dataset on
+  `pip install` alone. The rich LLM catalogue swaps in behind the same
+  `Catalogue` interface without touching the sampler.
+* **Correctness is the property.** Every sampled record must pass the reconciliation
+  validators (line-sum, tax-sum, tier-sum, totals). A test constructs 3,000
+  invoices across every billing model and asserts none fails — "it builds" *is*
+  the correctness guarantee.
+
+A live run now goes end to end with no cloud and no keys: the sampler produces
+varied, deterministic invoices — different business types, locales, currencies,
+line counts, billing models — and the PDF renderer turns them into real
+paginated documents.
+
+Still pending: the rich LLM catalogue (the catalogue runner, keys + budget),
+the remaining ~13 archetypes, export mode + CLI, and the `(cont'd)`
 page-continuation marker (deferred — see TODO.md).
 
 ---

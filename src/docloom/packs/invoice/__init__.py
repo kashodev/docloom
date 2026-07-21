@@ -16,12 +16,21 @@ from typing import Any
 
 from docloom.core.locale.labels import LabelRegistry
 from docloom.core.record import GoldenRecord
+from docloom.packs.invoice.catalog import (
+    BusinessSpec,
+    Catalogue,
+    Company,
+    CompanyRoster,
+    ProductTemplate,
+    SeedCatalogue,
+)
 from docloom.packs.invoice.context import (
     body_classes,
     build_context,
     column_headers,
     group_line_items,
 )
+from docloom.packs.invoice.sampler import InvoiceSampler
 from docloom.packs.invoice.enums import (
     BillingModel,
     BusinessType,
@@ -85,7 +94,14 @@ __all__ = [
     "TEMPLATE_ROOT",
     "US_STATE_SALES_TAX",
     "BillingModel",
+    "BusinessSpec",
     "BusinessType",
+    "Catalogue",
+    "Company",
+    "CompanyRoster",
+    "InvoiceSampler",
+    "ProductTemplate",
+    "SeedCatalogue",
     "CodeSystem",
     "DiscountScheme",
     "DiscountTiming",

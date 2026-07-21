@@ -66,8 +66,6 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       When a second document type needs a different header, add a pack hook
       (e.g. `header_fields(record)`) rather than growing the getattr list.
 - [ ] Remaining invoice archetypes (~13) from the source corpus.
-- [ ] Invoice sampler — the catalogue-based `DocumentSource` that replaces the
-      deterministic test source with real scenario sampling.
 - [ ] Catalogue runner (drives the provider mix over ~70k items under budget;
       Anthropic Batch API for the offline Haiku slice) + logo generation.
 - [ ] Export mode (JSONL shards → GoldenSink) + `docloom generate|export` CLI.

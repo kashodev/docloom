@@ -14,9 +14,22 @@ produces byte-identical documents, so overwrite-on-retry is safe.
 
 from __future__ import annotations
 
+import hashlib
 from typing import Protocol, runtime_checkable
 
 from docloom.core.record import GoldenRecord
+
+
+def stable_seed(run_id: str, index: int) -> int:
+    """A process-stable seed for document ``index`` of ``run_id``.
+
+    Uses SHA-256, **not** the built-in ``hash()`` — Python salts string/tuple
+    hashing per process (``PYTHONHASHSEED``), so ``hash((run_id, index))`` would
+    give different values in different workers and silently break reproducibility
+    and resume. Every source must seed from this.
+    """
+    digest = hashlib.sha256(f"{run_id}\x00{index}".encode()).digest()
+    return int.from_bytes(digest[:8], "big")
 
 
 @runtime_checkable
