@@ -3,7 +3,7 @@
 How docloom runs one job across many workers — on a laptop or a cloud fleet —
 without a broker, a leader, or a chance of generating the same document twice.
 This captures the *why* behind the pipeline; the per-platform *how* (which
-compute service, which URIs) lives in the deployment guide (TODO).
+compute service, which URIs) lives in [deployment.md](deployment.md).
 
 ## The unit is the only number you reason about
 
@@ -66,6 +66,10 @@ The atomicity lives in the **StateStore**, not in the compute layer:
 - [`FirestoreStateStore`](../src/docloom/core/state/firestore.py) serialises them
   with a document transaction that retries on contention — enough for many cloud
   instances against one run.
+- [`DynamoDbStateStore`](../src/docloom/core/state/dynamodb.py) serialises them
+  with a conditional write (update this unit *only if* it is still `pending`), so
+  exactly one racing worker wins and the losers advance to the next candidate —
+  the AWS-native equivalent.
 
 Same protocol, same guarantee, different scale. **This is why the compute layer
 is swappable**: nothing about "who runs the workers" carries coordination state,
@@ -103,7 +107,8 @@ simply stop being handed units and drain to a stop. Resume flips the run back to
   the unit is reclaimable. `resume_run` reclaims on resume, and SQLite also
   reclaims opportunistically inside the claim's own write lock, so a
   continuously draining fleet self-heals without an explicit resume. (Firestore
-  reclaims explicitly — a per-claim scan is too costly at scale.) See
+  and DynamoDB reclaim explicitly — a per-claim scan is too costly at scale, so
+  on spot/preemptible fleets run `--resume` periodically or a small sweeper.) See
   [`reclaim_expired_units`](../src/docloom/core/state/base.py).
 
 Because completion is idempotent and reproducible, resuming after any
@@ -133,5 +138,5 @@ decision, not a worker or record change — is not lost. (Status: planned.)
 | Retry / crash recovery | failed-unit reset + expiring lease reclaim on resume |
 | Compute portability | coordination is in the store, so the runner is swappable |
 
-See also: [DESIGN.md](../DESIGN.md) for the full architecture, and the deployment
-& configuration guide (TODO) for per-platform wiring.
+See also: [DESIGN.md](../DESIGN.md) for the full architecture, and
+[deployment.md](deployment.md) for per-platform wiring.

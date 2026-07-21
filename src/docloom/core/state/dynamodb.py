@@ -1,0 +1,330 @@
+"""DynamoDB state store (``dynamodb://table``).
+
+The AWS-native networked state store, for multi-instance runs on AWS Batch,
+ECS/Fargate, or plain EC2 — the counterpart to Firestore on GCP. Where SQLite
+serialises workers with a local write lock and Firestore with a document
+transaction, DynamoDB uses a **conditional write**: the claim updates a unit only
+``IF state = 'pending'``, so when two workers race for the same unit exactly one
+condition holds and the loser moves to the next candidate. Same protocol, same
+guarantee, no broker.
+
+Layout is single-table. Partition key ``pk`` is the run id; sort key ``sk`` is
+``RUN`` for the run itself and ``UNIT#00000123`` for each unit — zero-padded so a
+plain ascending Query returns units in index order, which is what makes
+"lowest-index pending unit" a cheap forward scan.
+
+**On create_run atomicity.** DynamoDB cannot transact more than 100 items, and a
+run routinely has more units than that, so the plan is written units-first and
+the run marker last. A crash midway leaves orphan unit items but no run, so
+``get_run`` returns ``None`` — the run simply does not exist yet and re-creating
+it overwrites cleanly. That is the same practical guarantee (never a
+half-created *discoverable* run) without a transaction.
+
+Like Firestore, the claim does **not** scan for expired leases — that cost is
+paid explicitly by :meth:`reclaim_expired_units`, which resume calls and a
+sweeper can run periodically.
+
+boto3 is lazy-imported (an ``docloom[aws]`` extra) and the table resource is
+injectable, so this module imports without boto3 and the item mapping is
+unit-tested without it; the real conditional claim is covered by a
+DynamoDB-Local-gated integration test.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from typing import Any
+
+from docloom.core.enums import RunState, WorkUnitState
+from docloom.core.state.base import DEFAULT_LEASE_SECONDS, Run, WorkUnit
+
+_RUN_SK = "RUN"
+_UNIT_PREFIX = "UNIT#"
+#: Zero-padded so lexicographic sort-key order == numeric unit order.
+_UNIT_WIDTH = 8
+
+
+def unit_sort_key(unit_index: int) -> str:
+    """Sort key for a unit — zero-padded to keep lexicographic == numeric order."""
+    return f"{_UNIT_PREFIX}{unit_index:0{_UNIT_WIDTH}d}"
+
+
+# ── Pure item mapping (unit-tested without boto3) ───────────────────────────
+def run_to_item(run: Run) -> dict[str, Any]:
+    return {
+        "pk": run.run_id,
+        "sk": _RUN_SK,
+        "pack": run.pack,
+        "config_id": run.config_id,
+        "total_units": run.total_units,
+        "state": run.state.value,
+        "created_at": run.created_at.isoformat(),
+        "updated_at": run.updated_at.isoformat(),
+        "metadata": run.metadata,
+    }
+
+
+def item_to_run(item: dict[str, Any]) -> Run:
+    return Run(
+        run_id=item["pk"],
+        pack=item["pack"],
+        config_id=item["config_id"],
+        total_units=int(item["total_units"]),
+        state=RunState(item["state"]),
+        created_at=datetime.fromisoformat(item["created_at"]),
+        updated_at=datetime.fromisoformat(item["updated_at"]),
+        metadata=dict(item.get("metadata") or {}),
+    )
+
+
+def unit_to_item(unit: WorkUnit) -> dict[str, Any]:
+    return {
+        "pk": unit.run_id,
+        "sk": unit_sort_key(unit.unit_index),
+        "unit_index": unit.unit_index,
+        "start_index": unit.start_index,
+        "count": unit.count,
+        "state": unit.state.value,
+        "attempts": unit.attempts,
+        "error": unit.error,
+        "updated_at": unit.updated_at.isoformat(),
+        "lease_expires_at": unit.lease_expires_at.isoformat() if unit.lease_expires_at else None,
+    }
+
+
+def item_to_unit(item: dict[str, Any]) -> WorkUnit:
+    lease = item.get("lease_expires_at")
+    return WorkUnit(
+        run_id=item["pk"],
+        unit_index=int(item["unit_index"]),
+        start_index=int(item["start_index"]),
+        count=int(item["count"]),
+        state=WorkUnitState(item["state"]),
+        attempts=int(item.get("attempts", 0)),
+        error=item.get("error"),
+        updated_at=datetime.fromisoformat(item["updated_at"]),
+        lease_expires_at=datetime.fromisoformat(lease) if lease else None,
+    )
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _clean(item: dict[str, Any]) -> dict[str, Any]:
+    """Drop ``None`` values — DynamoDB stores them as NULL, and reading them back
+    as absent keeps the mapping symmetric."""
+    return {k: v for k, v in item.items() if v is not None}
+
+
+class DynamoDbStateStore:
+    """A :class:`~docloom.core.state.base.StateStore` backed by one DynamoDB table."""
+
+    scheme = "dynamodb"
+
+    def __init__(
+        self,
+        table: str,
+        *,
+        region: str | None = None,
+        endpoint_url: str | None = None,
+        resource: Any | None = None,
+        table_resource: Any | None = None,
+        lease_seconds: float = DEFAULT_LEASE_SECONDS,
+    ) -> None:
+        self._lease_seconds = lease_seconds
+        self._table_name = table
+        if table_resource is not None:
+            self._table = table_resource
+            return
+        if resource is None:
+            try:
+                import boto3
+            except ImportError as exc:
+                raise ImportError(
+                    "dynamodb:// state needs the AWS extra — pip install 'docloom[aws]'"
+                ) from exc
+            kwargs: dict[str, Any] = {}
+            if region:
+                kwargs["region_name"] = region
+            if endpoint_url:
+                kwargs["endpoint_url"] = endpoint_url
+            resource = boto3.resource("dynamodb", **kwargs)
+        self._table = resource.Table(table)
+
+    # ── Runs ────────────────────────────────────────────────────────────────
+    def create_run(self, run: Run, units: list[WorkUnit]) -> None:
+        # Units first, run marker last: a crash midway leaves no discoverable
+        # run (see the module docstring on atomicity).
+        with self._table.batch_writer() as batch:
+            for unit in units:
+                batch.put_item(Item=_clean(unit_to_item(unit)))
+        self._table.put_item(Item=_clean(run_to_item(run)))
+
+    def get_run(self, run_id: str) -> Run | None:
+        item = self._table.get_item(Key={"pk": run_id, "sk": _RUN_SK}).get("Item")
+        return item_to_run(item) if item else None
+
+    def set_run_state(self, run_id: str, state: RunState) -> None:
+        self._table.update_item(
+            Key={"pk": run_id, "sk": _RUN_SK},
+            UpdateExpression="SET #s = :s, updated_at = :u",
+            ExpressionAttributeNames={"#s": "state"},
+            ExpressionAttributeValues={":s": state.value, ":u": _now()},
+        )
+
+    # ── Work units ──────────────────────────────────────────────────────────
+    def claim_next_unit(self, run_id: str) -> WorkUnit | None:
+        run = self.get_run(run_id)
+        if run is None or run.state in (RunState.PAUSED, RunState.CANCELLED):
+            return None
+        lease = (datetime.now(UTC) + timedelta(seconds=self._lease_seconds)).isoformat()
+        # Walk pending candidates in index order; the conditional update is what
+        # makes the claim atomic, so a lost race just advances to the next one.
+        for item in self._iter_units(run_id, state=WorkUnitState.PENDING):
+            claimed = self._try_claim(run_id, int(item["unit_index"]), lease)
+            if claimed is not None:
+                return claimed
+        return None
+
+    def _try_claim(self, run_id: str, unit_index: int, lease: str) -> WorkUnit | None:
+        """Conditionally take one unit. ``None`` if another worker won the race."""
+        try:
+            response = self._table.update_item(
+                Key={"pk": run_id, "sk": unit_sort_key(unit_index)},
+                UpdateExpression=(
+                    "SET #s = :running, attempts = if_not_exists(attempts, :zero) + :one, "
+                    "updated_at = :now, lease_expires_at = :lease"
+                ),
+                ConditionExpression="#s = :pending",
+                ExpressionAttributeNames={"#s": "state"},
+                ExpressionAttributeValues={
+                    ":running": WorkUnitState.RUNNING.value,
+                    ":pending": WorkUnitState.PENDING.value,
+                    ":now": _now(),
+                    ":lease": lease,
+                    ":zero": Decimal(0),
+                    ":one": Decimal(1),
+                },
+                ReturnValues="ALL_NEW",
+            )
+        except Exception as exc:  # noqa: BLE001 - botocore's typed error needs the client
+            if type(exc).__name__ == "ConditionalCheckFailedException":
+                return None
+            raise
+        return item_to_unit(response["Attributes"])
+
+    def complete_unit(self, run_id: str, unit_index: int) -> None:
+        self._terminal(run_id, unit_index, WorkUnitState.DONE, error=None)
+
+    def fail_unit(self, run_id: str, unit_index: int, error: str) -> None:
+        self._terminal(run_id, unit_index, WorkUnitState.FAILED, error=error)
+
+    def _terminal(
+        self, run_id: str, unit_index: int, state: WorkUnitState, *, error: str | None
+    ) -> None:
+        # Clearing the lease is the point: a terminal unit is held by nobody.
+        self._table.update_item(
+            Key={"pk": run_id, "sk": unit_sort_key(unit_index)},
+            UpdateExpression=(
+                "SET #s = :s, updated_at = :u, #e = :e REMOVE lease_expires_at"
+            ),
+            ExpressionAttributeNames={"#s": "state", "#e": "error"},
+            ExpressionAttributeValues={":s": state.value, ":u": _now(), ":e": error},
+        )
+
+    def reset_failed_units(self, run_id: str) -> int:
+        count = 0
+        for item in self._iter_units(run_id, state=WorkUnitState.FAILED):
+            if self._requeue(run_id, int(item["unit_index"]), WorkUnitState.FAILED):
+                count += 1
+        return count
+
+    def reclaim_expired_units(self, run_id: str, *, now: datetime | None = None) -> int:
+        cutoff = now or datetime.now(UTC)
+        count = 0
+        for item in self._iter_units(run_id, state=WorkUnitState.RUNNING):
+            lease = item.get("lease_expires_at")
+            if not lease or datetime.fromisoformat(lease) > cutoff:
+                continue
+            if self._requeue(run_id, int(item["unit_index"]), WorkUnitState.RUNNING):
+                count += 1
+        return count
+
+    def _requeue(self, run_id: str, unit_index: int, expected: WorkUnitState) -> bool:
+        """Return a unit to ``pending``, only if it is still in ``expected``.
+
+        Conditional so a concurrent worker that just completed (or reclaimed) the
+        unit is never trampled — the same race protection as the claim.
+        """
+        try:
+            self._table.update_item(
+                Key={"pk": run_id, "sk": unit_sort_key(unit_index)},
+                UpdateExpression=(
+                    "SET #s = :pending, updated_at = :u, #e = :null REMOVE lease_expires_at"
+                ),
+                ConditionExpression="#s = :expected",
+                ExpressionAttributeNames={"#s": "state", "#e": "error"},
+                ExpressionAttributeValues={
+                    ":pending": WorkUnitState.PENDING.value,
+                    ":expected": expected.value,
+                    ":u": _now(),
+                    ":null": None,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            if type(exc).__name__ == "ConditionalCheckFailedException":
+                return False
+            raise
+        return True
+
+    def units(self, run_id: str) -> Iterator[WorkUnit]:
+        return iter([item_to_unit(item) for item in self._iter_units(run_id)])
+
+    def progress(self, run_id: str) -> dict[WorkUnitState, int]:
+        counts = {state: 0 for state in WorkUnitState}
+        for item in self._iter_units(run_id):
+            counts[WorkUnitState(item["state"])] += 1
+        return counts
+
+    def _iter_units(
+        self, run_id: str, *, state: WorkUnitState | None = None
+    ) -> Iterator[dict[str, Any]]:
+        """Every unit item for a run in index order, optionally one state only.
+
+        Pages through the Query — a state filter is applied after the read, so a
+        page can come back empty while later pages still hold matches.
+        """
+        from boto3.dynamodb.conditions import Attr, Key
+
+        kwargs: dict[str, Any] = {
+            "KeyConditionExpression": Key("pk").eq(run_id) & Key("sk").begins_with(_UNIT_PREFIX),
+            "ScanIndexForward": True,
+        }
+        if state is not None:
+            kwargs["FilterExpression"] = Attr("state").eq(state.value)
+        while True:
+            response = self._table.query(**kwargs)
+            yield from response.get("Items", [])
+            last = response.get("LastEvaluatedKey")
+            if not last:
+                return
+            kwargs["ExclusiveStartKey"] = last
+
+    def close(self) -> None:
+        pass
+
+    # ── Convenience ─────────────────────────────────────────────────────────
+    @staticmethod
+    def create_table(resource: Any, table: str) -> Any:
+        """Create the single table this store expects (for setup/tests)."""
+        return resource.create_table(
+            TableName=table,
+            KeySchema=[{"AttributeName": "pk", "KeyType": "HASH"},
+                       {"AttributeName": "sk", "KeyType": "RANGE"}],
+            AttributeDefinitions=[{"AttributeName": "pk", "AttributeType": "S"},
+                                  {"AttributeName": "sk", "AttributeType": "S"}],
+            BillingMode="PAY_PER_REQUEST",
+        )

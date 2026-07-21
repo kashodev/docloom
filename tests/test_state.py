@@ -237,3 +237,13 @@ def test_factory_defaults_to_sqlite(tmp_path: Path) -> None:
 def test_factory_firestore_needs_gcp_extra() -> None:
     with pytest.raises(ImportError, match=r"docloom\[gcp\]"):
         open_state("firestore://my-project/(default)")
+
+
+def test_factory_dynamodb_needs_aws_extra() -> None:
+    with pytest.raises(ImportError, match=r"docloom\[aws\]"):
+        open_state("dynamodb://docloom-state")
+
+
+def test_factory_rejects_an_unknown_scheme() -> None:
+    with pytest.raises(ValueError, match="unsupported state scheme"):
+        open_state("redis://localhost/0")

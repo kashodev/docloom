@@ -91,9 +91,11 @@ The same query runs against a local DuckDB view and a BigQuery external table.
   `GoldenRecord`. Register it in-tree or ship it as `docloom-yourpack` via the
   `docloom.packs` entry-point group.
 
-See [DESIGN.md](DESIGN.md) for the full architecture and rationale, and
+See [DESIGN.md](DESIGN.md) for the full architecture and rationale,
 [docs/concurrency.md](docs/concurrency.md) for the sharding + multi-worker model
-(how one run scales across a fleet without a broker or a leader).
+(how one run scales across a fleet without a broker or a leader), and
+[docs/deployment.md](docs/deployment.md) for per-platform wiring (local, GCP,
+AWS, Azure) with the URIs to point at.
 
 ## Status
 

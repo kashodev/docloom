@@ -60,28 +60,29 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       per-claim scan is too costly at scale). `resume_run` reclaims on resume.
       Covered by unit tests on both adapters. Follow-up: a lease *renewal*
       heartbeat for units that legitimately run longer than one lease window.
-- [ ] **DynamoDB StateStore adapter (`dynamodb://`).** The AWS-native networked
-      state store for multi-instance runs (AWS Batch, ECS/Fargate, many EC2).
-      DynamoDB conditional writes (`ConditionExpression`) give the atomic claim
-      the same way Firestore transactions do. Slots behind the existing
-      `StateStore` protocol; no pipeline change. (Postgres/RDS via
-      `SELECT … FOR UPDATE SKIP LOCKED` is the alternative.)
+- [x] **DynamoDB StateStore adapter (`dynamodb://`).** Built on a single table
+      (`pk` = run id, `sk` = `RUN` / zero-padded `UNIT#…` so an ascending Query
+      is index order). The atomic claim is a conditional write (update *only if*
+      `state = 'pending'`); a lost race advances to the next candidate. Lease +
+      reclaim, failed-unit reset, pause/cancel gating, and paging past a batch
+      all implemented; `create_run` writes units first and the run marker last,
+      so a crash never leaves a discoverable half-run. Registered in `open_state`
+      with `?region=` / `?endpoint_url=`. 14 tests — pure item/sort-key mapping
+      plus integration against real boto3 (moto in-process, or DynamoDB Local via
+      `DYNAMODB_ENDPOINT`). Postgres/RDS via `SELECT … FOR UPDATE SKIP LOCKED`
+      remains the alternative if wanted.
 
 ## Documentation
-- [ ] **Deployment & configuration guide** covering every option discussed:
-      - **Local:** single box, `sqlite://` + `file://` + `duckdb://`, no cloud.
-      - **GCP:** Cloud Run Jobs (task parallelism) / Service, `gs://` +
-        `firestore://` + `bigquery://`. This is the reference stack.
-      - **AWS:** AWS Batch (array jobs) or ECS/Fargate (task count) or bare EC2;
-        `s3://` + `dynamodb://` (or `firestore://`) + Athena/BigQuery. Note the
-        single-box-SQLite vs networked-store distinction, and the spot/lease
-        caveat above.
-      - **Azure equivalent:** Azure Container Apps Jobs (≈ Cloud Run Jobs) or
-        Azure Batch; Blob Storage (`az://`), Cosmos DB or Table Storage for
-        state, Synapse/Fabric or DuckDB-over-Blob for the golden sink. Note
-        which adapters exist vs. still need writing.
-      - Per-platform: how workers are launched/scaled, the StateStore
-        reachability requirement, and the config URIs for each.
+- [x] **Deployment & configuration guide** — [docs/deployment.md](docs/deployment.md).
+      Covers local (single box, `sqlite://` + `file://` + `duckdb://`), GCP
+      (Cloud Run Jobs + `gs://` + `firestore://` + `bigquery://`, the reference
+      stack), AWS (Batch array jobs / ECS-Fargate / EC2 + `s3://` +
+      `dynamodb://`), and Azure (Container Apps Jobs / Azure Batch — with the
+      missing `az://`, Cosmos/Table-Storage, and Synapse adapters called out
+      honestly). Leads with the two rules that drive everything (all workers must
+      reach the same StateStore; `sqlite://` is single-box), documents the
+      `unit_size` sizing heuristic, carries a status table of which adapters are
+      actually built, and flags the spot/preemptible lease caveat.
 - [x] **Concurrency & sharding architecture doc.** Written up in
       [docs/concurrency.md](docs/concurrency.md): units = index ranges = shard =
       export granularity; `stable_seed(run_id, index)` determinism; the atomic
