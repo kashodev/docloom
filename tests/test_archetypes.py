@@ -122,6 +122,41 @@ def test_fullbleed_archetype_tints_the_whole_sheet() -> None:
     assert _body_only(out).count("Northwind Supply") == 1
 
 
+# ── brand marks & watermark: one shared macro, per-archetype placement ──────
+def test_logo_style_mark_renders_an_svg_beside_the_wordmark() -> None:
+    inv = invoice(simple_lines(), render_profile=profile(logo_style="mark", has_logo=True))
+    out = render_record(PACK, inv)
+    assert '<svg class="logo-mark"' in out
+    assert "Northwind Supply" in out            # the wordmark still shows alongside
+
+
+def test_logo_style_wordmark_has_no_svg_mark() -> None:
+    inv = invoice(simple_lines(), render_profile=profile(logo_style="wordmark", has_logo=True))
+    out = render_record(PACK, inv)
+    assert '<svg class="logo-mark"' not in out
+    assert "Northwind Supply" in out
+
+
+def test_no_mark_when_the_company_is_text_only() -> None:
+    inv = invoice(simple_lines(), render_profile=profile(logo_style="mark", has_logo=False))
+    assert '<svg class="logo-mark"' not in render_record(PACK, inv)
+
+
+def test_watermark_renders_only_when_enabled_and_sits_behind_content() -> None:
+    on = render_record(PACK, invoice(simple_lines(), render_profile=profile(has_watermark=True)))
+    off = render_record(PACK, invoice(simple_lines(), render_profile=profile(has_watermark=False)))
+    assert 'class="watermark"' in on
+    assert "position: fixed" in on              # repeats per printed page, out of flow
+    assert 'class="watermark"' not in off
+
+
+def test_watermark_reaches_the_standalone_archetypes_too() -> None:
+    for archetype in ("banner-header-06", "fullbleed-05", "boxed-form-01", "receipt-compact-01"):
+        inv = invoice(simple_lines(),
+                      render_profile=profile(archetype=archetype, has_watermark=True))
+        assert 'class="watermark"' in render_record(PACK, inv), archetype
+
+
 # ── variation matrix: modifiers, not new templates ──────────────────────────
 def test_top_row_meta_gets_the_banner_modifier() -> None:
     from docloom.packs.invoice import body_classes

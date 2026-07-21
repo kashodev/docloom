@@ -47,7 +47,24 @@ body {
   margin: 0 0 4mm;
 }
 .logo { max-height: 16mm; max-width: 52mm; }
-.logo-wordmark { font-size: 15pt; font-weight: 700; color: var(--accent); }
+/* A lockup of an optional procedural mark + the wordmark. Both inherit the
+   lockup's colour (accent here); a coloured banner overrides that to white and
+   both the mark (currentColor) and the wordmark follow. */
+.logo-lockup { display: flex; align-items: center; gap: 2.5mm; color: var(--accent); }
+.logo-lockup.logo-center  { justify-content: center; text-align: center; }
+.logo-lockup.logo-stacked { flex-direction: column; align-items: flex-start; gap: 1.5mm; }
+.logo-mark { width: 11mm; height: 11mm; flex: none; }
+.logo-mark text { font-family: var(--font-body); }
+.logo-wordmark { font-size: 15pt; font-weight: 700; color: inherit; }
+
+/* Faint full-page brand watermark. `position: fixed` makes Chromium repeat it on
+   every printed page; it sits behind the content and never intercepts layout
+   (fixed = out of flow, so it does not affect the page-fill measurement). */
+.watermark { position: fixed; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(-24deg);
+             color: var(--accent); opacity: 0.05; z-index: 0; pointer-events: none; }
+.watermark-mark { width: 150mm; height: 150mm; }
+/* Content sits above the watermark. */
+.doc, .form, .receipt, .fb, .banner, main.doc-body { position: relative; z-index: 1; }
 
 .party-name { font-weight: 700; }
 .muted { color: var(--ink-soft); }

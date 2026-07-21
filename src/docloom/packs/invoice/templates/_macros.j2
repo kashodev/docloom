@@ -23,15 +23,28 @@
 {% endmacro %}
 
 
+{# A brand lockup: an optional procedural SVG mark beside/above the wordmark.
+   `logo_svg` is a context global built by the pack (empty for a text-only
+   identity). Marked safe — it is trusted CSS/markup the pack generates, and
+   autoescape would turn the SVG angle brackets into entities. The mark and the
+   wordmark are both drawn in currentColor, so whatever colours the wordmark
+   (accent on a light body, white inside a banner) colours the mark too. #}
 {% macro logo(profile, issuer) %}
 {% if profile.has_logo %}
 <div class="logo-lockup logo-{{ profile.logo_lockup }}">
-  {% if profile.logo_svg is defined and profile.logo_svg %}
-    {{ profile.logo_svg }}
-  {% else %}
-    <div class="logo-wordmark">{{ issuer.name }}</div>
-  {% endif %}
+  {% if logo_svg %}{{ logo_svg | safe }}{% endif %}
+  <div class="logo-wordmark">{{ issuer.name }}</div>
 </div>
+{% endif %}
+{% endmacro %}
+
+
+{# Faint full-page brand watermark, printed behind the content on every page.
+   One shared macro; each archetype's CSS decides where and how faint via the
+   .watermark rules. Emits nothing when the company has no watermark. #}
+{% macro watermark(profile, issuer) %}
+{% if watermark_svg %}
+<div class="watermark" aria-hidden="true">{{ watermark_svg | safe }}</div>
 {% endif %}
 {% endmacro %}
 

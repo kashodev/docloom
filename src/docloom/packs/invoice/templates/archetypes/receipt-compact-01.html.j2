@@ -33,6 +33,7 @@ body { font-size: 9.5pt; }
 </head>
 <body class="{{ body_classes }} archetype-receipt">
 {{ m.running_header(invoice) }}
+{{ m.watermark(profile, issuer) }}
 
 <div class="receipt">
   <div class="r-head">

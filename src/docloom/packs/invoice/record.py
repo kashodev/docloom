@@ -252,6 +252,8 @@ class RenderProfile(_Base):
     accent_color: str
     logo_lockup: str
     has_logo: bool = True
+    logo_style: str = "wordmark"   # "wordmark" (text only) or "mark" (procedural SVG + wordmark)
+    has_watermark: bool = False    # a faint full-page brand mark behind the content
     font_scale: float = 1.0   # per-company body-text scale (~0.92–1.12), for size variety
 
 
@@ -427,6 +429,8 @@ class GoldenInvoice(_Base):
             "typeface": self.render_profile.typeface,
             "font_scale": self.render_profile.font_scale,
             "has_logo": self.render_profile.has_logo,
+            "logo_style": self.render_profile.logo_style,
+            "has_watermark": self.render_profile.has_watermark,
             "gcs_pdf_path": self.gcs_pdf_path,
             "gcs_golden_shard": self.gcs_golden_shard,
         }

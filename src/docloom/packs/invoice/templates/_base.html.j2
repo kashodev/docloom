@@ -12,6 +12,7 @@
 </head>
 <body class="{{ body_classes }}">
 {{ m.running_header(invoice) }}
+{{ m.watermark(profile, issuer) }}
 
 {# The company name appears exactly once in the body: as the logo wordmark when
    a logo is shown, otherwise as the issuer's party name. The running header

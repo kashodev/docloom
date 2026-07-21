@@ -31,7 +31,8 @@
 .banner-main .party { font-size: 8.5pt; line-height: 1.35; }
 /* Reverse every inherited colour inside the band. */
 .banner .doc-title { color: #fff; margin: 0 0 2mm; }
-.banner .logo-wordmark { color: #fff; }
+/* Reverse the whole lockup — the mark (currentColor) and wordmark both follow. */
+.banner .logo-lockup { color: #fff; }
 .banner .party-name { color: #fff; }
 .banner .muted, .banner .small { color: rgba(255, 255, 255, 0.82); }
 .banner .meta dl { display: grid; grid-template-columns: auto auto; gap: 0.5mm 4mm; }
@@ -43,6 +44,7 @@
 </head>
 <body class="{{ body_classes }} archetype-banner">
 {{ m.running_header(invoice) }}
+{{ m.watermark(profile, issuer) }}
 
 <div class="banner">
   <div class="banner-top">

@@ -14,6 +14,7 @@ from typing import Any
 
 from docloom.core.money import money
 from docloom.packs.invoice.fonts import font_face_css, font_stack
+from docloom.packs.invoice.logos import logo_mark, watermark_mark
 from docloom.packs.invoice.jurisdictions import profile_for
 from docloom.packs.invoice.labels import LABEL_REGISTRY
 from docloom.packs.invoice.record import GoldenInvoice, LineItem
@@ -97,6 +98,7 @@ def group_line_items(items: tuple[LineItem, ...]) -> list[dict[str, Any]]:
 def build_context(invoice: GoldenInvoice) -> dict[str, Any]:
     """Assemble the full render context."""
     jp = profile_for(invoice.jurisdiction)
+    p = invoice.render_profile
 
     # France prints Total HT / TVA / Total TTC rather than subtotal + taxes.
     # The values are identical; only the labelling and ordering differ.
@@ -124,6 +126,13 @@ def build_context(invoice: GoldenInvoice) -> dict[str, Any]:
         "body_classes": body_classes(invoice),
         "font_stack": font_stack(invoice.render_profile.typeface),
         "font_face_css": font_face_css(invoice.render_profile.typeface),
+        # Procedural brand marks (key-free, deterministic from the issuer name).
+        # Empty string when the company's identity is text-only, so the macro
+        # falls back to a plain wordmark.
+        "logo_svg": (logo_mark(invoice.issuer.name)
+                     if p.has_logo and p.logo_style == "mark" else ""),
+        "watermark_svg": (watermark_mark(invoice.issuer.name)
+                          if p.has_watermark else ""),
         "cols": column_headers(invoice),
         "totals_labels": totals_labels,
         # Jurisdiction behaviour

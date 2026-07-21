@@ -355,6 +355,10 @@ class SeedCatalogue:
             accent_color=rng.choice(_ACCENTS),
             logo_lockup=rng.choice(_LOGO_LOCKUPS),
             has_logo=rng.random() > 0.2,   # ~20% text-only, like real invoices
+            # ~55% of logo'd companies carry a procedural mark beside the
+            # wordmark; the rest are wordmark-only, as real invoices vary.
+            logo_style="mark" if rng.random() < 0.55 else "wordmark",
+            has_watermark=rng.random() < 0.18,   # a faint brand watermark on some
             font_scale=round(rng.uniform(0.92, 1.12), 3),
         )
         return Company(company_id=cid, name=name, business_type=business_type,

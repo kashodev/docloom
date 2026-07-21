@@ -41,6 +41,7 @@
 </head>
 <body class="{{ body_classes }} archetype-boxed">
 {{ m.running_header(invoice) }}
+{{ m.watermark(profile, issuer) }}
 
 <div class="form">
   <div class="form-title">{{ "invoice" | label }}</div>
