@@ -3,10 +3,9 @@
 Tracked follow-ups that are deliberately deferred, not forgotten.
 
 ## Before / soon after first public push
-- [ ] **Add a `LICENSE` file.** MIT is the conventional pick for a library like
-      this. `pyproject.toml` should then set `license = "MIT"` and a
-      `classifiers` entry. No licence file is committed yet, so the repo is
-      currently "all rights reserved" by default — add one before promoting it.
+- [x] **Add a `LICENSE` file.** MIT `LICENSE` added and declared via PEP 639
+      (`license = "MIT"`, `license-files = ["LICENSE"]`) with authors, readme,
+      keywords, and trove classifiers.
 - [x] Review the README framing given the repo generates realistic synthetic
       financial documents: make the testing/eval intent unmistakable up front.
       (Intro leads with the golden-dataset-for-scoring-extraction purpose; the
