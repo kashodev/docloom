@@ -8,13 +8,14 @@ point is structural diversity an extractor can't learn from one skeleton.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 
 import docloom.packs  # noqa: F401
 from docloom.core import get_pack
 from docloom.core.render import render_record
 from docloom.packs.invoice import InvoiceSampler, SeedCatalogue
-from tests.factories import invoice, simple_lines, profile
+from tests.factories import invoice, profile, simple_lines
 
 PACK = get_pack("invoice")
 
@@ -22,6 +23,40 @@ PACK = get_pack("invoice")
 def render_with(archetype: str) -> str:
     inv = invoice(simple_lines(), render_profile=profile(archetype=archetype))
     return render_record(PACK, inv)
+
+
+def _body_only(html: str) -> str:
+    """Strip the running-header <template>, whose company name is the intended
+    per-page header, not a visible body duplicate."""
+    return re.sub(r'<template id="running-header">.*?</template>', "", html, flags=re.S)
+
+
+# ── layout: one company name, all regions placed, no phantom rail ───────────
+def test_company_name_appears_once_in_the_body() -> None:
+    for archetype in ("meta-sidebar-01", "receipt-compact-01", "boxed-form-01"):
+        for has_logo in (True, False):
+            inv = invoice(simple_lines(),
+                          render_profile=profile(archetype=archetype, has_logo=has_logo))
+            body = _body_only(render_record(PACK, inv))
+            assert body.count("Northwind Supply") == 1, (archetype, has_logo)
+
+
+def test_every_meta_position_places_all_three_regions() -> None:
+    """The rail layouts used to leave the issuer block unplaced (phantom column);
+    every position must now place brand, meta, and body."""
+    for pos in ("top-left", "top-right", "top-row", "left-rail", "right-rail", "split"):
+        html = render_record(PACK, invoice(simple_lines(),
+                                           render_profile=profile(meta_position=pos)))
+        assert 'class="brand"' in html
+        assert 'class="doc-meta"' in html
+        assert 'class="doc-body"' in html
+
+
+def test_rail_layouts_use_a_single_narrow_rail() -> None:
+    html = render_with("meta-sidebar-01")
+    # One rail definition per side, table column dominant (1fr), rail narrow.
+    assert 'grid-template-columns: 44mm 1fr' in html   # left-rail
+    assert 'grid-template-columns: 1fr 44mm' in html   # right-rail
 
 
 # ── the two new skeletons render ────────────────────────────────────────────

@@ -14,6 +14,9 @@
 {% import "_macros.j2" as m with context %}
 
 {% block extra_styles %}
+/* Itemised bills are dense tabular data — always full-width, never a rail that
+   narrows the data column, regardless of the company's meta position. */
+.doc { grid-template-columns: 1fr !important; grid-template-areas: "brand" "meta" "body" !important; }
 /* Denser than the flat archetype — the source averages 54 rows per page. */
 table.items td, table.items th { padding: 3px 6px; }
 body { font-size: 8.5pt; }

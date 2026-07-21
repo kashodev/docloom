@@ -29,8 +29,11 @@
 .form-parties .box { padding: 3mm 4mm; }
 .form-parties .box:first-child { border-right: 0.5pt solid var(--rule); }
 .form-body { padding: 4mm; }
-.archetype-boxed table.items th,
-.archetype-boxed table.items td { border: 0.5pt solid var(--rule); }
+/* The inner line-item table follows the company's table-style modifier — so a
+   boxed form can carry an invisible, full-width table inside its outer frame,
+   rather than forcing borders on every cell. The outer frame is the "boxed"
+   identity; the inner table is free to be borderless/zebra/ruled. */
+.archetype-boxed table.items { width: 100%; }
 .archetype-boxed .totals table { border: 0.8pt solid var(--rule-strong); min-width: 70mm; }
 .archetype-boxed .totals { display: flex; justify-content: flex-end; }
 .form-foot { border-top: 0.8pt solid var(--rule-strong); padding: 3mm 4mm; }

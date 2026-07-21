@@ -13,25 +13,28 @@
 <body class="{{ body_classes }}">
 {{ m.running_header(invoice) }}
 
-<div class="layout">
-  <div class="issuer">
+{# The company name appears exactly once in the body: as the logo wordmark when
+   a logo is shown, otherwise as the issuer's party name. The running header
+   repeats it per page for the PDF. Invoice info appears once, in the header. #}
+<div class="doc">
+  <div class="brand">
     {{ m.logo(profile, issuer) }}
     <h1 class="doc-title">{{ "invoice" | label }}</h1>
-    {{ m.party_block(issuer, none) }}
+    {{ m.party_block(issuer, none, suppress_name=profile.has_logo) }}
   </div>
 
-  <div class="meta">
+  <div class="doc-meta">
     {{ m.meta_block(invoice) }}
     {{ m.party_block(recipient, "bill_to") }}
   </div>
 
-  <div class="body">
+  <main class="doc-body">
     {% block items %}{% endblock %}
 
     {{ m.totals_block(totals, tax_buckets, has_discount, has_shipping, has_deposit) }}
 
     {{ m.terms_block(invoice, registrations, requires_late_penalty) }}
-  </div>
+  </main>
 </div>
 </body>
 </html>

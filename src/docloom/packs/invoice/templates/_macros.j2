@@ -6,10 +6,12 @@
 
 
 {# ── Party blocks ─────────────────────────────────────────────────────── #}
-{% macro party_block(party, heading_key) %}
+{# suppress_name omits the name line — used for the issuer when its name is
+   already shown as the logo wordmark, so the company name never doubles up. #}
+{% macro party_block(party, heading_key, suppress_name=False) %}
 <div class="party">
   {% if heading_key %}<div class="muted small">{{ heading_key | label }}</div>{% endif %}
-  <div class="party-name">{{ party.name }}</div>
+  {% if not suppress_name %}<div class="party-name">{{ party.name }}</div>{% endif %}
   {% for line in party.address_lines %}<div>{{ line }}</div>{% endfor %}
   {% if party.city %}
   <div>{{ [party.city, party.region, party.postal_code] | select | join(", ") }}</div>

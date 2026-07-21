@@ -37,7 +37,8 @@ body { font-size: 9.5pt; }
 <div class="receipt">
   <div class="r-head">
     {{ m.logo(profile, issuer) }}
-    <div class="r-issuer">{{ issuer.name }}</div>
+    {# The name shows once: as the logo wordmark, or here when there is no logo. #}
+    {% if not profile.has_logo %}<div class="r-issuer">{{ issuer.name }}</div>{% endif %}
     {% if issuer.city %}<div class="r-contact">{{ issuer.city }}</div>{% endif %}
     {% if issuer.website %}<div class="r-contact">{{ issuer.website }}</div>{% endif %}
   </div>

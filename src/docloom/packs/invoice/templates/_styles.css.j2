@@ -59,18 +59,31 @@ body {
 .meta-banner .meta dt { display: block; }
 .meta-banner .meta dd { margin-bottom: 1mm; }
 
-/* ── Variation axis: metadata-block placement ────────────────────────────── */
-.layout { display: grid; gap: 6mm; }
-.meta-top-left  .layout { grid-template-areas: "meta issuer" "table table"; grid-template-columns: 1fr 1fr; }
-.meta-top-right .layout { grid-template-areas: "issuer meta" "table table"; grid-template-columns: 1fr 1fr; }
-.meta-top-row   .layout { grid-template-areas: "issuer issuer" "meta meta" "table table"; grid-template-columns: 1fr 1fr; }
-.meta-left-rail .layout { grid-template-areas: "meta table"; grid-template-columns: 52mm 1fr; }
-.meta-right-rail .layout { grid-template-areas: "table meta"; grid-template-columns: 1fr 52mm; }
-.meta-split     .layout { grid-template-areas: "meta issuer" "table table"; grid-template-columns: 3fr 2fr; }
+/* ── Document layout ─────────────────────────────────────────────────────── */
+/* Three regions, always placed — never a floating unplaced block. The brand
+   (logo + company) and the invoice meta share the header; the line-item table
+   is always the dominant column. Rail modes use exactly ONE narrow rail. */
+.doc { display: grid; gap: 6mm; }
+.doc > .brand    { grid-area: brand; min-width: 0; }
+.doc > .doc-meta { grid-area: meta; min-width: 0; }
+.doc > .doc-body { grid-area: body; min-width: 0; }
 
-.layout > .meta   { grid-area: meta; }
-.layout > .issuer { grid-area: issuer; }
-.layout > .body   { grid-area: table; }
+/* Header-on-top: brand + meta on one row, table full width below. */
+.meta-top-left  .doc { grid-template-areas: "brand meta" "body body"; grid-template-columns: 1fr 1fr; }
+.meta-top-right .doc { grid-template-areas: "meta brand" "body body"; grid-template-columns: 1fr 1fr; }
+.meta-split     .doc { grid-template-areas: "brand meta" "body body"; grid-template-columns: 3fr 2fr; }
+.meta-top-row   .doc { grid-template-areas: "brand" "meta" "body"; grid-template-columns: 1fr; }
+
+/* Single rail: one narrow meta column beside a dominant table column. The rail
+   spans the full height; the brand sits atop the main column, table below it. */
+.meta-left-rail  .doc { grid-template-areas: "meta brand" "meta body"; grid-template-columns: 44mm 1fr; }
+.meta-right-rail .doc { grid-template-areas: "brand meta" "body meta"; grid-template-columns: 1fr 44mm; }
+
+/* A rail's meta list stacks label-over-value to fit the narrow column. */
+.meta-left-rail .doc-meta .meta dl,
+.meta-right-rail .doc-meta .meta dl { grid-template-columns: 1fr; gap: 0.5mm; }
+.meta-left-rail .doc-meta .meta dd,
+.meta-right-rail .doc-meta .meta dd { margin-bottom: 1.5mm; }
 
 /* ── Line-item table ─────────────────────────────────────────────────────── */
 table.items { width: 100%; border-collapse: collapse; margin-top: 4mm; }
