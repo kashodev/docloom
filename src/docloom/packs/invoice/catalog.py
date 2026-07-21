@@ -44,16 +44,29 @@ from docloom.packs.invoice.record import Party, RenderProfile, TaxRegistration
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass(frozen=True, slots=True)
 class ProductTemplate:
-    """One line an invoice might contain, before quantities and prices are drawn."""
+    """One line an invoice might contain, before quantities and prices are drawn.
+
+    ``fr`` is a native French description used for both fr-CA and fr-FR — generic
+    goods share the wording across Quebec and France. When a company is French,
+    the sampler prints ``fr`` instead of the English ``description``, so a French
+    invoice does not carry English product text. (The rich LLM catalogue will
+    generate these; here they are hand-authored.)
+    """
 
     description: str
     price_low: Decimal
     price_high: Decimal
+    fr: str = ""
     kind: LineItemKind = LineItemKind.PRODUCT
     billing_model: BillingModel = BillingModel.PER_UNIT
     code_system: CodeSystem = CodeSystem.SKU
     code_prefix: str = "SKU"
     usage_unit: UsageUnit = UsageUnit.NONE
+
+    def describe(self, language: object) -> str:
+        """The description in the given language — French when the company is
+        French and a French text exists, else the English default."""
+        return self.fr if (self.fr and str(language).startswith("fr")) else self.description
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,81 +140,81 @@ def _d(v: str) -> Decimal:
 
 _PRODUCTS: dict[BusinessType, tuple[ProductTemplate, ...]] = {
     BusinessType.RETAIL: (
-        ProductTemplate("Stainless steel hex bolt, M8 x 40mm", _d("0.30"), _d("0.90"),
+        ProductTemplate("Stainless steel hex bolt, M8 x 40mm", _d("0.30"), _d("0.90"), fr="Boulon à tête hexagonale en acier inoxydable, M8 x 40 mm",
                         code_prefix="HB", code_system=CodeSystem.SKU),
-        ProductTemplate("Nitrile gasket set, 3-inch flange", _d("6.00"), _d("14.00"),
+        ProductTemplate("Nitrile gasket set, 3-inch flange", _d("6.00"), _d("14.00"), fr="Jeu de joints en nitrile, bride de 3 pouces",
                         code_prefix="GS"),
-        ProductTemplate("LED work light, 20W rechargeable", _d("28.00"), _d("65.00"),
+        ProductTemplate("LED work light, 20W rechargeable", _d("28.00"), _d("65.00"), fr="Lampe de travail à DEL, 20 W rechargeable",
                         code_prefix="WL"),
-        ProductTemplate("Heavy-duty utility gloves, pair", _d("4.50"), _d("12.00"),
+        ProductTemplate("Heavy-duty utility gloves, pair", _d("4.50"), _d("12.00"), fr="Gants de travail robustes, la paire",
                         code_prefix="GL"),
-        ProductTemplate("Cordless drill driver, 18V", _d("89.00"), _d("199.00"),
+        ProductTemplate("Cordless drill driver, 18V", _d("89.00"), _d("199.00"), fr="Perceuse-visseuse sans fil, 18 V",
                         code_prefix="DR", code_system=CodeSystem.MPN),
     ),
     BusinessType.WHOLESALE: (
         ProductTemplate("Corrugated shipping carton, 12x12x8 (bundle of 25)",
-                        _d("18.00"), _d("34.00"), code_prefix="CT", code_system=CodeSystem.UNSPSC),
-        ProductTemplate("Industrial pallet wrap, 18-inch (roll)", _d("9.00"), _d("22.00"),
+                        _d("18.00"), _d("34.00"), fr="Carton d'expédition ondulé, 12x12x8 (paquet de 25)", code_prefix="CT", code_system=CodeSystem.UNSPSC),
+        ProductTemplate("Industrial pallet wrap, 18-inch (roll)", _d("9.00"), _d("22.00"), fr="Film étirable industriel, 18 pouces (rouleau)",
                         code_prefix="PW", code_system=CodeSystem.UNSPSC),
-        ProductTemplate("Thermal receipt paper, 80mm (case of 50)", _d("40.00"), _d("70.00"),
+        ProductTemplate("Thermal receipt paper, 80mm (case of 50)", _d("40.00"), _d("70.00"), fr="Papier thermique pour reçus, 80 mm (caisse de 50)",
                         code_prefix="RP", code_system=CodeSystem.UNSPSC),
     ),
     BusinessType.B2B_SAAS: (
-        ProductTemplate("Growth plan — monthly subscription", _d("199.00"), _d("999.00"),
+        ProductTemplate("Growth plan — monthly subscription", _d("199.00"), _d("999.00"), fr="Forfait Croissance — abonnement mensuel",
                         kind=LineItemKind.SUBSCRIPTION, billing_model=BillingModel.SUBSCRIPTION,
                         code_system=CodeSystem.NONE, code_prefix="PLN"),
-        ProductTemplate("Additional user seats", _d("12.00"), _d("35.00"),
+        ProductTemplate("Additional user seats", _d("12.00"), _d("35.00"), fr="Postes utilisateurs supplémentaires",
                         kind=LineItemKind.SEAT, billing_model=BillingModel.SEAT_BASED,
                         code_system=CodeSystem.NONE, usage_unit=UsageUnit.SEATS),
-        ProductTemplate("Premium support add-on", _d("150.00"), _d("500.00"),
+        ProductTemplate("Premium support add-on", _d("150.00"), _d("500.00"), fr="Option de soutien Premium",
                         kind=LineItemKind.FEE, billing_model=BillingModel.FLAT_RATE,
                         code_system=CodeSystem.NONE),
     ),
     BusinessType.AI_PLATFORM: (
-        ProductTemplate("Input tokens (millions)", _d("0.10"), _d("0.40"),
+        ProductTemplate("Input tokens (millions)", _d("0.10"), _d("0.40"), fr="Jetons d'entrée (millions)",
                         kind=LineItemKind.USAGE, billing_model=BillingModel.METERED_USAGE,
                         code_system=CodeSystem.NONE, usage_unit=UsageUnit.TOKENS_INPUT),
-        ProductTemplate("Output tokens (millions)", _d("0.20"), _d("0.90"),
+        ProductTemplate("Output tokens (millions)", _d("0.20"), _d("0.90"), fr="Jetons de sortie (millions)",
                         kind=LineItemKind.USAGE, billing_model=BillingModel.METERED_USAGE,
                         code_system=CodeSystem.NONE, usage_unit=UsageUnit.TOKENS_OUTPUT),
-        ProductTemplate("API requests", _d("0.0008"), _d("0.0025"),
+        ProductTemplate("API requests", _d("0.0008"), _d("0.0025"), fr="Requêtes API",
                         kind=LineItemKind.USAGE, billing_model=BillingModel.GRADUATED_TIER,
                         code_system=CodeSystem.NONE, usage_unit=UsageUnit.API_CALLS),
-        ProductTemplate("GPU inference hours", _d("1.20"), _d("4.50"),
+        ProductTemplate("GPU inference hours", _d("1.20"), _d("4.50"), fr="Heures d'inférence GPU",
                         kind=LineItemKind.USAGE, billing_model=BillingModel.METERED_USAGE,
                         code_system=CodeSystem.NONE, usage_unit=UsageUnit.GPU_HOURS),
     ),
     BusinessType.AUTO_REPAIR: (
-        ProductTemplate("Diagnostic and repair labour", _d("95.00"), _d("165.00"),
+        ProductTemplate("Diagnostic and repair labour", _d("95.00"), _d("165.00"), fr="Main-d'œuvre de diagnostic et de réparation",
                         kind=LineItemKind.LABOUR, billing_model=BillingModel.HOURLY_LABOUR,
                         code_system=CodeSystem.NONE, usage_unit=UsageUnit.HOURS),
-        ProductTemplate("Ceramic brake pad set, front", _d("55.00"), _d("140.00"),
+        ProductTemplate("Ceramic brake pad set, front", _d("55.00"), _d("140.00"), fr="Jeu de plaquettes de frein en céramique, avant",
                         kind=LineItemKind.PART, code_prefix="BP", code_system=CodeSystem.MPN),
-        ProductTemplate("Synthetic oil filter", _d("12.00"), _d("28.00"),
+        ProductTemplate("Synthetic oil filter", _d("12.00"), _d("28.00"), fr="Filtre à huile synthétique",
                         kind=LineItemKind.PART, code_prefix="OF", code_system=CodeSystem.MPN),
-        ProductTemplate("Shop supplies & disposal", _d("15.00"), _d("40.00"),
+        ProductTemplate("Shop supplies & disposal", _d("15.00"), _d("40.00"), fr="Fournitures d'atelier et élimination",
                         kind=LineItemKind.SURCHARGE, billing_model=BillingModel.FEE_SCHEDULE,
                         code_system=CodeSystem.NONE),
     ),
     BusinessType.ACCOUNTING: (
-        ProductTemplate("Federal tax preparation", _d("300.00"), _d("1200.00"),
+        ProductTemplate("Federal tax preparation", _d("300.00"), _d("1200.00"), fr="Préparation de la déclaration fiscale fédérale",
                         kind=LineItemKind.SERVICE, billing_model=BillingModel.FLAT_RATE,
                         code_system=CodeSystem.NONE),
-        ProductTemplate("Bookkeeping — monthly", _d("250.00"), _d("800.00"),
+        ProductTemplate("Bookkeeping — monthly", _d("250.00"), _d("800.00"), fr="Tenue de livres — mensuelle",
                         kind=LineItemKind.SERVICE, billing_model=BillingModel.SUBSCRIPTION,
                         code_system=CodeSystem.NONE),
-        ProductTemplate("Advisory consultation", _d("150.00"), _d("400.00"),
+        ProductTemplate("Advisory consultation", _d("150.00"), _d("400.00"), fr="Consultation-conseil",
                         kind=LineItemKind.LABOUR, billing_model=BillingModel.HOURLY_LABOUR,
                         code_system=CodeSystem.NONE, usage_unit=UsageUnit.HOURS),
     ),
     BusinessType.TELECOM: (
-        ProductTemplate("Mobile data", _d("0.01"), _d("0.05"),
+        ProductTemplate("Mobile data", _d("0.01"), _d("0.05"), fr="Données mobiles",
                         kind=LineItemKind.USAGE, billing_model=BillingModel.METERED_USAGE,
                         code_system=CodeSystem.NONE, usage_unit=UsageUnit.MEGABYTES),
-        ProductTemplate("Voice minutes", _d("0.02"), _d("0.08"),
+        ProductTemplate("Voice minutes", _d("0.02"), _d("0.08"), fr="Minutes d'appel",
                         kind=LineItemKind.USAGE, billing_model=BillingModel.METERED_USAGE,
                         code_system=CodeSystem.NONE, usage_unit=UsageUnit.MINUTES),
-        ProductTemplate("Text messages", _d("0.05"), _d("0.15"),
+        ProductTemplate("Text messages", _d("0.05"), _d("0.15"), fr="Messages texte",
                         kind=LineItemKind.USAGE, billing_model=BillingModel.PER_UNIT,
                         code_system=CodeSystem.NONE, usage_unit=UsageUnit.MESSAGES),
     ),
@@ -209,7 +222,7 @@ _PRODUCTS: dict[BusinessType, tuple[ProductTemplate, ...]] = {
 
 # Fallback pool for any business type without a bespoke one yet.
 _GENERIC = (
-    ProductTemplate("Professional services", _d("100.00"), _d("500.00"),
+    ProductTemplate("Professional services", _d("100.00"), _d("500.00"), fr="Services professionnels",
                     kind=LineItemKind.SERVICE, billing_model=BillingModel.FLAT_RATE,
                     code_system=CodeSystem.NONE),
 )

@@ -69,11 +69,11 @@ def _period(rng: Random) -> tuple[date, date]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Per-billing-model line construction — each returns an exact LineItem
 # ─────────────────────────────────────────────────────────────────────────────
-def _build_line(rng: Random, line_no: int, product: ProductTemplate) -> LineItem:
+def _build_line(rng: Random, line_no: int, product: ProductTemplate, language: object) -> LineItem:
     unit_price = _price(rng, product.price_low, product.price_high)
     code = f"{product.code_prefix}-{rng.randint(1000, 99999)}" if product.code_prefix else None
     common = {
-        "line_no": line_no, "description": product.description, "kind": product.kind,
+        "line_no": line_no, "description": product.describe(language), "kind": product.kind,
         "billing_model": product.billing_model, "usage_unit": product.usage_unit,
         "code": code, "code_system": product.code_system,
         "sku": code if product.code_system.value == "sku" else None,
@@ -116,7 +116,7 @@ def _build_line(rng: Random, line_no: int, product: ProductTemplate) -> LineItem
                     extended_amount=money(qty * unit_price))
 
 
-def _graduated_line(rng: Random, common: dict, product: ProductTemplate) -> LineItem:
+def _graduated_line(rng: Random, common: dict, product: ProductTemplate) -> LineItem:  # noqa: ARG001
     """Three graduated bands, each charged at its own (decreasing) rate.
 
     The band amounts sum to ``extended_amount`` — the tier validator enforces it.
@@ -149,9 +149,15 @@ _TELECOM_SECTION = {
     "megabytes": "Data usage", "gigabytes": "Data usage",
     "minutes": "Voice", "seconds": "Voice", "messages": "Messaging",
 }
+_TELECOM_SECTION_FR = {
+    "megabytes": "Données", "gigabytes": "Données",
+    "minutes": "Appels", "seconds": "Appels", "messages": "Messagerie",
+}
 
 
-def _telecom_grouping(rng: Random, lines: tuple[LineItem, ...]) -> tuple[LineItem, ...]:
+def _telecom_grouping(
+    rng: Random, lines: tuple[LineItem, ...], language: object
+) -> tuple[LineItem, ...]:
     """Reshape flat telecom lines into a subscriber → category → event hierarchy.
 
     Amounts are untouched (grouping is presentational), so the totals still
@@ -163,10 +169,13 @@ def _telecom_grouping(rng: Random, lines: tuple[LineItem, ...]) -> tuple[LineIte
         f"({rng.randint(200, 989)}) 555-{rng.randint(1000, 9999):04d}"
         for _ in range(rng.randint(1, 3))
     ]
+    is_fr = str(language).startswith("fr")
+    sections = _TELECOM_SECTION_FR if is_fr else _TELECOM_SECTION
+    default_section = "Utilisation" if is_fr else "Usage"
     out = []
     for li in lines:
         sub = rng.choice(subscribers)
-        section = _TELECOM_SECTION.get(li.usage_unit.value, "Usage")
+        section = sections.get(li.usage_unit.value, default_section)
         stamp = f"{rng.randint(1, 28):02d} {rng.randint(0, 23):02d}:{rng.randint(0, 59):02d}"
         out.append(li.model_copy(update={
             "group_key": sub, "group_label": sub, "section": section, "usage_start": stamp,
@@ -228,12 +237,13 @@ class InvoiceSampler:
         company = self._catalogue.roster().choose(rng)
         spec = self._catalogue.business_spec(company.business_type)
 
+        language = company.locale.language
         n = min(rng.randint(spec.line_count_low, spec.line_count_high), self._max_line_items)
         lines = tuple(
-            _build_line(rng, i + 1, rng.choice(spec.products)) for i in range(n)
+            _build_line(rng, i + 1, rng.choice(spec.products), language) for i in range(n)
         )
         if company.business_type is BusinessType.TELECOM:
-            lines = _telecom_grouping(rng, lines)   # subscriber → category → event
+            lines = _telecom_grouping(rng, lines, language)   # subscriber → category → event
         subtotal = sum_money([li.extended_amount for li in lines])
 
         scheme, timing, discount = _discount(rng, subtotal)

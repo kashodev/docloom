@@ -114,6 +114,29 @@ def test_all_locales_and_currencies_appear() -> None:
     assert {"USD", "EUR", "CAD"} <= currencies
 
 
+def test_french_invoices_carry_french_descriptions() -> None:
+    """A French company must not print English product text — even from the
+    key-free seed catalogue."""
+    sampler = InvoiceSampler(max_line_items=30)
+    english_words = ("Stainless", "gasket", "labour", "Bookkeeping", "Voice", "tokens")
+    for want in ("fr-FR", "fr-CA"):
+        inv = next(i for n in range(3000)
+                   if (i := sampler.generate("frd", n)).locale.value == want)
+        joined = " ".join(li.description for li in inv.line_items)
+        assert not any(w in joined for w in english_words), (want, joined)
+        # And it reads as French — accented or French words present.
+        assert any(any(ch in li.description for ch in "éèàçûôî") or " de " in li.description
+                   for li in inv.line_items)
+
+
+def test_english_invoices_stay_english() -> None:
+    sampler = InvoiceSampler(max_line_items=30)
+    inv = next(i for n in range(500)
+               if (i := sampler.generate("eng", n)).locale.value == "en-US")
+    joined = " ".join(li.description for li in inv.line_items)
+    assert not any(fr in joined for fr in ("Jetons", "Requêtes", "Main-d'œuvre"))
+
+
 def test_quebec_invoices_carry_two_tax_buckets() -> None:
     sampler = InvoiceSampler()
     qc = next(
