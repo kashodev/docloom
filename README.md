@@ -1,4 +1,6 @@
-# docloom
+<p align="center">
+  <img src="docloom-logo-page-slate.svg" alt="docloom" width="420">
+</p>
 
 Weave templates and generated data into realistic documents — and get a
 **computed golden dataset** alongside them, exact to the cent, to score an
