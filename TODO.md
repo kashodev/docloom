@@ -86,11 +86,18 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       so its end-to-end test is gated on a real project
       (`DOCLOOM_BQ_PROJECT/DATASET/STAGING`). Also fixed a deprecated positional
       Firestore `where()` call surfaced by the emulator run.
-- [ ] **`(cont'd)` markers on page-spanning sections** (telecom archetype).
-      Needs post-layout knowledge of where breaks landed, which Chromium does
-      not expose simply. The repeating `<thead>` already gives an extractor the
-      structural continuation cue, so this is a realism nicety, deferred. CSS
-      hides the empty placeholder in the meantime.
+- [x] **`(cont'd)` markers on page-spanning sections** (telecom archetype). The
+      PDF renderer now measures each section table's top/bottom in the print-
+      width layout and, for sections whose extent crosses a page boundary, fills
+      the `.contd` marker in the (repeating) section header with the localised
+      "(cont'd)" / "(suite)". The break geometry is a pure, unit-tested function
+      (`spanning_sections`); a Chromium-gated test confirms a real multi-page
+      telecom section is flagged and a short invoice is not. Approximate at the
+      exact boundary (a `break-inside: avoid` row that hops pages shifts the
+      split by a row) — fine for a cosmetic cue. NB: with one repeating `<thead>`
+      the marker necessarily shows on every page of a spanning section including
+      the first; true per-page differentiation would require renderer-side table
+      splitting, not worth the golden-data risk for a cosmetic nicety.
 - [ ] **Move running-header composition into the pack.** The PDF renderer reads
       `issuer`/`invoice_number` off the record via getattr — invoice-specific.
       When a second document type needs a different header, add a pack hook

@@ -16,8 +16,25 @@ import pytest
 
 import docloom.packs  # noqa: F401  — registers the invoice pack
 from docloom.core import Currency, Jurisdiction, Locale, get_pack
-from docloom.core.pipeline.pdf import PdfRenderer, fit_scale
+from docloom.core.pipeline.pdf import PdfRenderer, fit_scale, spanning_sections
 from tests.factories import invoice, simple_lines, telecom_lines
+
+
+# ── section-spanning detection (pure) ───────────────────────────────────────
+def test_spanning_sections_flags_only_boundary_crossers() -> None:
+    page = 1000.0
+    bounds = [
+        (10.0, 500.0),      # 0: wholly on page 0 — not spanning
+        (600.0, 1400.0),    # 1: page 0 -> page 1 — spanning
+        (1000.0, 1900.0),   # 2: wholly on page 1 — not spanning
+        (1900.0, 3200.0),   # 3: spans two boundaries — spanning
+    ]
+    assert spanning_sections(bounds, page) == {1, 3}
+
+
+def test_spanning_sections_ignores_degenerate_and_bad_input() -> None:
+    assert spanning_sections([(100.0, 100.0), (500.0, 200.0)], 1000.0) == set()
+    assert spanning_sections([(10.0, 2000.0)], 0.0) == set()      # no page height
 
 
 # ── page-fill scaling (pure) ────────────────────────────────────────────────
@@ -53,9 +70,13 @@ class FakePage:
     def set_viewport_size(self, size: dict) -> None:
         self._log["viewport"] = size
 
-    def evaluate(self, expr: str) -> float:
-        # Short content → the fit pass leaves scale at 1.0, keeping the
-        # orchestration assertions independent of the page-fill logic.
+    def evaluate(self, expr: str, arg: object = None) -> object:
+        # The section-span query asks for a list of bounds; the fit pass asks for
+        # a single scrollHeight. Return the right shape for each so orchestration
+        # tests stay independent of both features (no .contd, short content).
+        if "querySelectorAll" in expr:
+            return []
+        # Short content → the fit pass leaves scale at 1.0.
         return self._log.get("scroll_height", 200.0)
 
     def emulate_media(self, media: str) -> None:
@@ -223,3 +244,37 @@ def test_real_render_paginates_a_long_document() -> None:
     with PdfRenderer(get_pack("invoice")) as r:
         doc = r.render(long_bill)
     assert len(pikepdf.open(io.BytesIO(doc.data)).pages) > 1
+
+
+def _contd_markers(r: PdfRenderer, record) -> list[str]:  # noqa: ANN001
+    """Filled "(cont'd)" markers after the renderer's page-span pass, read back
+    from the live DOM — the real end-to-end check that a section was flagged."""
+    from docloom.core.render import render_record
+
+    page = r._prepared_page(render_record(r._pack, record))
+    try:
+        r._mark_continued_sections(page, record)
+        return page.evaluate(
+            """() => [...document.querySelectorAll('table.items .contd')]
+                .map((s) => s.textContent.trim()).filter((t) => t.length > 0)"""
+        )
+    finally:
+        page.close()
+
+
+@requires_chromium
+def test_real_render_marks_page_spanning_sections_continued() -> None:
+    """A telecom section long enough to overflow a page gets its "(cont'd)"
+    marker filled; a short flat invoice (no .contd placeholders) gets none."""
+    long_bill = invoice(telecom_lines() * 50)
+    long_bill = long_bill.model_copy(update={
+        "render_profile": long_bill.render_profile.model_copy(
+            update={"archetype": "telecom-itemized-37"}
+        )
+    })
+    with PdfRenderer(get_pack("invoice")) as r:
+        markers = _contd_markers(r, long_bill)
+        assert markers, "no section was flagged as continued"
+        assert all(m == "(cont'd)" for m in markers)
+        # A short invoice has no .contd placeholders at all → nothing to fill.
+        assert _contd_markers(r, invoice(simple_lines())) == []

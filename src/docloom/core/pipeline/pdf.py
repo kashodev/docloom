@@ -76,6 +76,29 @@ def fit_scale(
     return max(round(scale, 4), min_scale)
 
 
+def spanning_sections(
+    bounds: list[tuple[float, float]], page_px: float
+) -> set[int]:
+    """Indices of sections that cross a page boundary.
+
+    ``bounds`` is each section's ``(top, bottom)`` in continuous-layout pixels;
+    a section spans when its first and last rows fall on different printed pages
+    (``floor(top / page_px) != floor(bottom / page_px)``). Pure so the geometry
+    is unit-tested without Chromium. Approximate at the exact boundary — a
+    ``break-inside: avoid`` row that hops to the next page shifts the true split
+    by one row — which is fine for a cosmetic "(cont'd)" cue.
+    """
+    if page_px <= 0:
+        return set()
+    spanning: set[int] = set()
+    for i, (top, bottom) in enumerate(bounds):
+        if bottom <= top:
+            continue
+        if int(top // page_px) != int((bottom - 0.5) // page_px):
+            spanning.add(i)
+    return spanning
+
+
 class PdfRenderer:
     """Renders a record to PDF, reusing one warm Chromium browser."""
 
@@ -110,6 +133,7 @@ class PdfRenderer:
     def render(self, record: GoldenRecord) -> RenderedDocument:
         page = self._prepared_page(render_record(self._pack, record))
         try:
+            self._mark_continued_sections(page, record)
             pdf_bytes = page.pdf(
                 format=self._page_size,
                 margin=_MARGIN,
@@ -158,6 +182,41 @@ class PdfRenderer:
             return 1.0
         content_px = float(page.evaluate("document.documentElement.scrollHeight"))
         return fit_scale(content_px, self._printable_px())
+
+    def _mark_continued_sections(self, page: Any, record: GoldenRecord) -> None:
+        """Flag sections that span a page break with a localised "(cont'd)".
+
+        A section whose rows overflow one page carries a ``.contd`` marker in its
+        (repeating) header, telling a reader the category continues beyond the
+        page — the realism cue the telecom archetype leaves empty for the
+        renderer to resolve, since which sections actually break is only known
+        after layout. A no-op for archetypes with no ``.contd`` placeholders.
+        """
+        bounds = page.evaluate(
+            """() => [...document.querySelectorAll('table.items .contd')].map((span) => {
+                const t = span.closest('table');
+                if (!t) return [0, 0];
+                const r = t.getBoundingClientRect();
+                const y = document.documentElement.scrollTop || 0;
+                return [r.top + y, r.bottom + y];
+            })"""
+        )
+        if not bounds:
+            return
+        spanning = spanning_sections([(b[0], b[1]) for b in bounds], self._printable_px())
+        if not spanning:
+            return
+        try:
+            marker = self._pack.labels.get(record.locale.language, "continued")
+        except KeyError:
+            marker = "(cont'd)"
+        page.evaluate(
+            """({indices, marker}) => {
+                const spans = [...document.querySelectorAll('table.items .contd')];
+                for (const i of indices) if (spans[i]) spans[i].textContent = ' ' + marker;
+            }""",
+            {"indices": sorted(spanning), "marker": marker},
+        )
 
     def _header_template(self, record: GoldenRecord) -> str:
         """The running header: issuer + invoice number left, page count right.
