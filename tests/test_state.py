@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
 from docloom.core.enums import RunState, WorkUnitState
+from docloom.core.pipeline.run import resume_run
 from docloom.core.state import Run, SqliteStateStore, WorkUnit, open_state
 
 
@@ -100,6 +102,102 @@ def test_reset_failed_units_returns_zero_when_none_failed(tmp_path: Path) -> Non
     store = SqliteStateStore(tmp_path / "s.db")
     make_run(store, units=2)
     assert store.reset_failed_units("run_1") == 0
+
+
+# ── Lease + reclaim (crashed-worker recovery) ───────────────────────────────
+def test_claim_stamps_a_future_lease(tmp_path: Path) -> None:
+    store = SqliteStateStore(tmp_path / "s.db", lease_seconds=900)
+    make_run(store, units=1)
+    unit = store.claim_next_unit("run_1")
+    assert unit is not None and unit.lease_expires_at is not None
+    assert unit.lease_expires_at > datetime.now(UTC)
+
+
+def test_reclaim_returns_expired_running_units_to_the_pool(tmp_path: Path) -> None:
+    """A silently crashed worker (unit left running, lease lapsed) is recovered."""
+    store = SqliteStateStore(tmp_path / "s.db", lease_seconds=900)
+    make_run(store, units=2)
+    crashed = store.claim_next_unit("run_1")            # unit 0, never completed
+    assert crashed is not None and crashed.unit_index == 0
+
+    # Nothing is expired yet, so a reclaim at 'now' is a no-op.
+    assert store.reclaim_expired_units("run_1") == 0
+
+    # Well past the lease, the abandoned unit is reclaimed exactly once...
+    future = datetime.now(UTC) + timedelta(hours=1)
+    assert store.reclaim_expired_units("run_1", now=future) == 1
+    assert store.reclaim_expired_units("run_1", now=future) == 0   # idempotent
+
+    # ...and is claimable again, attempts preserved across the reclaim.
+    again = store.claim_next_unit("run_1")
+    assert again is not None and again.unit_index == 0
+    assert again.attempts == 2
+
+
+def test_reclaim_leaves_live_leases_alone(tmp_path: Path) -> None:
+    store = SqliteStateStore(tmp_path / "s.db", lease_seconds=900)
+    make_run(store, units=1)
+    store.claim_next_unit("run_1")
+    assert store.reclaim_expired_units("run_1") == 0             # lease still valid
+    assert store.progress("run_1")[WorkUnitState.RUNNING] == 1
+
+
+def test_completed_and_failed_units_clear_their_lease(tmp_path: Path) -> None:
+    store = SqliteStateStore(tmp_path / "s.db", lease_seconds=900)
+    make_run(store, units=2)
+    store.claim_next_unit("run_1")
+    store.claim_next_unit("run_1")
+    store.complete_unit("run_1", 0)
+    store.fail_unit("run_1", 1, "boom")
+    by_index = {u.unit_index: u for u in store.units("run_1")}
+    assert by_index[0].lease_expires_at is None
+    assert by_index[1].lease_expires_at is None
+    # A cleared lease is never reclaimed, even far in the future.
+    assert store.reclaim_expired_units("run_1", now=datetime.now(UTC) + timedelta(days=1)) == 0
+
+
+def test_claim_opportunistically_reclaims_abandoned_units(tmp_path: Path) -> None:
+    """A continuously draining fleet recovers a crashed worker's unit on the next
+    claim — no explicit resume needed. lease_seconds=0 expires the lease at once."""
+    store = SqliteStateStore(tmp_path / "s.db", lease_seconds=0)
+    make_run(store, units=1)
+    first = store.claim_next_unit("run_1")               # unit 0, lease already lapsed
+    assert first is not None and first.attempts == 1
+    # The worker "crashes" (never completes). The next claim reclaims and re-serves it.
+    again = store.claim_next_unit("run_1")
+    assert again is not None and again.unit_index == 0
+    assert again.attempts == 2
+
+
+def test_resume_reclaims_crashed_units_and_reports_the_count(tmp_path: Path) -> None:
+    store = SqliteStateStore(tmp_path / "s.db", lease_seconds=0)
+    make_run(store, units=3)
+    store.claim_next_unit("run_1")                       # unit 0 — will be "crashed"
+    store.set_run_state("run_1", RunState.PAUSED)
+    # unit 0 is running with a lapsed lease; resume reclaims it.
+    requeued = resume_run(store, "run_1")
+    assert requeued == 1
+    assert store.progress("run_1")[WorkUnitState.RUNNING] == 0
+    assert store.progress("run_1")[WorkUnitState.PENDING] == 3
+
+
+def test_old_db_without_lease_column_is_migrated(tmp_path: Path) -> None:
+    """Opening a pre-lease runs.db must not fail — the column is added in place."""
+    import sqlite3
+    db = tmp_path / "old.db"
+    conn = sqlite3.connect(db)
+    conn.executescript(
+        "CREATE TABLE runs (run_id TEXT PRIMARY KEY, pack TEXT, config_id TEXT, "
+        "total_units INT, state TEXT, created_at TEXT, updated_at TEXT, metadata TEXT);"
+        "CREATE TABLE work_units (run_id TEXT, unit_index INT, start_index INT, count INT, "
+        "state TEXT, attempts INT DEFAULT 0, error TEXT, updated_at TEXT, "
+        "PRIMARY KEY (run_id, unit_index));"
+    )
+    conn.close()
+    store = SqliteStateStore(db)                          # must migrate, not raise
+    make_run(store, units=1)
+    unit = store.claim_next_unit("run_1")
+    assert unit is not None and unit.lease_expires_at is not None
 
 
 def test_paused_run_yields_no_claims(tmp_path: Path) -> None:

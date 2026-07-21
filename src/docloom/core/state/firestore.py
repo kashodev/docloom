@@ -18,11 +18,11 @@ claim is exercised by an emulator-gated integration test (skipped unless
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from docloom.core.enums import RunState, WorkUnitState
-from docloom.core.state.base import Run, WorkUnit
+from docloom.core.state.base import DEFAULT_LEASE_SECONDS, Run, WorkUnit
 
 _CLAIMABLE = WorkUnitState.PENDING.value   # claim pending only; see StateStore
 
@@ -62,10 +62,12 @@ def unit_to_doc(unit: WorkUnit) -> dict[str, Any]:
         "attempts": unit.attempts,
         "error": unit.error,
         "updated_at": unit.updated_at.isoformat(),
+        "lease_expires_at": unit.lease_expires_at.isoformat() if unit.lease_expires_at else None,
     }
 
 
 def doc_to_unit(run_id: str, doc: dict[str, Any]) -> WorkUnit:
+    lease = doc.get("lease_expires_at")
     return WorkUnit(
         run_id=run_id,
         unit_index=doc["unit_index"],
@@ -75,6 +77,7 @@ def doc_to_unit(run_id: str, doc: dict[str, Any]) -> WorkUnit:
         attempts=doc.get("attempts", 0),
         error=doc.get("error"),
         updated_at=datetime.fromisoformat(doc["updated_at"]),
+        lease_expires_at=datetime.fromisoformat(lease) if lease else None,
     )
 
 
@@ -83,13 +86,31 @@ def run_is_claimable(run: Run | None) -> bool:
     return run is not None and run.state not in (RunState.PAUSED, RunState.CANCELLED)
 
 
+def doc_lease_is_expired(doc: dict[str, Any], now: datetime) -> bool:
+    """True for a ``running`` unit document whose lease has lapsed as of ``now``.
+
+    Pure, so the reclaim selection is unit-tested without the Firestore SDK.
+    """
+    if doc.get("state") != WorkUnitState.RUNNING.value:
+        return False
+    lease = doc.get("lease_expires_at")
+    return lease is not None and datetime.fromisoformat(lease) <= now
+
+
 # ── Adapter ─────────────────────────────────────────────────────────────────
 class FirestoreStateStore:
     """A :class:`~docloom.core.state.base.StateStore` backed by Firestore."""
 
     scheme = "firestore"
 
-    def __init__(self, project: str, database: str = "(default)", *, client: Any | None = None) -> None:
+    def __init__(
+        self,
+        project: str,
+        database: str = "(default)",
+        *,
+        client: Any | None = None,
+        lease_seconds: float = DEFAULT_LEASE_SECONDS,
+    ) -> None:
         if client is None:
             try:
                 from google.cloud import firestore
@@ -99,6 +120,7 @@ class FirestoreStateStore:
                 ) from exc
             client = firestore.Client(project=project, database=database)
         self._client = client
+        self._lease_seconds = lease_seconds
 
     def _run_ref(self, run_id: str) -> Any:
         return self._client.collection("runs").document(run_id)
@@ -126,19 +148,22 @@ class FirestoreStateStore:
     def claim_next_unit(self, run_id: str) -> WorkUnit | None:
         if not run_is_claimable(self.get_run(run_id)):
             return None
-        from google.cloud import firestore
-
         transaction = self._client.transaction()
-        return _claim_in_transaction(transaction, self._units_col(run_id), run_id)
+        return _claim_in_transaction(
+            transaction, self._units_col(run_id), run_id, self._lease_seconds
+        )
 
     def complete_unit(self, run_id: str, unit_index: int) -> None:
+        # Clear the lease: a terminal unit is no longer held by any worker.
         self._units_col(run_id).document(str(unit_index)).update(
-            {"state": WorkUnitState.DONE.value, "error": None, "updated_at": _now()}
+            {"state": WorkUnitState.DONE.value, "error": None,
+             "lease_expires_at": None, "updated_at": _now()}
         )
 
     def fail_unit(self, run_id: str, unit_index: int, error: str) -> None:
         self._units_col(run_id).document(str(unit_index)).update(
-            {"state": WorkUnitState.FAILED.value, "error": error, "updated_at": _now()}
+            {"state": WorkUnitState.FAILED.value, "error": error,
+             "lease_expires_at": None, "updated_at": _now()}
         )
 
     def reset_failed_units(self, run_id: str) -> int:
@@ -148,9 +173,30 @@ class FirestoreStateStore:
         for snap in query.stream():
             batch.update(
                 snap.reference,
-                {"state": WorkUnitState.PENDING.value, "error": None, "updated_at": _now()},
+                {"state": WorkUnitState.PENDING.value, "error": None,
+                 "lease_expires_at": None, "updated_at": _now()},
             )
             count += 1
+        if count:
+            batch.commit()
+        return count
+
+    def reclaim_expired_units(self, run_id: str, *, now: datetime | None = None) -> int:
+        # Query only running units (an equality filter needs no composite index),
+        # then filter expired leases in Python — the running set is small next to
+        # the whole run, and this keeps the reclaim index-free.
+        cutoff = now or datetime.now(UTC)
+        query = self._units_col(run_id).where("state", "==", WorkUnitState.RUNNING.value)
+        batch = self._client.batch()
+        count = 0
+        for snap in query.stream():
+            if doc_lease_is_expired(snap.to_dict(), cutoff):
+                batch.update(
+                    snap.reference,
+                    {"state": WorkUnitState.PENDING.value,
+                     "lease_expires_at": None, "updated_at": _now()},
+                )
+                count += 1
         if count:
             batch.commit()
         return count
@@ -173,12 +219,19 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _claim_in_transaction(transaction: Any, units_col: Any, run_id: str) -> WorkUnit | None:
-    """Take the lowest-index claimable unit atomically.
+def _claim_in_transaction(
+    transaction: Any, units_col: Any, run_id: str, lease_seconds: float
+) -> WorkUnit | None:
+    """Take the lowest-index claimable unit atomically, stamping a lease.
 
     Wrapped by ``firestore.transactional`` so Firestore retries on contention:
     two workers reading the same unit force one transaction to abort and retry,
     which then sees the unit already ``running`` and moves to the next.
+
+    Unlike SQLite, the claim does not scan for expired leases (a per-claim scan
+    of the running set is costly at Firestore scale); reclaim is the explicit
+    :meth:`FirestoreStateStore.reclaim_expired_units`, called on resume and safe
+    to run periodically.
     """
     from google.cloud import firestore
 
@@ -194,16 +247,19 @@ def _claim_in_transaction(transaction: Any, units_col: Any, run_id: str) -> Work
             return None
         snap = docs[0]
         data = snap.to_dict()
+        lease = (datetime.now(UTC) + timedelta(seconds=lease_seconds)).isoformat()
         txn.update(
             snap.reference,
             {
                 "state": WorkUnitState.RUNNING.value,
                 "attempts": data.get("attempts", 0) + 1,
+                "lease_expires_at": lease,
                 "updated_at": _now(),
             },
         )
         data["state"] = WorkUnitState.RUNNING.value
         data["attempts"] = data.get("attempts", 0) + 1
+        data["lease_expires_at"] = lease
         return doc_to_unit(run_id, data)
 
     return _claim(transaction)

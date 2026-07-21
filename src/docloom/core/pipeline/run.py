@@ -43,10 +43,13 @@ def create_run(
 
 
 def resume_run(state: StateStore, run_id: str) -> int:
-    """Prepare a run to continue: clear any pause and return failed units to the
-    pool. Returns how many failed units were re-queued."""
+    """Prepare a run to continue: clear any pause, return failed units to the
+    pool, and reclaim units abandoned by crashed workers (expired leases).
+    Returns how many units were re-queued (failed + reclaimed)."""
     state.set_run_state(run_id, RunState.RUNNING)
-    return state.reset_failed_units(run_id)
+    requeued = state.reset_failed_units(run_id)
+    requeued += state.reclaim_expired_units(run_id)
+    return requeued
 
 
 def work_run(

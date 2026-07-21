@@ -11,13 +11,14 @@ set) covers the real claim.
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from docloom.core.enums import RunState, WorkUnitState
 from docloom.core.state.base import Run, WorkUnit
 from docloom.core.state.firestore import (
+    doc_lease_is_expired,
     doc_to_run,
     doc_to_unit,
     run_is_claimable,
@@ -54,6 +55,34 @@ def test_unit_document_roundtrip() -> None:
 def test_unit_end_index_survives_mapping() -> None:
     unit = doc_to_unit("run_1", unit_to_doc(a_unit(start_index=5000, count=1000)))
     assert unit.end_index == 6000
+
+
+def test_lease_survives_mapping() -> None:
+    lease = datetime(2026, 7, 20, 12, 0, tzinfo=UTC)
+    unit = a_unit(state=WorkUnitState.RUNNING, lease_expires_at=lease)
+    doc = unit_to_doc(unit)
+    assert doc["lease_expires_at"] == "2026-07-20T12:00:00+00:00"
+    assert doc_to_unit("run_1", doc).lease_expires_at == lease
+
+
+def test_missing_lease_maps_to_none() -> None:
+    assert doc_to_unit("run_1", unit_to_doc(a_unit())).lease_expires_at is None
+
+
+# ── Expired-lease selection (the reclaim predicate, pure) ────────────────────
+def test_expired_lease_only_for_running_with_a_lapsed_lease() -> None:
+    now = datetime(2026, 7, 20, 12, 0, tzinfo=UTC)
+    past, future = now - timedelta(minutes=1), now + timedelta(minutes=1)
+
+    running_lapsed = unit_to_doc(a_unit(state=WorkUnitState.RUNNING, lease_expires_at=past))
+    running_live = unit_to_doc(a_unit(state=WorkUnitState.RUNNING, lease_expires_at=future))
+    running_no_lease = unit_to_doc(a_unit(state=WorkUnitState.RUNNING))
+    pending = unit_to_doc(a_unit(state=WorkUnitState.PENDING, lease_expires_at=past))
+
+    assert doc_lease_is_expired(running_lapsed, now) is True
+    assert doc_lease_is_expired(running_live, now) is False
+    assert doc_lease_is_expired(running_no_lease, now) is False   # never leased
+    assert doc_lease_is_expired(pending, now) is False            # not running
 
 
 def test_timestamps_are_iso_strings_in_the_document() -> None:

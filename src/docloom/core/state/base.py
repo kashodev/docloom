@@ -22,6 +22,14 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+#: Default lease lifetime. A unit's claim is valid for this long; if the worker
+#: neither completes nor fails it within the window (a silent crash — spot/
+#: preemptible termination, OOM, power loss), the unit is reclaimable. Chosen to
+#: comfortably exceed the time to render one unit's worth of documents; too short
+#: and a slow-but-alive worker's unit gets stolen, too long and recovery lags.
+DEFAULT_LEASE_SECONDS: float = 900.0  # 15 minutes
+
+
 @dataclass(frozen=True, slots=True)
 class Run:
     """One generation run."""
@@ -48,11 +56,23 @@ class WorkUnit:
     attempts: int = 0
     error: str | None = None
     updated_at: datetime = field(default_factory=_now)
+    #: When the current claim expires. Set while ``running``, ``None`` otherwise.
+    #: A ``running`` unit past this instant was abandoned by a crashed worker and
+    #: is reclaimable — see :meth:`StateStore.reclaim_expired_units`.
+    lease_expires_at: datetime | None = None
 
     @property
     def end_index(self) -> int:
         """One past the last document index in this unit."""
         return self.start_index + self.count
+
+    def lease_is_expired(self, now: datetime) -> bool:
+        """True for a ``running`` unit whose lease has lapsed as of ``now``."""
+        return (
+            self.state is WorkUnitState.RUNNING
+            and self.lease_expires_at is not None
+            and self.lease_expires_at <= now
+        )
 
 
 @runtime_checkable
@@ -105,6 +125,18 @@ class StateStore(Protocol):
         """Return every failed unit to ``pending``; returns how many. Called by
         resume, so a re-run retries what failed without re-doing what
         succeeded."""
+        ...
+
+    def reclaim_expired_units(self, run_id: str, *, now: datetime | None = None) -> int:
+        """Return ``running`` units with an expired lease to ``pending``.
+
+        The recovery path for a *silently crashed* worker: unlike
+        :meth:`fail_unit` (an explicit failure), a worker that is killed
+        mid-unit — spot/preemptible reclamation, OOM, power loss — leaves its
+        unit ``running`` with no one to finish it. Its lease still lapses, and
+        this returns it to the claimable pool. Returns how many were reclaimed.
+        Called by resume and safe to call periodically while a run is active.
+        """
         ...
 
     def units(self, run_id: str) -> Iterator[WorkUnit]:

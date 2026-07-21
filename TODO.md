@@ -37,14 +37,15 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       woff2 into `fonts/files/`, extend `BUNDLED`, note it in `OFL.txt`).
 
 ## Concurrency & multi-cloud portability
-- [ ] **Lease + reclaim for crashed workers.** The atomic claim marks a unit
-      `running` with no lease or heartbeat, so a *silently crashed* worker (vs.
-      an explicit `fail_unit`) leaves its unit stuck in `running` forever —
-      nothing reclaims it. Add a `lease_expires_at` stamped at claim time and a
-      reclaim query that returns expired-lease `running` units to the pool.
-      Small change per StateStore adapter (one column + one query). **Required
-      before running on AWS/GCP spot/preemptible instances**, which can be
-      terminated mid-unit.
+- [x] **Lease + reclaim for crashed workers.** Each claim now stamps a
+      `lease_expires_at` (default 15 min, configurable per store) and clears it
+      on complete/fail/reset. `StateStore.reclaim_expired_units` returns
+      `running` units with a lapsed lease to the pool; SQLite also reclaims
+      opportunistically inside the claim's write lock (so a draining fleet
+      self-heals without a resume), while Firestore reclaims explicitly (a
+      per-claim scan is too costly at scale). `resume_run` reclaims on resume.
+      Covered by unit tests on both adapters. Follow-up: a lease *renewal*
+      heartbeat for units that legitimately run longer than one lease window.
 - [ ] **DynamoDB StateStore adapter (`dynamodb://`).** The AWS-native networked
       state store for multi-instance runs (AWS Batch, ECS/Fargate, many EC2).
       DynamoDB conditional writes (`ConditionExpression`) give the atomic claim
