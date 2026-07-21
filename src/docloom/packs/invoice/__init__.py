@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from docloom.core.content import ContentCapability, ContentMode
 from docloom.core.locale.labels import LabelRegistry
 from docloom.core.pack import RunningHeader
 from docloom.core.record import GoldenRecord
@@ -75,6 +76,20 @@ class InvoicePack:
     @property
     def labels(self) -> LabelRegistry:
         return LABEL_REGISTRY
+
+    @property
+    def content_capability(self) -> ContentCapability:
+        """Invoices are procedural — and that is what makes them local-first.
+
+        Descriptions, companies and figures all come from the built-in seed
+        catalogue and are computed, so hundreds of thousands of invoices generate
+        on a laptop with no key. A contract pack would declare ``LLM_BACKED``.
+        """
+        return ContentCapability(
+            ContentMode.PROCEDURAL,
+            notes="Seed catalogue + computed money; deterministic from "
+                  "stable_seed(run_id, index). No LLM, no API key.",
+        )
 
     @property
     def table_names(self) -> tuple[str, ...]:

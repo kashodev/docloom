@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from docloom.core.content import ContentCapability
 from docloom.core.locale.labels import LabelRegistry
 from docloom.core.record import GoldenRecord
 
@@ -63,6 +64,18 @@ class DocumentPack(Protocol):
     @property
     def labels(self) -> LabelRegistry:
         """Printed vocabulary for every language this pack supports."""
+        ...
+
+    @property
+    def content_capability(self) -> ContentCapability:
+        """Where this pack's content comes from — see :mod:`docloom.core.content`.
+
+        Declares whether a full dataset can be generated offline with no key
+        (procedural, like invoices) or needs an LLM catalogue step (text-heavy
+        types like contracts). Read it through
+        :func:`~docloom.core.content.capability_of`, which defaults to procedural
+        for a pack that predates this contract.
+        """
         ...
 
     @property

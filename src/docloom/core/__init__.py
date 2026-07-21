@@ -11,6 +11,13 @@ from docloom.core.enums import (
     RunState,
     WorkUnitState,
 )
+from docloom.core.content import (
+    ContentCapability,
+    ContentMode,
+    LlmContentBuilder,
+    build_catalogue,
+    capability_of,
+)
 from docloom.core.locale import Currency, LabelRegistry, Language, Locale
 from docloom.core.money import ZERO, money, pct, sum_money
 from docloom.core.pack import DocumentPack
@@ -20,6 +27,8 @@ from docloom.core.render import build_environment, render_record, render_templat
 
 __all__ = [
     "ZERO",
+    "ContentCapability",
+    "ContentMode",
     "Currency",
     "DocumentCondition",
     "DocumentPack",
@@ -27,12 +36,15 @@ __all__ = [
     "Jurisdiction",
     "LabelRegistry",
     "Language",
+    "LlmContentBuilder",
     "Locale",
     "RunState",
     "TableRows",
     "WorkUnitState",
     "available_packs",
+    "build_catalogue",
     "build_environment",
+    "capability_of",
     "get_pack",
     "money",
     "pct",

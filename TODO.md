@@ -28,18 +28,17 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       "local-first" section was rescoped — see below.)
 
 ## Content generation strategy per pack
-- [ ] **Make "local-first" a per-pack property, and give text-heavy packs a
-      first-class LLM source.** The invoice pack is procedural and key-free
-      (`SeedCatalogue`), which is what makes invoices local-first *at scale*.
-      Contracts and other prose-heavy document types cannot be: realistic
-      clauses, recitals, and defined terms are generated natural language, so an
-      LLM is effectively required. The README no longer claims the platform is
-      universally local-first (only the invoice pack + the infrastructure are).
-      Follow-through: formalise a pack content-source contract that declares
-      `procedural` vs `llm`-backed, wire the LLM path through the provider
-      abstraction (`core/providers`) + the catalogue runner's Batch slice, and
-      document per pack which mode it uses. The `default_source` docstring and
-      README § "Local-first is a property of the pack" capture the intent.
+- [x] **Make "local-first" a per-pack property, and give text-heavy packs a
+      first-class LLM source.** `core/content.py` formalises the contract:
+      `ContentMode` (`procedural` | `llm_backed`) + `ContentCapability` (with
+      derived `local_first` / `requires_api_key`), declared by every pack via
+      `DocumentPack.content_capability` and read defensively through
+      `capability_of` (defaults to procedural for older packs). An LLM-backed
+      pack also implements the `LlmContentBuilder` protocol (`catalogue_items` /
+      `ingest`), and `build_catalogue(pack, mix, budget=...)` drives that offline
+      step through the provider mix + catalogue runner (Batch slice included),
+      refusing a procedural pack. InvoicePack declares `PROCEDURAL`; README
+      documents the contract.
 
 ## Rendering fidelity
 - [x] **Bundle OFL fonts for portable typography.** Four keys (serif-classic →

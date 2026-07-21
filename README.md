@@ -51,9 +51,23 @@ cloud account or API key:
 
 So "no cloud account" is true end to end for invoices, and remains true for the
 infrastructure of any pack; it is *not* a guarantee that every future document
-type generates offline. The kernel's provider abstraction exists precisely so a
-pack can declare a procedural (local) or an LLM-backed source behind the same
-run loop.
+type generates offline.
+
+This is a declared contract, not a footnote — every pack states its mode, so the
+kernel can report and gate on it:
+
+```python
+>>> get_pack("invoice").content_capability
+ContentCapability(mode=<ContentMode.PROCEDURAL: 'procedural'>, ...)
+>>> get_pack("invoice").content_capability.local_first
+True
+```
+
+An `LLM_BACKED` pack additionally implements `LlmContentBuilder` (say what to
+generate, take the text back), and `build_catalogue(pack, mix, budget=...)` runs
+that one-time offline step through the weighted provider mix — batching the
+batch-capable slice through the Anthropic Batch API. The document run itself
+still makes no LLM calls either way: it reads the finished catalogue.
 
 ## The golden set is exact
 
