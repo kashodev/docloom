@@ -6,22 +6,14 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
 - [x] **Add a `LICENSE` file.** MIT `LICENSE` added and declared via PEP 639
       (`license = "MIT"`, `license-files = ["LICENSE"]`) with authors, readme,
       keywords, and trove classifiers.
-- [ ] **Change the copyright holder in the MIT `LICENSE`** from `kashodev` to
-      `Adam Okasha`. (Also update `authors` in `pyproject.toml` if the real name
-      should appear there too.)
-- [ ] **Add the project logo to the README.** A logo lives at
-      `docloom-logo-page-slate.svg` in the repo root — put it at the top of
-      `README.md`.
-- [ ] **Check the generated `samples/` PDFs into git.** The `templates/`
-      directory (39 source PDFs with real PII) has been removed from the repo, so
-      the synthetic `samples/` PDFs — generated entirely from procedural data,
-      no PII — can now be tracked. They are currently excluded by the
-      belt-and-suspenders blanket `*.pdf` ignore (`.gitignore:42-44`, alongside
-      the now-moot `templates/*.pdf` rule at line 11). Add a scoped exception
-      (`!samples/` + `!samples/*.pdf`) so `samples/` is committed while the
-      blanket PDF ignore still protects everywhere else. Before committing:
-      confirm no PII-bearing PDFs remain anywhere in the tree, and drop the stale
-      `templates/*.pdf` ignore.
+- [x] **Change the copyright holder in the MIT `LICENSE`** to `Adam Okasha`
+      (and the matching `authors` in `pyproject.toml`).
+- [x] **Add the project logo to the README.** `docloom-logo-page-slate.svg` now
+      leads the README (it already reads "docloom", so it replaced the H1).
+- [x] **Check the generated `samples/` PDFs into git.** Dropped the stale
+      `templates/*.pdf` ignore, kept the blanket `*.pdf` guard, and added a
+      scoped `!samples/**/*.pdf` exception; committed 45 synthetic samples
+      (confirmed no PII PDFs remain anywhere) with a `samples/README.md`.
 - [x] Review the README framing given the repo generates realistic synthetic
       financial documents: make the testing/eval intent unmistakable up front.
       (Intro leads with the golden-dataset-for-scoring-extraction purpose; the
