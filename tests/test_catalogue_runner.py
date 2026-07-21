@@ -1,0 +1,242 @@
+"""Catalogue-runner tests.
+
+The runner drives a provider mix over many items under a budget, batching the
+slice whose provider supports it. Tested with in-memory fake providers (no
+network, no keys): deterministic routing, per-item results and cost accounting,
+the batch path for a batch-capable provider, budget enforcement, and isolated
+failures. The Anthropic batch request/parse mapping is tested against a fake
+batches client.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from decimal import Decimal as D
+
+import pytest
+
+from docloom.core.providers import (
+    BudgetExceeded,
+    BudgetGuard,
+    CatalogueItem,
+    CatalogueRunner,
+    CompletionRequest,
+    ProviderMix,
+    item_seed,
+    pricing_for,
+)
+from docloom.core.providers.anthropic_provider import (
+    AnthropicProvider,
+    batch_custom_id_index,
+    build_batch_requests,
+)
+from docloom.core.providers.base import CompletionResult, Usage
+
+
+def run(coro):  # noqa: ANN001, ANN201
+    return asyncio.run(coro)
+
+
+def items(n: int) -> list[CatalogueItem]:
+    return [CatalogueItem(f"item-{i}", CompletionRequest(system="s", prompt=f"p{i}")) for i in range(n)]
+
+
+# ── Fake providers ──────────────────────────────────────────────────────────
+class SyncStub:
+    """A per-call provider that echoes its name and charges a fixed cost."""
+
+    pricing = pricing_for("__local__")
+
+    def __init__(self, name: str, cost: D = D(0)) -> None:
+        self.name = name
+        self.model = name
+        self._cost = cost
+        self.calls = 0
+
+    async def complete(self, request: CompletionRequest) -> CompletionResult:
+        self.calls += 1
+        return CompletionResult(f"{self.name}:{request.prompt}", Usage(10, 5), self.model,
+                                self.name, self._cost)
+
+    def estimate_cost(self, request: CompletionRequest) -> D:
+        return self._cost
+
+
+class BatchStub(SyncStub):
+    """A provider that also completes in one batch — the Anthropic-slice shape."""
+
+    def __init__(self, name: str, cost: D = D(0)) -> None:
+        super().__init__(name, cost)
+        self.batches = 0
+
+    def estimate_batch_cost(self, request: CompletionRequest) -> D:
+        return self._cost
+
+    async def complete_batch(self, requests: list[CompletionRequest]) -> list[CompletionResult]:
+        self.batches += 1
+        return [
+            CompletionResult(f"{self.name}:{r.prompt}", Usage(10, 5), self.model, self.name, self._cost)
+            for r in requests
+        ]
+
+
+def mix_of(*providers, weights=None):  # noqa: ANN002, ANN003, ANN201
+    weights = weights or [1.0] * len(providers)
+    return ProviderMix(list(providers), weights)
+
+
+# ── Routing, results, accounting ────────────────────────────────────────────
+def test_every_item_gets_a_result_from_its_routed_provider() -> None:
+    a, b = SyncStub("a"), SyncStub("b")
+    report = run(CatalogueRunner(mix_of(a, b)).run(items(40)))
+    assert len(report.results) == 40
+    assert report.by_provider["a"] + report.by_provider["b"] == 40
+    # Each result came from the provider the mix routes that item to.
+    mix = mix_of(a, b)
+    for it in items(40):
+        assert report.results[it.item_id].text.startswith(mix.choose(item_seed(it.item_id)).name)
+
+
+def test_routing_is_deterministic_across_runs() -> None:
+    first = run(CatalogueRunner(mix_of(SyncStub("a"), SyncStub("b"))).run(items(30)))
+    second = run(CatalogueRunner(mix_of(SyncStub("a"), SyncStub("b"))).run(items(30)))
+    assert {k: v.text for k, v in first.results.items()} == \
+           {k: v.text for k, v in second.results.items()}
+
+
+def test_total_cost_sums_every_completion() -> None:
+    report = run(CatalogueRunner(mix_of(SyncStub("a", D("0.001")))).run(items(10)))
+    assert report.total_cost == D("0.010")
+
+
+# ── Batch path ──────────────────────────────────────────────────────────────
+def test_batch_capable_provider_is_called_once_for_its_whole_slice() -> None:
+    batch = BatchStub("anthropic")
+    # Route everything to the batch provider (weight only on it).
+    report = run(CatalogueRunner(mix_of(batch)).run(items(25)))
+    assert len(report.results) == 25
+    assert batch.batches == 1          # one batch call, not 25
+    assert batch.calls == 0            # never the per-item path
+
+
+def test_use_batch_false_falls_back_to_per_item_calls() -> None:
+    batch = BatchStub("anthropic")
+    report = run(CatalogueRunner(mix_of(batch), use_batch=False).run(items(5)))
+    assert len(report.results) == 5
+    assert batch.batches == 0 and batch.calls == 5
+
+
+# ── Budget ──────────────────────────────────────────────────────────────────
+def test_budget_stops_the_run_before_overspending() -> None:
+    guard = BudgetGuard(D("0.005"))            # only ~5 items at 0.001 each
+    runner = CatalogueRunner(mix_of(SyncStub("a", D("0.001"))), budget=guard)
+    with pytest.raises(BudgetExceeded):
+        run(runner.run(items(50)))
+
+
+def test_within_budget_completes_and_tracks_spend() -> None:
+    guard = BudgetGuard(D("1.00"))
+    report = run(CatalogueRunner(mix_of(SyncStub("a", D("0.001"))), budget=guard).run(items(10)))
+    assert len(report.results) == 10
+    assert guard.spent == D("0.010")
+
+
+# ── Failure isolation ───────────────────────────────────────────────────────
+class Flaky(SyncStub):
+    async def complete(self, request: CompletionRequest) -> CompletionResult:
+        if request.prompt == "p3":
+            raise RuntimeError("model blip")
+        return await super().complete(request)
+
+
+def test_one_item_failing_does_not_sink_the_rest() -> None:
+    report = run(CatalogueRunner(mix_of(Flaky("a"))).run(items(6)))
+    assert len(report.results) == 5
+    assert "item-3" in report.failures
+    assert "model blip" in report.failures["item-3"]
+
+
+# ── Anthropic batch mapping (pure + fake client) ────────────────────────────
+def test_build_batch_requests_carries_positional_custom_ids() -> None:
+    reqs = [CompletionRequest(system="s", prompt=f"p{i}", max_tokens=64) for i in range(3)]
+    built = build_batch_requests("claude-haiku-4-5", reqs)
+    assert [b["custom_id"] for b in built] == ["item-0", "item-1", "item-2"]
+    assert built[0]["params"]["model"] == "claude-haiku-4-5"
+    assert built[0]["params"]["messages"][0]["content"] == "p0"
+    assert all(batch_custom_id_index(b["custom_id"]) == i for i, b in enumerate(built))
+
+
+def test_batch_is_half_the_synchronous_price() -> None:
+    p = AnthropicProvider(model="claude-haiku-4-5", client=object())
+    req = CompletionRequest(system="s", prompt="p", max_tokens=100)
+    assert p.estimate_batch_cost(req) == p.estimate_cost(req) / 2
+
+
+# A fake Message Batches API that returns results out of order, keyed by custom_id.
+class _Usage:
+    input_tokens = 500
+    output_tokens = 90
+    cache_read_input_tokens = 0
+
+
+class _Block:
+    type = "text"
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
+class _Msg:
+    def __init__(self, text: str) -> None:
+        self.content = [_Block(text)]
+        self.usage = _Usage()
+
+
+class _Result:
+    def __init__(self, text: str) -> None:
+        self.type = "succeeded"
+        self.message = _Msg(text)
+
+
+class _Entry:
+    def __init__(self, custom_id: str, text: str) -> None:
+        self.custom_id = custom_id
+        self.result = _Result(text)
+
+
+class _Batch:
+    id = "batch_1"
+    processing_status = "ended"
+
+
+class _FakeBatches:
+    def __init__(self) -> None:
+        self._reqs = None
+
+    async def create(self, requests):  # noqa: ANN001, ANN201
+        self._reqs = requests
+        return _Batch()
+
+    async def retrieve(self, batch_id):  # noqa: ANN001, ANN201
+        return _Batch()
+
+    def results(self, batch_id):  # noqa: ANN001, ANN201 - out-of-order on purpose
+        return [
+            _Entry("item-2", "third"),
+            _Entry("item-0", "first"),
+            _Entry("item-1", "second"),
+        ]
+
+
+class _FakeBatchClient:
+    def __init__(self) -> None:
+        self.messages = type("M", (), {"batches": _FakeBatches()})()
+
+
+def test_complete_batch_restores_input_order_and_batch_cost() -> None:
+    provider = AnthropicProvider(model="claude-haiku-4-5", client=_FakeBatchClient())
+    reqs = [CompletionRequest(system="s", prompt=t) for t in ("a", "b", "c")]
+    results = run(provider.complete_batch(reqs, poll_interval=0))
+    assert [r.text for r in results] == ["first", "second", "third"]   # reordered by custom_id
+    # Half-price: 500 in @ $0.50/M + 90 out @ $2.50/M.
+    assert results[0].cost == D("500") * D("0.50") / 1_000_000 + D("90") * D("2.50") / 1_000_000

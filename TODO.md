@@ -105,6 +105,15 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       `primary` and swaps Chromium's counters into the page label — no more
       record-shape getattr in the renderer. A second document type supplies its
       own header without touching the renderer.
-- [ ] Catalogue runner (drives the provider mix over ~70k items under budget;
-      Anthropic Batch API for the offline Haiku slice) + logo generation.
+- [x] Catalogue runner + logo generation. `CatalogueRunner` drives the weighted
+      `ProviderMix` over many items under a `BudgetGuard`: deterministic per-item
+      routing (stable hash), bounded-concurrency for per-call providers, and the
+      **Anthropic Batch API** (half price) for the batch-capable Haiku slice —
+      `AnthropicProvider.complete_batch` submits one batch, polls, and restores
+      input order via `custom_id`. Isolated per-item/batch failure handling.
+      Tested with in-memory fakes (routing, cost, batching, budget stop,
+      failures) + a fake batches client. Logo generation shipped earlier as the
+      procedural `logos.py` marks. Still open: wiring a concrete catalogue-content
+      pack step onto this runner (the LLM-backed source in the content-strategy
+      item above).
 - [ ] Scan-degradation + handwriting variants (post-process rendered PDFs).

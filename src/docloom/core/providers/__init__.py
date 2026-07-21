@@ -17,6 +17,12 @@ from docloom.core.providers.base import (
     Usage,
 )
 from docloom.core.providers.budget import BudgetExceeded, BudgetGuard
+from docloom.core.providers.catalogue_runner import (
+    CatalogueItem,
+    CatalogueRunner,
+    RunReport,
+    item_seed,
+)
 from docloom.core.providers.factory import PRESETS, build_mix, build_provider
 from docloom.core.providers.mix import ProviderMix
 from docloom.core.providers.openai_compatible import OpenAICompatibleProvider
@@ -27,14 +33,18 @@ __all__ = [
     "PRICING",
     "BudgetExceeded",
     "BudgetGuard",
+    "CatalogueItem",
+    "CatalogueRunner",
     "CompletionRequest",
     "CompletionResult",
     "OpenAICompatibleProvider",
     "Pricing",
     "ProviderMix",
+    "RunReport",
     "TextProvider",
     "Usage",
     "build_mix",
     "build_provider",
+    "item_seed",
     "pricing_for",
 ]
