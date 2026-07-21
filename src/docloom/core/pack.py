@@ -14,10 +14,17 @@ second pack needs something, hoist it then — not before.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from docloom.core.locale.labels import LabelRegistry
 from docloom.core.record import GoldenRecord
+
+if TYPE_CHECKING:
+    # Forward-referenced to avoid a package import cycle: core.pipeline imports
+    # core.pack (the renderers), so core.pack must not import core.pipeline at
+    # module load. The annotation is a string; the real type is only needed for
+    # checking.
+    from docloom.core.pipeline.source import DocumentSource
 
 
 @runtime_checkable
@@ -59,4 +66,13 @@ class DocumentPack(Protocol):
 
     def archetype_for(self, record: GoldenRecord) -> str:
         """Template name (without extension) to render this record with."""
+        ...
+
+    def default_source(self) -> DocumentSource:
+        """The pack's key-free document source for a run.
+
+        For invoices this is the sampler over the procedural seed catalogue — so
+        a run needs no API keys. A pack that has a richer, generated content
+        source returns it here once it exists; the run loop doesn't change.
+        """
         ...

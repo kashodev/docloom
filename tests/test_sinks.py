@@ -96,6 +96,15 @@ def test_factory_defaults_to_parquet(tmp_path: Path) -> None:
     assert isinstance(open_sink(str(tmp_path)), ParquetSink)
 
 
+def test_factory_bare_db_path_is_duckdb(tmp_path: Path) -> None:
+    """`--sink out/golden.db` resolves to DuckDB relatively; a Parquet dir
+    otherwise."""
+    from docloom.core.sinks.duckdb_sink import DuckDBSink
+
+    assert isinstance(open_sink(str(tmp_path / "golden.db")), DuckDBSink)
+    assert isinstance(open_sink(str(tmp_path / "golden")), ParquetSink)
+
+
 def test_factory_bigquery_needs_gcp_extra() -> None:
     # A GCS staging location is required; reaching it (or the BQ client) needs
     # the GCP extra, so the actionable message fires either way.

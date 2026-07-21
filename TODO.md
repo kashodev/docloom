@@ -68,5 +68,4 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
 - [ ] Remaining invoice archetypes (~13) from the source corpus.
 - [ ] Catalogue runner (drives the provider mix over ~70k items under budget;
       Anthropic Batch API for the offline Haiku slice) + logo generation.
-- [ ] Export mode (JSONL shards → GoldenSink) + `docloom generate|export` CLI.
 - [ ] Scan-degradation + handwriting variants (post-process rendered PDFs).

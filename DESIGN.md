@@ -414,7 +414,8 @@ docloom/
       state/                     ✅ StateStore: sqlite · firestore (atomic claim)
       sinks/                     ✅ GoldenSink: parquet · duckdb · bigquery + arrow
       providers/                 ✅ TextProvider mix: deepseek/qwen · anthropic · ollama
-      pipeline/                  ✅ plan → claim → generate → render → persist → shard
+      pipeline/                  ✅ plan → claim → generate → render → persist → shard → export
+      cli.py                     ✅ docloom generate | export | status | pause | cancel
       cli.py                     ⏳ docloom generate | export
     packs/
       invoice/                   ✅ the reference pack
@@ -573,9 +574,18 @@ varied, deterministic invoices — different business types, locales, currencies
 line counts, billing models — and the PDF renderer turns them into real
 paginated documents.
 
+**Export + CLI close the round trip.** `export_run` reads a run's golden
+shards, discovers the tables from the shard layout (no pack needed), and lands
+them in a `GoldenSink` — the golden codec restoring exact Decimals so Parquet
+`decimal128` is rebuilt from real Decimals. A test runs the actual evaluation
+JOIN through the whole path (generate → JSONL → Parquet → SQL) and catches a
+one-cent error. The `docloom` CLI wires it end to end — `generate`, `export`,
+`status`, `pause`, `cancel` — local-first by default (`file://` + `sqlite://` +
+Parquet/DuckDB, no keys), scaling by pointing the URIs at cloud.
+
 Still pending: the rich LLM catalogue (the catalogue runner, keys + budget),
-the remaining ~13 archetypes, export mode + CLI, and the `(cont'd)`
-page-continuation marker (deferred — see TODO.md).
+the remaining ~13 archetypes, scan-degradation/handwriting variants, and the
+`(cont'd)` marker (deferred — see TODO.md).
 
 ---
 

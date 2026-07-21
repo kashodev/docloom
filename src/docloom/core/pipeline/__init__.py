@@ -8,6 +8,7 @@ the :class:`DocumentRenderer` (record → bytes). Storage, state, and the golden
 codec are the kernel's.
 """
 
+from docloom.core.pipeline.export import ExportStats, export_run
 from docloom.core.pipeline.golden import decode_shard, encode_shard
 from docloom.core.pipeline.pdf import PdfRenderer
 from docloom.core.pipeline.planner import plan_units
@@ -19,6 +20,7 @@ from docloom.core.pipeline.worker import GenerationWorker, WorkerStats
 __all__ = [
     "DocumentRenderer",
     "DocumentSource",
+    "ExportStats",
     "GenerationWorker",
     "HtmlRenderer",
     "PdfRenderer",
@@ -27,6 +29,7 @@ __all__ = [
     "create_run",
     "decode_shard",
     "encode_shard",
+    "export_run",
     "plan_units",
     "resume_run",
     "stable_seed",

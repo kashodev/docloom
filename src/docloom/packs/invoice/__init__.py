@@ -87,6 +87,10 @@ class InvoicePack:
         assert isinstance(record, GoldenInvoice)
         return record.render_profile.archetype
 
+    def default_source(self) -> InvoiceSampler:
+        """The sampler over the procedural seed catalogue — no API keys."""
+        return InvoiceSampler()
+
 
 __all__ = [
     "LABEL_REGISTRY",

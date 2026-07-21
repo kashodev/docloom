@@ -28,7 +28,15 @@ def open_sink(uri: str) -> GoldenSink:
     scheme = parsed.scheme or "parquet"
 
     if scheme == "parquet":
-        return ParquetSink(parsed.path if parsed.scheme else uri)
+        path = parsed.path if parsed.scheme else uri
+        # A bare relative path ending in .db/.duckdb is a DuckDB database, not a
+        # Parquet directory — so `--sink out/golden.db` works relatively, where
+        # `duckdb:///out/...` would resolve to an absolute /out.
+        if not parsed.scheme and path.rsplit(".", 1)[-1] in ("db", "duckdb"):
+            from docloom.core.sinks.duckdb_sink import DuckDBSink
+
+            return DuckDBSink(path)
+        return ParquetSink(path)
 
     if scheme == "duckdb":
         from docloom.core.sinks.duckdb_sink import DuckDBSink
