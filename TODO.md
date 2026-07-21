@@ -116,4 +116,14 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       procedural `logos.py` marks. Still open: wiring a concrete catalogue-content
       pack step onto this runner (the LLM-backed source in the content-strategy
       item above).
-- [ ] Scan-degradation + handwriting variants (post-process rendered PDFs).
+- [x] Scan-degradation + handwriting variants (post-process rendered PDFs).
+      `core/pipeline/degrade.py` realises a `DocumentCondition`: rasterise the
+      clean PDF (pypdfium2, self-contained), degrade each page (skew, blur,
+      gaussian noise, dust speckle, JPEG artefacts, desaturation for heavy scan;
+      procedural ink — signature + PAID stamp — for handwritten), and re-wrap as
+      an image-only PDF with no text layer, so OCR must read pixels. Deterministic
+      per seed. Verified with samples (clean / light-scan / heavy-scan /
+      handwritten). Remaining: wire it into the run pipeline (assign a condition
+      distribution in the sampler + a generic per-record hook to invoke it, à la
+      `header_fields`) so runs emit degraded artefacts; and render-time
+      handwriting *fonts* for true handwritten text (vs. the overlay here).

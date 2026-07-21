@@ -30,6 +30,7 @@ dependencies = [
     "Jinja2>=3.1",
     "playwright>=1.48",          # headless Chromium for PDF rendering
     "pikepdf>=9.0",              # re-wrap rasterised pages as PDF
+    "pypdfium2>=4.30",           # rasterise a rendered PDF to page images (self-contained)
     "Pillow>=11.0",              # scan-degradation post-processing
     "numpy>=2.1",                # noise/texture generation
     "httpx>=0.27",               # provider HTTP clients (OpenAI-compatible)
