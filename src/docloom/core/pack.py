@@ -69,10 +69,13 @@ class DocumentPack(Protocol):
         ...
 
     def default_source(self) -> DocumentSource:
-        """The pack's key-free document source for a run.
+        """The pack's default document source for a run.
 
-        For invoices this is the sampler over the procedural seed catalogue — so
-        a run needs no API keys. A pack that has a richer, generated content
-        source returns it here once it exists; the run loop doesn't change.
+        Whether this is key-free is a *pack* property, not a kernel guarantee.
+        The invoice pack returns the sampler over its procedural seed catalogue,
+        so an invoice run needs no API keys and is local-first. A text-heavy pack
+        (contracts, whose clauses are generated natural language) returns an
+        LLM-backed source instead — a provider and a key — behind the same run
+        loop. See README § "Local-first is a property of the pack".
         """
         ...

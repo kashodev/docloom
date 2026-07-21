@@ -7,8 +7,24 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       this. `pyproject.toml` should then set `license = "MIT"` and a
       `classifiers` entry. No licence file is committed yet, so the repo is
       currently "all rights reserved" by default — add one before promoting it.
-- [ ] Review the README framing given the repo generates realistic synthetic
+- [x] Review the README framing given the repo generates realistic synthetic
       financial documents: make the testing/eval intent unmistakable up front.
+      (Intro leads with the golden-dataset-for-scoring-extraction purpose; the
+      "local-first" section was rescoped — see below.)
+
+## Content generation strategy per pack
+- [ ] **Make "local-first" a per-pack property, and give text-heavy packs a
+      first-class LLM source.** The invoice pack is procedural and key-free
+      (`SeedCatalogue`), which is what makes invoices local-first *at scale*.
+      Contracts and other prose-heavy document types cannot be: realistic
+      clauses, recitals, and defined terms are generated natural language, so an
+      LLM is effectively required. The README no longer claims the platform is
+      universally local-first (only the invoice pack + the infrastructure are).
+      Follow-through: formalise a pack content-source contract that declares
+      `procedural` vs `llm`-backed, wire the LLM path through the provider
+      abstraction (`core/providers`) + the catalogue runner's Batch slice, and
+      document per pack which mode it uses. The `default_source` docstring and
+      README § "Local-first is a property of the pack" capture the intent.
 
 ## Rendering fidelity
 - [ ] **Bundle OFL fonts for portable typography.** The pack draws from semantic

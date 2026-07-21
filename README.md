@@ -11,25 +11,47 @@ handwritten). The architecture is not invoice-shaped, though — a
 document-agnostic **kernel** does the weaving and a **pack** supplies one
 document type. Contracts and legal documents are additional packs, not forks.
 
-## Local-first
-
-The whole pipeline — generate, render, export, evaluate — runs with **no cloud
-account**:
+## Running it
 
 ```bash
 pip install docloom
 playwright install chromium      # one-time, for PDF rendering
 ```
 
-| Concern | Default | Cloud (optional) |
+The **infrastructure** is local by default and cloud-optional — the same
+interfaces carry either, dispatched by URI scheme, so the calling code does not
+change when you scale:
+
+| Concern | Default (local) | Cloud (optional) |
 |---|---|---|
 | Storage | `file://` filesystem | `gs://` · `s3://` |
 | Run state | `sqlite://` | `firestore://` |
 | Golden export | `parquet://` · `duckdb://` | `bigquery://` |
 
 Point a config at cloud URIs and install the matching extra
-(`pip install 'docloom[gcp]'`) when you want to scale — the calling code does
-not change.
+(`pip install 'docloom[gcp]'`) when you want to scale.
+
+### Local-first is a property of the *pack*, not a platform promise
+
+How a pack generates its **content** is what decides whether it can run without a
+cloud account or API key:
+
+- **Invoices are local-first.** The invoice pack draws from a procedural,
+  built-in seed catalogue and computes every figure deterministically — no LLM,
+  no keys — so it produces a full dataset of hundreds of thousands of documents
+  on a laptop. This is the pack that ships today.
+- **Text-heavy packs are not, at scale.** A contract's realistic clauses,
+  recitals, and defined terms are generated natural language; there is no
+  procedural substitute at quality, so an **LLM is effectively required**.
+  Those packs run against an LLM provider (batched for cost) — a network and a
+  key — even though the storage/state/export infrastructure around them still
+  defaults to local.
+
+So "no cloud account" is true end to end for invoices, and remains true for the
+infrastructure of any pack; it is *not* a guarantee that every future document
+type generates offline. The kernel's provider abstraction exists precisely so a
+pack can declare a procedural (local) or an LLM-backed source behind the same
+run loop.
 
 ## The golden set is exact
 
@@ -57,7 +79,7 @@ See [DESIGN.md](DESIGN.md) for the full architecture and rationale.
 
 ## Status
 
-Early. Kernel, invoice pack, localisation, rendering, and the local
-storage/state/sink layer are built and tested (115 tests). Generation
-orchestration, catalogue generation, PDF rendering, and cloud adapters are in
-progress.
+Early. Kernel, invoice pack, localisation, PDF rendering, and the local
+storage/state/sink layer are built and tested (250 tests). Generation
+orchestration runs end to end locally; catalogue generation and cloud adapters
+are in progress.
