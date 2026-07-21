@@ -1,0 +1,137 @@
+# Concurrency & sharding
+
+How docloom runs one job across many workers — on a laptop or a cloud fleet —
+without a broker, a leader, or a chance of generating the same document twice.
+This captures the *why* behind the pipeline; the per-platform *how* (which
+compute service, which URIs) lives in the deployment guide (TODO).
+
+## The unit is the only number you reason about
+
+A run of `total` documents is divided by [`plan_units`](../src/docloom/core/pipeline/planner.py)
+into contiguous **work units** of `unit_size` document indices — unit 0 is
+`[0, unit_size)`, unit 1 the next range, and so on, the last unit absorbing the
+remainder. That single boundary is deliberately three things at once:
+
+- **the concurrency claim** — a worker claims one whole unit at a time;
+- **the golden shard** — one unit produces one shard per table (`…/golden/invoices/0000.jsonl.gz`);
+- **the export read granularity** — the sink reads shard by shard.
+
+Because the three coincide, there is one knob (`unit_size`) that trades
+parallelism granularity against per-unit overhead, and no separate sharding or
+batching scheme to keep in sync.
+
+A unit carries **only its index range** — `start_index` and `count` — never any
+document content. That is what makes the whole model cheap and stateless to
+coordinate.
+
+## Units are independent and reproducible
+
+Every document is generated from a process-stable seed,
+[`stable_seed(run_id, index)`](../src/docloom/core/pipeline/source.py) — a
+SHA-256 of the run id and the document index, **not** Python's salted built-in
+`hash()`, which varies between processes and would break reproducibility across
+workers.
+
+Two consequences follow:
+
+- **Independence.** A unit needs nothing from any other unit. There is no shared
+  running counter, no cross-unit ordering, no handoff — so units can be worked in
+  any order, on any machine, at the same time.
+- **Reproducibility.** A unit is fully determined by its range. Regenerating
+  `[3000, 4000)` on a different worker, a week later, yields byte-for-byte the
+  same documents and the same golden rows. Retrying a failed unit is therefore
+  safe and exact, and a run is auditable from its id alone.
+
+## The atomic claim is the single coordination point
+
+Coordination is **pull-based**. Workers do not get assigned work; each one loops,
+[claiming the next pending unit](../src/docloom/core/pipeline/worker.py) and
+processing it until the pool is empty:
+
+```
+while (unit := state.claim_next_unit(run_id)) is not None:
+    process(unit)
+```
+
+`claim_next_unit` is atomic: it takes the lowest-index pending unit and marks it
+`running` in one indivisible step, so two workers racing on the same unit get
+different units, or one gets `None`. That is the *entire* coordination
+mechanism — there is no broker, no leader election, no work queue service.
+
+The atomicity lives in the **StateStore**, not in the compute layer:
+
+- [`SqliteStateStore`](../src/docloom/core/state/sqlite.py) serialises workers
+  with a `BEGIN IMMEDIATE` write lock + `UPDATE … RETURNING` — enough for one box
+  with many processes/threads.
+- [`FirestoreStateStore`](../src/docloom/core/state/firestore.py) serialises them
+  with a document transaction that retries on contention — enough for many cloud
+  instances against one run.
+
+Same protocol, same guarantee, different scale. **This is why the compute layer
+is swappable**: nothing about "who runs the workers" carries coordination state,
+so the workers can be laptop processes, Cloud Run Job tasks, AWS Batch array
+elements, or ECS tasks, and the correctness argument does not change. Point the
+`state://` URI at a store every worker can reach and you have a fleet.
+
+## Two levels of concurrency
+
+1. **Across instances** — many workers run the same drain loop against one shared
+   StateStore. The atomic claim keeps them from colliding. This is the primary
+   scaling axis and it is horizontal: add instances, point them at the store.
+2. **Within a unit** — a unit's documents are independent of each other too, so
+   they can render in parallel inside one worker. The loop is currently
+   sequential (HTML generation is cheap); the async PDF renderer is where
+   intra-unit parallelism pays off, and it slots into `_generate_unit` without
+   touching the persistence or accounting.
+
+The two compose: `instances × intra-unit parallelism` total concurrency.
+
+## Lifecycle: pause, resume, cancel
+
+Run state gates claiming. `claim_next_unit` returns `None` when the run is
+`PAUSED` or `CANCELLED`, so **pause/cancel need no signal to the workers** — they
+simply stop being handed units and drain to a stop. Resume flips the run back to
+`RUNNING` and requeues work:
+
+- **Failed units** — a unit that raised is marked `failed` and left *out* of the
+  claimable pool, so a draining worker moves on instead of hot-looping on it.
+  [`resume_run`](../src/docloom/core/pipeline/run.py) calls `reset_failed_units`
+  to return them to `pending` — a retry is a deliberate act.
+- **Abandoned units (crash recovery)** — a worker killed mid-unit
+  (spot/preemptible termination, OOM) leaves its unit `running` with nobody to
+  finish it. Each claim stamps a **lease** (`lease_expires_at`); once it lapses
+  the unit is reclaimable. `resume_run` reclaims on resume, and SQLite also
+  reclaims opportunistically inside the claim's own write lock, so a
+  continuously draining fleet self-heals without an explicit resume. (Firestore
+  reclaims explicitly — a per-claim scan is too costly at scale.) See
+  [`reclaim_expired_units`](../src/docloom/core/state/base.py).
+
+Because completion is idempotent and reproducible, resuming after any
+interruption re-does only what did not finish.
+
+## Large-document routing
+
+Most invoices are a handful of line items, but a few archetypes (the telecom
+itemised bill) run to hundreds or thousands of rows and dominate render cost. The
+intended refinement is to **route** those: detect the heavy documents and give
+them a smaller effective `unit_size` (fewer per unit) so one unit's wall-clock
+stays bounded and a single fat unit can't stall a shard. The seam for this is the
+planner + source; today `unit_size` is uniform and the sampler caps line counts
+via `max_line_items`. Documented here so the boundary — routing is a *planning*
+decision, not a worker or record change — is not lost. (Status: planned.)
+
+## Summary
+
+| Concern | Mechanism |
+|---|---|
+| Work division | contiguous index ranges = shard = export granularity |
+| Determinism | `stable_seed(run_id, index)`, SHA-256, process-stable |
+| Coordination | atomic `claim_next_unit`, pull-based, no broker/leader |
+| Where atomicity lives | the StateStore (SQLite lock / Firestore txn), not compute |
+| Scaling | inter-instance drain loops × intra-unit parallel render |
+| Pause / cancel | run-state gating — workers just stop being served |
+| Retry / crash recovery | failed-unit reset + expiring lease reclaim on resume |
+| Compute portability | coordination is in the store, so the runner is swappable |
+
+See also: [DESIGN.md](../DESIGN.md) for the full architecture, and the deployment
+& configuration guide (TODO) for per-platform wiring.

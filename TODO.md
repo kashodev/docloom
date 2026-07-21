@@ -68,17 +68,14 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         which adapters exist vs. still need writing.
       - Per-platform: how workers are launched/scaled, the StateStore
         reachability requirement, and the config URIs for each.
-- [ ] **Concurrency & sharding architecture doc.** Write up the model: work
-      units = contiguous index ranges = golden shard boundary = export
-      granularity; deterministic `hash(run_id, index)` seeding makes units
-      independent and reproducible; the atomic claim as the single coordination
-      point (pull-based, no broker/leader); two concurrency levels
-      (inter-instance units + intra-instance parallel rendering); pause/resume/
-      cancel via run-state gating; failed-unit reclaim on resume; the
-      large-invoice threshold routing. Explain *why* the compute layer is
-      swappable — coordination lives in the StateStore, not the platform — and
-      cross-link the deployment guide. (Captures the reasoning from the
-      concurrency Q&A so it isn't lost to chat history.)
+- [x] **Concurrency & sharding architecture doc.** Written up in
+      [docs/concurrency.md](docs/concurrency.md): units = index ranges = shard =
+      export granularity; `stable_seed(run_id, index)` determinism; the atomic
+      claim as the single (pull-based, broker-less) coordination point; the two
+      concurrency levels; pause/resume/cancel via run-state gating; failed-unit
+      reset + lease reclaim on resume; large-document routing (planned); and why
+      the compute layer is swappable (coordination lives in the StateStore).
+      Cross-links the deployment guide (still TODO).
 
 ## Backlog
 - [ ] Cloud adapters end-to-end verification against emulators
