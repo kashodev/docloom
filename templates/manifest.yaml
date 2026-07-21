@@ -212,9 +212,21 @@ archetype_coverage:
         differences are the variation matrix: 6 meta positions × 4 totals styles
         × 4 table styles × per-locale column vocabularies × typeface × accent,
         drawn per company. Thousands of appearances from one template.
+    - id: banner-header-06
+      skeleton: accent-banner header (solid colour band, reversed text, clean white body)
+      covers: >
+        the table-boxed-14 / meta-topright-07 "designed" family whose defining
+        feature is a coloured header band carrying the brand, title, metadata and
+        bill-to in reversed text — a look the white archetypes cannot express
     - id: boxed-form-01
       skeleton: framed form (bordered outer frame, labelled meta cells, bordered table)
       covers: the table-boxed / table-letterboxed "framed document" feel, as a full page
+    - id: fullbleed-05
+      skeleton: full-bleed tinted sheet (accent-tinted content box, full-width totals rows)
+      covers: >
+        the totals-fullwidth-05 / -17 colour-field family — the paper itself
+        carries the accent tint, totals print as full-width rows rather than a
+        right-hand box; dark ink on a light tint so it survives scanning
     - id: receipt-compact-01
       skeleton: compact consumer receipt (narrow, centred, minimal metadata)
       covers: receipt-minimal, receipt-rideshare, receipt-subscription

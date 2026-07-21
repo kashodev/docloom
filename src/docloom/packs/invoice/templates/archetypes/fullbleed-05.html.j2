@@ -1,0 +1,85 @@
+{# Full-bleed tinted invoice — the whole sheet carries the accent colour.
+
+   The content box is flooded with a light tint of the company accent, a large
+   title anchors the top, and the totals print as full-width rows the way the
+   totals-fullwidth-05 / -17 corpus templates do. Reproduces the corpus's
+   colour-field family — the look where the paper itself is coloured rather than
+   just a band. Text stays dark ink on the light tint so it survives scanning;
+   the accent returns at full strength on the title and rules.
+
+   Standalone: the sheet background and the full-width totals treatment are
+   archetype-wide, so it forces those regardless of the company's totals-style
+   modifier. Table and terms still come from the shared macros. #}
+{% import "_macros.j2" as m with context %}<!doctype html>
+<html lang="{{ locale.value }}">
+<head>
+<meta charset="utf-8">
+<title>{{ "invoice" | label }} {{ invoice.invoice_number }}</title>
+<style>
+{% include "_styles.css.j2" %}
+/* Full-bleed: flood the printable content box with a light accent tint. */
+body.archetype-fullbleed { background: color-mix(in srgb, var(--accent) 8%, #fff); }
+.fb { padding: 4mm 6mm; }
+.fb-head { display: flex; justify-content: space-between; align-items: flex-start;
+           gap: 8mm; margin-bottom: 7mm; }
+.fb-head .doc-title { font-size: 30pt; margin: 0; }
+.fb-sub { color: var(--ink-soft); font-variant-numeric: tabular-nums; margin-top: 1mm; }
+.fb-brand { text-align: right; }
+.fb-parties { display: flex; justify-content: space-between; gap: 8mm; margin-bottom: 6mm; }
+.fb-parties .meta dl { grid-template-columns: auto 1fr; }
+/* Rules read against the tint; give the table a stronger accent underline. */
+.archetype-fullbleed table.items th { border-bottom: 1.2pt solid var(--accent); }
+.archetype-fullbleed table.items tbody tr { border-bottom: 0.5pt solid
+           color-mix(in srgb, var(--accent) 25%, transparent); }
+/* Force the full-width totals treatment this archetype is named for. */
+.archetype-fullbleed .totals { display: block; margin-top: 6mm; }
+.archetype-fullbleed .totals table { width: 100%; }
+.archetype-fullbleed .totals th { color: var(--ink-soft); }
+.archetype-fullbleed .totals tr.grand th,
+.archetype-fullbleed .totals tr.grand td { border-top: 1.2pt solid var(--accent); }
+.fb-foot { display: flex; justify-content: space-between; align-items: flex-end;
+           gap: 8mm; margin-top: 8mm; padding-top: 4mm;
+           border-top: 0.5pt solid color-mix(in srgb, var(--accent) 35%, transparent); }
+.fb-foot .thanks { color: var(--accent); font-weight: 700; font-style: normal;
+                   font-size: 12pt; margin: 0; }
+</style>
+</head>
+<body class="{{ body_classes }} archetype-fullbleed">
+{{ m.running_header(invoice) }}
+
+<div class="fb">
+  <header class="fb-head">
+    <div>
+      <h1 class="doc-title">{{ "invoice" | label }}</h1>
+      <div class="fb-sub">
+        {{ "invoice_number" | label }} {{ invoice.invoice_number }} · {{ invoice.issue_date | date }}
+      </div>
+    </div>
+    <div class="fb-brand">
+      {{ m.logo(profile, issuer) }}
+      {{ m.party_block(issuer, none, suppress_name=profile.has_logo) }}
+    </div>
+  </header>
+
+  <div class="fb-parties">
+    {{ m.party_block(recipient, "bill_to") }}
+    {{ m.meta_block(invoice) }}
+  </div>
+
+  <table class="items">
+    {{ m.items_header(cols, show_part_number, show_reference, show_quantity, show_unit_price) }}
+    <tbody>
+      {% for line in lines %}
+      {{ m.item_row(line, cols, show_part_number, show_reference, show_quantity, show_unit_price) }}
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {{ m.totals_block(totals, tax_buckets, has_discount, has_shipping, has_deposit) }}
+
+  <footer class="fb-foot">
+    <div class="terms-wrap">{{ m.terms_block(invoice, registrations, requires_late_penalty) }}</div>
+  </footer>
+</div>
+</body>
+</html>

@@ -103,6 +103,25 @@ def test_boxed_form_archetype_is_framed() -> None:
     assert "Acme Industrial" in out            # recipient in a bordered box
 
 
+def test_banner_archetype_carries_colour_into_the_header() -> None:
+    out = render_with("banner-header-06")
+    assert 'class="banner"' in out
+    # The band is filled with the company accent and reverses text to white.
+    assert ".banner { background: var(--accent); color: #fff;" in out
+    assert "Northwind Supply" in out
+    assert "$105.00" in out
+    # The company name still appears exactly once in the visible body.
+    assert _body_only(out).count("Northwind Supply") == 1
+
+
+def test_fullbleed_archetype_tints_the_whole_sheet() -> None:
+    out = render_with("fullbleed-05")
+    assert "archetype-fullbleed" in out
+    assert "body.archetype-fullbleed { background: color-mix(" in out
+    assert "INV-2026-0042" in out
+    assert _body_only(out).count("Northwind Supply") == 1
+
+
 # ── variation matrix: modifiers, not new templates ──────────────────────────
 def test_top_row_meta_gets_the_banner_modifier() -> None:
     from docloom.packs.invoice import body_classes
@@ -112,28 +131,30 @@ def test_top_row_meta_gets_the_banner_modifier() -> None:
 
 
 # ── archetype variety across the roster & sampled invoices ──────────────────
+ALL_ARCHETYPES = {
+    "meta-sidebar-01", "banner-header-06", "boxed-form-01", "fullbleed-05",
+    "receipt-compact-01", "telecom-itemized-37",
+}
+
+
 def test_roster_spreads_across_archetypes() -> None:
     arch = Counter(c.render_profile.archetype for c in SeedCatalogue().roster().companies)
-    assert set(arch) == {
-        "meta-sidebar-01", "boxed-form-01", "receipt-compact-01", "telecom-itemized-37",
-    }
+    assert set(arch) == ALL_ARCHETYPES
     assert arch["meta-sidebar-01"] > arch["receipt-compact-01"]   # flat is the majority
 
 
 def test_all_archetypes_appear_and_render_in_sampled_invoices() -> None:
     sampler = InvoiceSampler(max_line_items=80)
     seen: set[str] = set()
-    for i in range(4000):
+    for i in range(6000):
         inv = sampler.generate("rv", i)
         a = inv.render_profile.archetype
         if a not in seen:
             assert render_record(PACK, inv).startswith("<!doctype html>")
             seen.add(a)
-        if len(seen) == 4:
+        if seen == ALL_ARCHETYPES:
             break
-    assert seen == {
-        "meta-sidebar-01", "boxed-form-01", "receipt-compact-01", "telecom-itemized-37",
-    }
+    assert seen == ALL_ARCHETYPES
 
 
 # ── telecom archetype renders its hierarchy from generated data ─────────────

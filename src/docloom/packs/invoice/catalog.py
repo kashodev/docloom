@@ -232,8 +232,14 @@ _GENERIC = (
 # skeleton, with the hierarchical telecom archetype reserved for telecom (the one
 # business type whose sampler produces grouped, sectioned line items).
 _TELECOM_ARCHETYPE = "telecom-itemized-37"
-_GENERAL_ARCHETYPES = ("meta-sidebar-01", "boxed-form-01", "receipt-compact-01")
-_GENERAL_WEIGHTS = (0.60, 0.25, 0.15)
+# Weighted toward the open flat skeleton, but with two colour-forward looks —
+# an accent header band and a full-bleed tinted sheet — that the corpus is full
+# of and the white archetypes could not express. The consumer receipt stays a
+# small share since it fits fewer business types.
+_GENERAL_ARCHETYPES = (
+    "meta-sidebar-01", "banner-header-06", "boxed-form-01", "fullbleed-05", "receipt-compact-01",
+)
+_GENERAL_WEIGHTS = (0.40, 0.20, 0.17, 0.13, 0.10)
 
 _NAME_PARTS = (
     "Northwind", "Cedar", "Ironclad", "Bluepeak", "Vantage", "Meridian", "Aurora",

@@ -1,0 +1,85 @@
+{# Accent-banner invoice — the single most common "designed" invoice look.
+
+   A solid accent band runs across the top: logo + contact, then the INVOICE
+   title with its metadata on one side and the bill-to on the other, all in
+   reversed (white) text. The body below is clean and white — borderless table,
+   right-aligned totals, an accent thank-you. Reproduces the table-boxed-14 /
+   meta-topright corpus family, whose defining feature is a coloured header
+   band; none of the other archetypes carry colour into the header, so this one
+   reads as an unmistakably different vendor's stationery.
+
+   Standalone rather than extending _base: the banner reshapes the header
+   region entirely, so it is clearer to lay the whole document out here than to
+   fight the base grid. Line-item table, totals and terms still come from the
+   shared macros, so the table-style / totals-style modifiers keep working. #}
+{% import "_macros.j2" as m with context %}<!doctype html>
+<html lang="{{ locale.value }}">
+<head>
+<meta charset="utf-8">
+<title>{{ "invoice" | label }} {{ invoice.invoice_number }}</title>
+<style>
+{% include "_styles.css.j2" %}
+/* Banner-header: a full-width accent band, reversed text, clean white body. */
+.banner { background: var(--accent); color: #fff; padding: 7mm 8mm;
+          margin: 0 0 7mm; }
+.banner-top { display: flex; justify-content: space-between; align-items: flex-start;
+              gap: 8mm; padding-bottom: 5mm;
+              border-bottom: 0.5pt solid rgba(255, 255, 255, 0.35); }
+.banner-top .party { font-size: 8.5pt; line-height: 1.35; text-align: right; }
+.banner-main { display: flex; justify-content: space-between; align-items: flex-end;
+               gap: 8mm; padding-top: 5mm; }
+.banner-main .party { font-size: 8.5pt; line-height: 1.35; }
+/* Reverse every inherited colour inside the band. */
+.banner .doc-title { color: #fff; margin: 0 0 2mm; }
+.banner .logo-wordmark { color: #fff; }
+.banner .party-name { color: #fff; }
+.banner .muted, .banner .small { color: rgba(255, 255, 255, 0.82); }
+.banner .meta dl { display: grid; grid-template-columns: auto auto; gap: 0.5mm 4mm; }
+.banner .meta dt { color: rgba(255, 255, 255, 0.75); }
+.banner .meta dd { color: #fff; }
+.archetype-banner .doc-body { padding: 0 2mm; }
+.archetype-banner .thanks { color: var(--accent); font-weight: 700; font-style: normal; }
+</style>
+</head>
+<body class="{{ body_classes }} archetype-banner">
+{{ m.running_header(invoice) }}
+
+<div class="banner">
+  <div class="banner-top">
+    <div class="brand">
+      {{ m.logo(profile, issuer) }}
+      {# Contact shows the name only when there is no logo wordmark carrying it. #}
+      {{ m.party_block(issuer, none, suppress_name=profile.has_logo) }}
+    </div>
+    <div class="banner-contact">
+      {% if issuer.phone %}<div>{{ issuer.phone }}</div>{% endif %}
+      {% if issuer.email %}<div>{{ issuer.email }}</div>{% endif %}
+      {% if issuer.website %}<div>{{ issuer.website }}</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="banner-main">
+    <div>
+      <h1 class="doc-title">{{ "invoice" | label }}</h1>
+      {{ m.meta_block(invoice) }}
+    </div>
+    {{ m.party_block(recipient, "bill_to") }}
+  </div>
+</div>
+
+<main class="doc-body">
+  <table class="items">
+    {{ m.items_header(cols, show_part_number, show_reference, show_quantity, show_unit_price) }}
+    <tbody>
+      {% for line in lines %}
+      {{ m.item_row(line, cols, show_part_number, show_reference, show_quantity, show_unit_price) }}
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {{ m.totals_block(totals, tax_buckets, has_discount, has_shipping, has_deposit) }}
+
+  {{ m.terms_block(invoice, registrations, requires_late_penalty) }}
+</main>
+</body>
+</html>
