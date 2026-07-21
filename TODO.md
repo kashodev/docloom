@@ -6,6 +6,12 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
 - [x] **Add a `LICENSE` file.** MIT `LICENSE` added and declared via PEP 639
       (`license = "MIT"`, `license-files = ["LICENSE"]`) with authors, readme,
       keywords, and trove classifiers.
+- [ ] **Change the copyright holder in the MIT `LICENSE`** from `kashodev` to
+      `Adam Okasha`. (Also update `authors` in `pyproject.toml` if the real name
+      should appear there too.)
+- [ ] **Add the project logo to the README.** A logo lives at
+      `docloom-logo-page-slate.svg` in the repo root — put it at the top of
+      `README.md`.
 - [x] Review the README framing given the repo generates realistic synthetic
       financial documents: make the testing/eval intent unmistakable up front.
       (Intro leads with the golden-dataset-for-scoring-extraction purpose; the
@@ -75,6 +81,28 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       reset + lease reclaim on resume; large-document routing (planned); and why
       the compute layer is swappable (coordination lives in the StateStore).
       Cross-links the deployment guide (still TODO).
+
+## Docs & landing site (large, do last)
+- [ ] **Separately deployable landing page + developer-docs app, in this repo,
+      backed by mkdocs-material.** One site that houses *all* the documentation:
+      a marketing/landing front page plus the full developer docs (getting
+      started, architecture, the pack contract, the concurrency model, the
+      deployment guide, API/reference). Requirements to work out when actioned:
+      - **In-repo, independently deployable.** Its own subdirectory (e.g.
+        `docs-site/`) with its own `mkdocs.yml`, build, and deploy pipeline —
+        buildable and shippable without publishing the Python package, and vice
+        versa.
+      - **mkdocs-material** as the framework (nav, search, theming, versioning
+        via `mike` if we want per-release docs).
+      - **Single source of truth.** Fold the existing Markdown docs
+        (`README.md`, `DESIGN.md`, `docs/concurrency.md`, the deployment guide
+        once written) into the site rather than duplicating them; keep authoring
+        in Markdown so they stay diffable.
+      - **Landing page** distinct from the docs tree (custom `index.html` /
+        overrides or a Material "splash" home) — the project pitch, not a doc.
+      - Decide hosting/deploy (GitHub Pages via `gh-deploy`, or a static host)
+        and wire CI so docs deploy on merge. Do this **last** — it depends on the
+        deployment guide and the rest of the docs being settled.
 
 ## Backlog
 - [x] Cloud adapters end-to-end verification against emulators. GCS
