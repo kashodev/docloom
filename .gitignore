@@ -5,6 +5,12 @@
 *-service-account*.json
 gcp-credentials*.json
 
+# ─── Design scratch (never committed) ───────────────────────────────────────
+# Feature-exploration write-ups: thinking-in-progress, superseded as soon as the
+# decision lands in DESIGN.md / docs/. Keeping them out of git stops stale
+# analysis being mistaken for the current design.
+feature_explorations/
+
 # ─── Reference material (never committed) ───────────────────────────────────
 # Third-party images used only as visual reference while building the
 # procedural equivalents. Not ours to redistribute, and not needed to build.
