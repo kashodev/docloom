@@ -262,6 +262,23 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       resolve from their semantic fallback stack; add more the same way (drop
       woff2 into `fonts/files/`, extend `BUNDLED`, note it in `OFL.txt`).
 
+- [ ] **The test suite never exercises the installed wheel.** Everything runs
+      from a source checkout (`PYTHONPATH=src`), where no entry points are
+      declared. That hid a bug which broke *every* installed copy of docloom:
+      the invoice pack is registered both on import and through its
+      `docloom.packs` entry point, and `register_pack` compared by identity, so
+      `available_packs()` raised `ValueError` before returning anything. 556
+      passing tests said nothing; the Docker build's one-line smoke check caught
+      it.
+      - The registry is fixed (same pack class registered twice is idempotent;
+        two *different* classes on one name still raise), but the blind spot is
+        not: any packaging, entry-point or data-file problem is still invisible
+        until something installs the wheel.
+      - Shape: a CI job that `pip install dist/*.whl` into a clean venv and runs
+        a handful of smoke assertions — `available_packs()`, `get_pack`, fonts
+        and templates resolving from package data, `docloom --help`. Cheap, and
+        it covers the whole class rather than this one instance.
+
 ## Concurrency & multi-cloud portability
 - [x] **Concurrent cold start races the run plan.** Every worker checked
       `get_run(run_id) is None` and created the run if so. When N tasks start

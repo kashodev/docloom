@@ -40,6 +40,49 @@ def test_registering_the_same_pack_twice_is_idempotent() -> None:
     assert get_pack("invoice") is PACK
 
 
+def test_a_second_instance_of_the_same_pack_is_not_a_conflict() -> None:
+    """The bug that broke every installed copy of docloom.
+
+    A built-in pack is registered on import by `docloom.packs` *and* declared as
+    a `docloom.packs` entry point, so an installed wheel registers it twice from
+    two code paths that know nothing about each other. Comparing by identity
+    made that a fatal `ValueError`, so `available_packs()` raised before
+    returning anything.
+
+    Invisible locally: the suite and local development both run from a source
+    checkout, where no entry points are declared and the second registration
+    never happens. It only surfaced when the Docker image ran
+    `docloom.available_packs()` against the installed wheel.
+    """
+    try:
+        register_pack(InvoicePack())            # a *different* instance
+        assert "invoice" in available_packs()
+    finally:
+        register_pack(PACK)
+
+
+def test_the_entry_point_path_does_not_collide_with_the_builtin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reproduces the installed-wheel path directly: force entry-point loading
+    with the built-in pack already registered, exactly as `pip install docloom`
+    arranges it."""
+    from docloom.core import registry
+
+    class FakeEntryPoint:
+        name = "invoice"
+
+        def load(self):  # noqa: ANN202
+            return InvoicePack
+
+    monkeypatch.setattr(registry, "_ENTRY_POINTS_LOADED", False)
+    monkeypatch.setattr(registry, "entry_points", lambda group: [FakeEntryPoint()])
+    try:
+        assert "invoice" in registry.available_packs()
+    finally:
+        register_pack(PACK)
+
+
 def test_registering_a_different_pack_under_a_taken_name_raises() -> None:
     """Silent shadowing would make a mis-installed plugin very hard to diagnose."""
 
