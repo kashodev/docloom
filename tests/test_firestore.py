@@ -6,6 +6,11 @@ atomic claim itself is a Firestore transaction guarantee — a dict fake cannot
 prove distributed-transaction correctness, so it is not asserted here. An
 emulator-gated integration test (skipped unless ``FIRESTORE_EMULATOR_HOST`` is
 set) covers the real claim.
+
+The batch-limit tests sit in between: a fake client rejects any commit over 500
+writes, the way Firestore itself does. That proves *our* chunking, not
+Firestore's limit — the limit is documented, and asserting it against a fake
+would prove nothing.
 """
 
 from __future__ import annotations
@@ -20,6 +25,8 @@ from docloom.core.state.base import Run, WorkUnit
 from decimal import Decimal as D
 
 from docloom.core.state.firestore import (
+    _BATCH_LIMIT,
+    _chunks,
     _doc_id,
     doc_lease_is_expired,
     doc_to_spend,
@@ -214,3 +221,167 @@ def test_add_spend_accumulates_atomically_against_the_emulator() -> None:  # pra
     by_model = {r.model: r for r in store.spend(run_id)}
     assert by_model["claude-haiku-4-5"].calls == 30
     assert by_model["*"].cost_usd == D("0.000012")
+
+
+# ── Planning: batch chunking and the claim gate ─────────────────────────────
+def test_writes_are_chunked_to_firestores_batch_limit() -> None:
+    """A WriteBatch is capped at 500 operations. Planning a run of 1,000 units in
+    one batch is rejected outright, which broke exactly the production-scale runs
+    this store exists for."""
+    assert _BATCH_LIMIT == 500
+    sizes = [len(c) for c in _chunks(list(range(1000)))]
+    assert sizes == [500, 500]
+    assert [len(c) for c in _chunks(list(range(1001)))] == [500, 500, 1]
+
+
+def test_chunking_preserves_order_and_loses_nothing() -> None:
+    items = list(range(1234))
+    assert [i for chunk in _chunks(items) for i in chunk] == items
+
+
+def test_chunking_a_small_plan_is_a_single_batch() -> None:
+    assert _chunks(list(range(7))) == [list(range(7))]
+    assert _chunks([]) == []
+
+
+def test_a_half_written_plan_yields_no_claims() -> None:
+    """The window Firestore cannot avoid: the run marker exists but its units are
+    still being written. Claiming then would look like an empty run."""
+    assert run_is_claimable(a_run(state=RunState.RUNNING, planned=False)) is False
+    assert run_is_claimable(a_run(state=RunState.RUNNING, planned=True)) is True
+
+
+def test_a_document_written_before_the_flag_reads_as_planned() -> None:
+    """Absent means planned: the old path only made a run visible once its units
+    were committed, so defaulting the other way would strand every existing run."""
+    doc = run_to_doc(a_run())
+    assert "planned" not in doc
+    assert doc_to_run("run_1", doc).planned is True
+
+
+@requires_emulator
+def test_only_one_planner_wins_against_emulator() -> None:  # pragma: no cover - emulator only
+    store = _emu_store()
+    import uuid
+    run_id = f"emu_{uuid.uuid4().hex[:10]}"
+    run = a_run(run_id=run_id, total_units=2)
+    units = [WorkUnit(run_id=run_id, unit_index=i, start_index=i * 1000, count=1000)
+             for i in range(2)]
+    assert store.create_run(run, units) is True
+    assert store.create_run(run, units) is False
+
+
+@requires_emulator
+def test_a_late_planner_cannot_reset_a_claimed_unit_against_emulator() -> None:  # pragma: no cover
+    store = _emu_store()
+    run_id = _emu_run(store, 2)
+    claimed = store.claim_next_unit(run_id)
+    assert claimed is not None
+
+    run = a_run(run_id=run_id, total_units=2)
+    units = [WorkUnit(run_id=run_id, unit_index=i, start_index=i * 1000, count=1000)
+             for i in range(2)]
+    assert store.create_run(run, units) is False
+
+    still = {u.unit_index: u for u in store.units(run_id)}[claimed.unit_index]
+    assert still.state is WorkUnitState.RUNNING
+
+
+@requires_emulator
+def test_a_plan_larger_than_one_batch_lands_whole_against_emulator() -> None:  # pragma: no cover
+    """The regression test for the batch limit: 600 units is over the 500 cap."""
+    store = _emu_store()
+    run_id = _emu_run(store, 600)
+    assert len(list(store.units(run_id))) == 600
+    assert store.get_run(run_id).planned is True   # type: ignore[union-attr]
+
+
+# ── Planning at production scale (fake client, no SDK) ──────────────────────
+class _FakeBatch:
+    """A WriteBatch that rejects an oversized commit the way Firestore does:
+    'Transaction or batch is too large. Maximum 500 writes allowed per request'."""
+
+    def __init__(self, client: "_FakeClient") -> None:
+        self._client, self._ops = client, []
+
+    def set(self, ref: "_FakeDoc", doc: dict) -> None:
+        self._ops.append((ref.path, doc))
+
+    update = set
+
+    def commit(self) -> None:
+        if len(self._ops) > 500:
+            raise ValueError(
+                f"Transaction or batch is too large ({len(self._ops)} writes). "
+                "Maximum 500 writes allowed per request."
+            )
+        self._client.commits.append(len(self._ops))
+        self._client.docs.update(dict(self._ops))
+
+
+class _FakeDoc:
+    def __init__(self, path: str) -> None:
+        self.path = path
+
+    def collection(self, name: str) -> "_FakeCol":
+        return _FakeCol(f"{self.path}/{name}")
+
+
+class _FakeCol:
+    def __init__(self, path: str) -> None:
+        self.path = path
+
+    def document(self, doc_id: str) -> _FakeDoc:
+        return _FakeDoc(f"{self.path}/{doc_id}")
+
+
+class _FakeClient:
+    def __init__(self) -> None:
+        self.commits: list[int] = []
+        self.docs: dict[str, dict] = {}
+
+    def collection(self, name: str) -> _FakeCol:
+        return _FakeCol(name)
+
+    def batch(self) -> _FakeBatch:
+        return _FakeBatch(self)
+
+
+def _fake_store():  # noqa: ANN202
+    from docloom.core.state.firestore import FirestoreStateStore
+
+    client = _FakeClient()
+    return FirestoreStateStore(project="p", client=client), client
+
+
+def test_planning_a_thousand_units_does_not_blow_the_batch_limit() -> None:
+    """The regression: run and units went into one unchunked WriteBatch, so any
+    run over 499 units failed to plan at all — exactly the production scale this
+    store exists for. 1,000 units must land as three legal commits."""
+    store, client = _fake_store()
+    units = [WorkUnit(run_id="r", unit_index=i, start_index=i * 100, count=100)
+             for i in range(1000)]
+
+    store._write_units("r", units)                     # would raise before the fix
+
+    assert client.commits == [500, 500]
+    assert len(client.docs) == 1000
+    assert client.docs["runs/r/work_units/999"]["start_index"] == 99_900
+
+
+def test_every_unit_is_written_exactly_once_across_chunks() -> None:
+    store, client = _fake_store()
+    units = [WorkUnit(run_id="r", unit_index=i, start_index=i * 100, count=100)
+             for i in range(1234)]
+    store._write_units("r", units)
+    assert sum(client.commits) == 1234
+    assert len(client.docs) == 1234                    # no path written twice
+    assert {d["unit_index"] for d in client.docs.values()} == set(range(1234))
+
+
+def test_a_plan_under_the_limit_is_still_a_single_commit() -> None:
+    """Chunking must not cost small runs an extra round trip."""
+    store, client = _fake_store()
+    store._write_units("r", [WorkUnit(run_id="r", unit_index=i, start_index=i, count=1)
+                             for i in range(10)])
+    assert client.commits == [10]

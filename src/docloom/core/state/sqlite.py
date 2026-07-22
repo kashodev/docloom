@@ -46,7 +46,10 @@ CREATE TABLE IF NOT EXISTS runs (
     state        TEXT NOT NULL,
     created_at   TEXT NOT NULL,
     updated_at   TEXT NOT NULL,
-    metadata     TEXT NOT NULL DEFAULT '{}'
+    metadata     TEXT NOT NULL DEFAULT '{}',
+    -- Legacy rows default to planned: the old create path only ever wrote a
+    -- run whose units were already committed in the same transaction.
+    planned      INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS work_units (
     run_id           TEXT NOT NULL REFERENCES runs(run_id),
@@ -108,18 +111,28 @@ class SqliteStateStore:
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(work_units)")}
         if "lease_expires_at" not in cols:
             self._conn.execute("ALTER TABLE work_units ADD COLUMN lease_expires_at TEXT")
+        run_cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(runs)")}
+        if "planned" not in run_cols:
+            self._conn.execute("ALTER TABLE runs ADD COLUMN planned INTEGER NOT NULL DEFAULT 1")
 
     # ── Runs ────────────────────────────────────────────────────────────────
-    def create_run(self, run: Run, units: list[WorkUnit]) -> None:
-        with self._conn:  # single transaction: run + all its units, or nothing
+    def create_run(self, run: Run, units: list[WorkUnit]) -> bool:
+        """One transaction, so the plan is whole or absent. `BEGIN IMMEDIATE`
+        takes the write lock before the insert, and `ON CONFLICT DO NOTHING`
+        makes the loser a no-op rather than an `IntegrityError` — which is what a
+        second concurrent process used to get, dying with a traceback."""
+        with self._conn:
             self._conn.execute("BEGIN IMMEDIATE")
-            self._conn.execute(
+            cur = self._conn.execute(
                 "INSERT INTO runs (run_id, pack, config_id, total_units, state, "
-                "created_at, updated_at, metadata) VALUES (?,?,?,?,?,?,?,?)",
+                "created_at, updated_at, metadata, planned) VALUES (?,?,?,?,?,?,?,?,1) "
+                "ON CONFLICT(run_id) DO NOTHING",
                 (run.run_id, run.pack, run.config_id, run.total_units, run.state.value,
                  run.created_at.isoformat(), run.updated_at.isoformat(),
                  json.dumps(run.metadata)),
             )
+            if cur.rowcount == 0:
+                return False   # another process planned it; leave its units alone
             self._conn.executemany(
                 "INSERT INTO work_units (run_id, unit_index, start_index, count, "
                 "state, attempts, error, updated_at, lease_expires_at) "
@@ -129,6 +142,9 @@ class SqliteStateStore:
                   u.lease_expires_at.isoformat() if u.lease_expires_at else None)
                  for u in units],
             )
+        # Units land inside the same transaction as the marker, so SQLite never
+        # exposes an unplanned run and needs no takeover path.
+        return True
 
     def get_run(self, run_id: str) -> Run | None:
         row = self._conn.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
@@ -143,7 +159,10 @@ class SqliteStateStore:
     # ── Work units ──────────────────────────────────────────────────────────
     def claim_next_unit(self, run_id: str) -> WorkUnit | None:
         run = self.get_run(run_id)
-        if run is None or run.state in (RunState.PAUSED, RunState.CANCELLED):
+        # `planned` is always true here — SQLite writes the marker and its units
+        # in one transaction — but the check keeps every backend's claim guard
+        # reading identically.
+        if run is None or not run.planned or run.state in (RunState.PAUSED, RunState.CANCELLED):
             return None
 
         with self._conn:
@@ -303,6 +322,7 @@ class SqliteStateStore:
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
             metadata=json.loads(row["metadata"]),
+            planned=bool(row["planned"]) if "planned" in row.keys() else True,
         )
 
     @staticmethod

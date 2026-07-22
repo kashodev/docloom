@@ -13,12 +13,14 @@ Layout is single-table. Partition key ``pk`` is the run id; sort key ``sk`` is
 plain ascending Query returns units in index order, which is what makes
 "lowest-index pending unit" a cheap forward scan.
 
-**On create_run atomicity.** DynamoDB cannot transact more than 100 items, and a
-run routinely has more units than that, so the plan is written units-first and
-the run marker last. A crash midway leaves orphan unit items but no run, so
-``get_run`` returns ``None`` — the run simply does not exist yet and re-creating
-it overwrites cleanly. That is the same practical guarantee (never a
-half-created *discoverable* run) without a transaction.
+**On create_run atomicity.** DynamoDB cannot transact more than 100 items and a
+run routinely has more units than that, so the plan cannot be one transaction.
+Instead the run marker is written **first** with a conditional put
+(``attribute_not_exists(pk)``), which serialises planners: exactly one of N
+simultaneously-starting workers wins and writes the units. The marker carries
+``planned=False`` until they land, so a half-written plan is distinguishable from
+a finished one rather than reading as "nothing left to do"; a planner that dies
+mid-plan is taken over once its marker goes stale.
 
 Like Firestore, the claim does **not** scan for expired leases — that cost is
 paid explicitly by :meth:`reclaim_expired_units`, which resume calls and a
@@ -40,6 +42,7 @@ from typing import Any
 from docloom.core.enums import RunState, WorkUnitState
 from docloom.core.state.base import (
     DEFAULT_LEASE_SECONDS,
+    PLANNING_TAKEOVER_SECONDS,
     TOTAL_MODEL,
     Run,
     Spend,
@@ -95,6 +98,7 @@ def run_to_item(run: Run) -> dict[str, Any]:
         "created_at": run.created_at.isoformat(),
         "updated_at": run.updated_at.isoformat(),
         "metadata": run.metadata,
+        "planned": run.planned,
     }
 
 
@@ -108,6 +112,9 @@ def item_to_run(item: dict[str, Any]) -> Run:
         created_at=datetime.fromisoformat(item["created_at"]),
         updated_at=datetime.fromisoformat(item["updated_at"]),
         metadata=dict(item.get("metadata") or {}),
+        # Absent on items written before the flag existed; those runs were always
+        # fully planned before they became visible.
+        planned=bool(item.get("planned", True)),
     )
 
 
@@ -187,13 +194,55 @@ class DynamoDbStateStore:
         self._table = resource.Table(table)
 
     # ── Runs ────────────────────────────────────────────────────────────────
-    def create_run(self, run: Run, units: list[WorkUnit]) -> None:
-        # Units first, run marker last: a crash midway leaves no discoverable
-        # run (see the module docstring on atomicity).
+    def create_run(self, run: Run, units: list[WorkUnit]) -> bool:
+        """Claim the run id with a conditional put, then write the units.
+
+        ``attribute_not_exists(pk)`` makes exactly one of N simultaneously
+        starting workers the planner; the losers get ``False`` rather than
+        silently overwriting units the winner has already handed out.
+
+        This inverts the previous units-first ordering. That ordering existed so
+        a crash never left a *discoverable* run — but it cannot serialise
+        planners, which is the more damaging failure. The marker now goes first
+        carrying ``planned=False``, so a half-written plan is discoverable *and*
+        distinguishable, and a planner that dies is taken over rather than
+        leaving a run that reads as finished.
+        """
+        marker = _clean(run_to_item(run)) | {"planned": False, "planning_started_at": _now()}
+        try:
+            self._table.put_item(
+                Item=marker, ConditionExpression="attribute_not_exists(pk)"
+            )
+        except Exception as exc:  # noqa: BLE001 - botocore's typed error needs the client
+            if type(exc).__name__ != "ConditionalCheckFailedException":
+                raise
+            if not self._should_take_over(run.run_id):
+                return False
+            # The previous planner died mid-plan. Unit writes are keyed by index
+            # and byte-identical, so finishing its work is safe.
+        # batch_writer chunks at DynamoDB's 25-item limit for us.
         with self._table.batch_writer() as batch:
             for unit in units:
                 batch.put_item(Item=_clean(unit_to_item(unit)))
-        self._table.put_item(Item=_clean(run_to_item(run)))
+        self._table.update_item(
+            Key={"pk": run.run_id, "sk": _RUN_SK},
+            UpdateExpression="SET planned = :t, updated_at = :u",
+            ExpressionAttributeValues={":t": True, ":u": _now()},
+        )
+        return True
+
+    def _should_take_over(self, run_id: str) -> bool:
+        """True when an unplanned marker has sat long enough to be abandoned."""
+        item = self._table.get_item(Key={"pk": run_id, "sk": _RUN_SK}).get("Item")
+        if item is None:
+            return True                      # vanished between put and read
+        if item.get("planned", True):
+            return False                     # someone finished the plan
+        started = item.get("planning_started_at")
+        if not started:
+            return True
+        age = (datetime.now(UTC) - datetime.fromisoformat(str(started))).total_seconds()
+        return age >= PLANNING_TAKEOVER_SECONDS
 
     def get_run(self, run_id: str) -> Run | None:
         item = self._table.get_item(Key={"pk": run_id, "sk": _RUN_SK}).get("Item")
@@ -210,7 +259,9 @@ class DynamoDbStateStore:
     # ── Work units ──────────────────────────────────────────────────────────
     def claim_next_unit(self, run_id: str) -> WorkUnit | None:
         run = self.get_run(run_id)
-        if run is None or run.state in (RunState.PAUSED, RunState.CANCELLED):
+        # `planned` matters as much as the state: a run whose units are still
+        # being written has nothing to claim *yet*, not nothing to claim ever.
+        if run is None or not run.planned or run.state in (RunState.PAUSED, RunState.CANCELLED):
             return None
         lease = (datetime.now(UTC) + timedelta(seconds=self._lease_seconds)).isoformat()
         # Walk pending candidates in index order; the conditional update is what

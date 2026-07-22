@@ -366,6 +366,18 @@ runs/test-25k/golden/line_items/unit-000000.jsonl.gz
 Every run gets its own prefix, and documents are bucketed per unit — 50 folders
 of 500 rather than one directory of 25,000.
 
+### All four tasks starting at once is fine
+
+Cloud Run starts every task simultaneously and each one calls `create_run`.
+Creation is a conditional write in Firestore, so exactly one task plans the run
+and the rest wait for that plan to land before claiming — no worker-ordinal
+gating, no plan-then-scale-out dance. See
+[concurrency.md](concurrency.md#planning-a-run-from-many-workers-at-once).
+
+If you would rather plan a large run and look at it before committing compute,
+`docloom plan` creates the plan and exits — distinct from `./deploy.sh plan`,
+which dry-runs the *infrastructure* config.
+
 ### If something fails
 
 A failed unit is left out of the claimable pool so a task moves on rather than
@@ -440,27 +452,6 @@ Delete the output when you are done with it:
 ---
 
 ## Known sharp edges
-
-**Concurrent cold start races the run plan.** All four tasks start at once, and
-each checks "does this run exist?" before creating it. Two can both see "no" and
-both plan the run, the second resetting units the first had already claimed.
-
-*Effect is bounded:* generation is deterministic and every write is an
-idempotent overwrite, so the worst case is **duplicated work, not corrupted
-output** — the same documents at the same keys. For a 25k test run it is
-noise.
-
-*Avoid it entirely* by planning the run before scaling out:
-
-```bash
-./deploy.sh -c run.yaml --set job.tasks=1 --set job.parallelism=1 deploy
-./deploy.sh -c run.yaml run          # let it plan the run, then cancel the execution
-./deploy.sh -c run.yaml deploy       # back to the configured task count
-./deploy.sh -c run.yaml resume
-```
-
-A proper fix — a `plan`-only command, or gating creation on
-`CLOUD_RUN_TASK_INDEX=0` — is tracked in `TODO.md`.
 
 **`--total` must match across executions.** It is the run's plan. Changing it on
 a resume against an existing `run_id` will not re-plan; use a fresh `RUN_ID`.
