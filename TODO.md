@@ -101,6 +101,22 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         (~35 rows/s); only for latency, and it would reintroduce the duplicate
         problem the shard keys currently avoid.
 
+- [ ] **Expose the catalogue build on the CLI (`docloom catalogue`).** The
+      provider mix, budget guard and `build_catalogue` all exist in
+      `core/providers` and `core/content`, but nothing reaches them from the
+      command line — so "which LLMs, in what proportion, under what budget" is
+      configurable in `deploy/gcp/run.example.yaml`, validated by the deploy
+      script, and then not executable.
+      - Shape: `docloom catalogue --pack contract --providers <spec> --budget 50
+        --state … --usage …`, building the mix via the existing
+        `providers.factory.build_mix` and running `content.build_catalogue`.
+      - Needs a way to express the mix on the command line or from a config file;
+        the deploy script already parses it from YAML, so a `--providers-file`
+        taking the same block would avoid inventing a second format.
+      - Until it exists, an LLM-backed pack cannot be run end to end, and the
+        `catalogue:` block in the deploy config is documentation rather than
+        configuration.
+
 - [ ] **Investigate logging and metrics.** The project has `structlog` as a
       dependency but no deliberate logging or metrics story: what a run should
       emit, at what level, in what format, and where it goes on each platform.

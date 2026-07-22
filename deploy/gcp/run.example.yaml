@@ -1,0 +1,119 @@
+# docloom run configuration.
+#
+# Copy this, edit it, and pass it to the deploy script:
+#
+#     ./deploy.sh -c my-run.yaml plan       # show what would happen, change nothing
+#     ./deploy.sh -c my-run.yaml all        # provision, build, deploy, run
+#
+# Any value can be overridden per invocation without editing the file:
+#
+#     ./deploy.sh -c my-run.yaml --set run.total=1000 run
+#
+# The same file drives a 1,000-document smoke test and a 5,000,000-document
+# production run; only the numbers differ.
+
+# ── Infrastructure ──────────────────────────────────────────────────────────
+project: crawler-rag-data-2026
+region: us-central1
+bucket: crawler-rag-data-2026-docloom
+
+firestore:
+  # The free tier applies to the (default) database only; a named second
+  # database gets no free quota. Location is permanent once created.
+  database: "(default)"
+  location: nam5
+
+artifact_registry:
+  repo: docloom
+  image_tag: v1
+
+# ── The run ─────────────────────────────────────────────────────────────────
+run:
+  # Base identifier. With more than one document type below, each gets its own
+  # run (`<id>-invoice`, `<id>-contract`), because a run records exactly one
+  # pack in its plan.
+  id: test-25k
+
+  # Total documents across every type. Apportioned by the shares below.
+  total: 25000
+
+  # Documents per work unit = claim granularity = one golden shard = one export
+  # read. Aim for several units per task so a slow unit cannot leave a task idle
+  # at the tail: total / unit_size should comfortably exceed job.tasks.
+  unit_size: 500
+
+  format: pdf              # pdf | html
+  config_id: default       # recorded on the run, for your own bookkeeping
+  max_line_items: 8000     # hard cap per document; telecom bills are the reason
+
+  # LLM cost telemetry. On by default; `off` disables. A procedural pack makes
+  # no LLM calls and so writes nothing either way.
+  llm_usage: "shard://"
+
+# ── Document types and their split ──────────────────────────────────────────
+# `share` is a percentage and the shares must total 100. Each type becomes its
+# own Cloud Run execution with `--total` apportioned, so a 50/50 split of
+# 1,000,000 is two runs of 500,000.
+#
+# Only packs registered in the image are valid — today that is `invoice`. A
+# `contract` entry will fail fast with "unknown pack", which is the correct
+# behaviour rather than a silent zero.
+documents:
+  - pack: invoice
+    share: 100
+
+  # - pack: contract
+  #   share: 50
+
+# ── LLM providers for the catalogue step ────────────────────────────────────
+# NOT used by document generation. Generation makes no LLM calls: a procedural
+# pack computes its content, and an LLM-backed pack reads a catalogue that was
+# built earlier. These settings describe that earlier, offline catalogue build.
+#
+# `weight` is the percentage of catalogue items routed to each provider —
+# blending voices so an extraction pipeline cannot learn one generator's style.
+# Weights must total 100. Routing is deterministic per item, so a rerun draws
+# the same model for the same item.
+#
+# ⚠ Not yet consumable: there is no `docloom catalogue` CLI command, so the
+# script validates this block and prints it, but cannot execute it. Tracked in
+# TODO.md. Remove the block entirely if you only generate procedural packs.
+catalogue:
+  budget_usd: 50.00        # hard ceiling for the catalogue build
+  providers:
+    - name: deepseek
+      model: deepseek-v4-flash
+      weight: 40
+    - name: dashscope
+      model: qwen3.5-flash
+      weight: 40
+    - name: anthropic
+      model: claude-haiku-4-5
+      weight: 20
+  # API keys are never written here. They live in Secret Manager and are
+  # injected at task start; see docs/deploy-gcp.md § "Where do the API keys go".
+  secrets:
+    DEEPSEEK_API_KEY: deepseek-api-key
+    DASHSCOPE_API_KEY: dashscope-api-key
+    ANTHROPIC_API_KEY: anthropic-api-key
+
+# ── Cloud Run job shape ─────────────────────────────────────────────────────
+job:
+  name: docloom-generate
+  service_account: docloom-run
+
+  tasks: 4                 # how many containers
+  parallelism: 4           # how many at once (<= tasks)
+
+  cpu: 2                   # Chromium rendering is the bottleneck
+  memory: 4Gi
+  task_timeout: 3600s      # a task killed mid-unit is recoverable but wasteful
+  max_retries: 3           # safe: generation is deterministic, writes overwrite
+
+# ── Export ──────────────────────────────────────────────────────────────────
+export:
+  # Empty disables the export step. BigQuery reads the staged Parquet as an
+  # external table, so decimal128 lands as NUMERIC and the cent-exact join
+  # survives the round trip.
+  sink: ""
+  # sink: "bigquery://crawler-rag-data-2026/docloom_golden?staging=gs://crawler-rag-data-2026-docloom/staging"

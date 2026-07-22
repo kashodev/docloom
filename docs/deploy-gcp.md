@@ -1,14 +1,106 @@
-# Running docloom on GCP — a 25k test run
+# Running docloom on GCP
 
-A concrete walkthrough of the reference stack: Cloud Run Jobs for compute, GCS
-for documents and golden shards, Firestore for run state. Everything here is
-`gcloud`; the script that does it is
-[`deploy/gcp/deploy.sh`](../deploy/gcp/deploy.sh).
+A runnable walkthrough of the reference stack: Cloud Run Jobs for compute, GCS
+for documents and golden shards, Firestore for run state. Everything is
+`gcloud`, driven by [`deploy/gcp/deploy.sh`](../deploy/gcp/deploy.sh) and a
+config file.
 
 The general model — which platform maps to what, and why — is in
-[deployment.md](deployment.md). This is the specific, runnable version.
+[deployment.md](deployment.md). This is the specific version.
 
-**Target for this document**
+**One script, one config shape, any size of run.** A 1,000-document smoke test
+and a 5,000,000-document production run differ only in numbers:
+
+```bash
+./deploy.sh -c run.yaml --set run.id=smoke --set run.total=1000 --set job.tasks=1 all
+./deploy.sh -c run.yaml all                       # whatever the file says
+```
+
+Nothing about "test" is baked into the tooling. Start from
+[`run.example.yaml`](../deploy/gcp/run.example.yaml), which is commented
+throughout, and copy it per run.
+
+## The config
+
+| Block | Controls |
+|---|---|
+| `project` / `region` / `bucket` / `firestore` | where it runs, what it writes to |
+| `run` | `total`, `unit_size`, `format`, `config_id`, `max_line_items`, telemetry URI |
+| `documents` | **which document types, and their split as percentages** |
+| `catalogue` | **which LLMs, their percentage split, and the budget** |
+| `job` | tasks, parallelism, CPU, memory, timeout, retries |
+| `export` | the golden sink URI |
+
+Override anything per invocation without editing the file. Types are preserved,
+so `run.total` stays an integer:
+
+```bash
+./deploy.sh -c run.yaml --set run.total=1000 --set job.tasks=2 plan
+```
+
+**`plan` changes nothing** and is the quickest way to see whether a config is
+sane. It resolves the document split, computes units, warns when there are fewer
+units than tasks, and validates that both percentage splits total 100:
+
+```
+  documents       1000000 total, unit size 1000, format pdf
+    invoice        500000 docs (50%)  →  500 units  run id: prod-2026-07-invoice
+    contract       500000 docs (50%)  →  500 units  run id: prod-2026-07-contract
+
+  job             docloom-generate: 200 task(s), parallelism 200
+  units per task  ~5 of 1000
+```
+
+### Document types and their split
+
+```yaml
+run:
+  total: 1000000
+documents:
+  - {pack: invoice,  share: 50}
+  - {pack: contract, share: 50}
+```
+
+Shares are percentages and must total 100. `run.total` is apportioned between
+them, with the rounding remainder given to the last entry so the parts sum to
+*exactly* the total — a silently short run is worse than an uneven split.
+
+**Each type becomes its own execution and its own run id** (`<id>-invoice`,
+`<id>-contract`). Not a workaround: a run records exactly one pack in its plan,
+so two document types are genuinely two runs. With a single type the id is used
+unchanged.
+
+Only packs registered in the image are valid — **today that is `invoice` alone**.
+A `contract` entry fails fast with `unknown pack 'contract'; available: invoice`,
+which is better than a silent zero.
+
+### Which LLMs, and their split
+
+```yaml
+catalogue:
+  budget_usd: 50.00
+  providers:
+    - {name: deepseek,  model: deepseek-v4-flash, weight: 40}
+    - {name: dashscope, model: qwen3.5-flash,     weight: 40}
+    - {name: anthropic, model: claude-haiku-4-5,  weight: 20}
+```
+
+Weights are percentages of catalogue items routed to each provider and must total
+100. Blending models mixes their voices so an extraction pipeline cannot learn a
+single generator's style — a *quality* decision, not only a cost one. Routing is
+deterministic per item, so a rerun draws the same model for the same item and a
+weak slice can be regenerated without reshuffling authorship.
+
+> **⚠ Configurable and validated, but not yet executable.** There is no
+> `docloom catalogue` command, so the script checks this block and prints it but
+> cannot run it. That is not a gap in the script: **document generation makes no
+> LLM calls at all.** A procedural pack computes its content; an LLM-backed pack
+> reads a catalogue built *earlier*, offline. The provider mix belongs to that
+> earlier step, and exposing it is tracked in `TODO.md`.
+
+### The worked example below
+
+Uses the example file's defaults:
 
 | | |
 |---|---|
@@ -92,7 +184,9 @@ admin.
 
 ```bash
 cd deploy/gcp
-./deploy.sh provision
+cp run.example.yaml run.yaml     # then edit it
+./deploy.sh -c run.yaml plan     # sanity-check before creating anything
+./deploy.sh -c run.yaml provision
 ```
 
 Every step is idempotent — re-run it freely. It:
@@ -138,7 +232,7 @@ and costs cents.
 ## 3. Build the image
 
 ```bash
-./deploy.sh build
+./deploy.sh -c run.yaml build
 ```
 
 Uses **Cloud Build**, not local Docker. Two reasons: no local daemon required,
@@ -155,7 +249,7 @@ machines; a mismatched Chromium changes glyph rasterisation and page breaks.
 ## 4. Deploy the job
 
 ```bash
-./deploy.sh deploy
+./deploy.sh -c run.yaml deploy
 ```
 
 ```
@@ -188,7 +282,7 @@ recovered by its **lease** expiring.
   it if a task is killed:
 
   ```bash
-  TASK_TIMEOUT=7200s ./deploy.sh deploy
+  ./deploy.sh -c run.yaml --set job.task_timeout=7200s deploy
   ```
 
 ---
@@ -196,14 +290,14 @@ recovered by its **lease** expiring.
 ## 5. Run it
 
 ```bash
-./deploy.sh run          # executes and waits
+./deploy.sh -c run.yaml run      # one execution per document type; waits for each
 ```
 
 Watch it:
 
 ```bash
-./deploy.sh logs
-./deploy.sh status       # unit counts from Firestore
+./deploy.sh -c run.yaml logs
+./deploy.sh -c run.yaml status   # unit counts from Firestore, per run
 gcloud storage ls gs://crawler-rag-data-2026-docloom/runs/test-25k/documents/ | head
 ```
 
@@ -224,7 +318,7 @@ A failed unit is left out of the claimable pool so a task moves on rather than
 hot-looping. Retry them, and reclaim anything a killed task abandoned:
 
 ```bash
-./deploy.sh resume
+./deploy.sh -c run.yaml resume
 ```
 
 This is safe to run repeatedly: completed units are untouched, and only failed
@@ -234,9 +328,15 @@ or lease-expired ones re-enter the pool.
 
 ## 6. Export the golden data
 
+Set `export.sink` in the config:
+
+```yaml
+export:
+  sink: "bigquery://crawler-rag-data-2026/docloom_golden?staging=gs://crawler-rag-data-2026-docloom/staging"
+```
+
 ```bash
-SINK_URI='bigquery://crawler-rag-data-2026/docloom_golden?staging=gs://crawler-rag-data-2026-docloom/staging' \
-  ./deploy.sh export
+./deploy.sh -c run.yaml export     # one export per document type
 ```
 
 First create the dataset and grant the job BigQuery access:
@@ -280,7 +380,7 @@ For the 25k run:
 Delete the output when you are done with it:
 
 ```bash
-./deploy.sh teardown     # prompts; removes the job and runs/ contents
+./deploy.sh -c run.yaml teardown   # prompts; removes the job and this run's output
 ```
 
 ---
@@ -299,8 +399,10 @@ noise.
 *Avoid it entirely* by planning the run before scaling out:
 
 ```bash
-TASKS=1 PARALLELISM=1 ./deploy.sh deploy && ./deploy.sh run   # let it start, then cancel
-TASKS=4 PARALLELISM=4 ./deploy.sh deploy && ./deploy.sh resume
+./deploy.sh -c run.yaml --set job.tasks=1 --set job.parallelism=1 deploy
+./deploy.sh -c run.yaml run          # let it plan the run, then cancel the execution
+./deploy.sh -c run.yaml deploy       # back to the configured task count
+./deploy.sh -c run.yaml resume
 ```
 
 A proper fix — a `plan`-only command, or gating creation on
