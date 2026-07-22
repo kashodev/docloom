@@ -127,6 +127,10 @@ gcloud run jobs create docloom-run \
   tables over the staged Parquet, so `decimal128` lands as `NUMERIC` and the
   cent-exact join survives.
 
+> **A worked example.** [deploy-gcp.md](deploy-gcp.md) walks a real 25k-document
+> run end to end — provisioning, image build, job deploy, execution, export and
+> cost — with a `gcloud` script that does it: [`deploy/gcp/deploy.sh`](../deploy/gcp/deploy.sh).
+
 Grant the job's service account: object read/write on the bucket, Firestore user,
 and BigQuery data editor + job user.
 

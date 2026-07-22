@@ -203,6 +203,25 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       woff2 into `fonts/files/`, extend `BUNDLED`, note it in `OFL.txt`).
 
 ## Concurrency & multi-cloud portability
+- [ ] **Concurrent cold start races the run plan.** Every worker checks
+      `get_run(run_id) is None` and creates the run if so. When N tasks start
+      simultaneously — which is exactly what Cloud Run Jobs does — two can both
+      see "no run" and both call `create_run`, the second resetting units the
+      first had already claimed.
+      - **Bounded, not benign-by-luck:** generation is deterministic per
+        `(run_id, index)` and every blob write is an idempotent overwrite, so the
+        result is *duplicated work*, not corrupted output. Worth fixing for the
+        wasted compute, not for correctness.
+      - **Fix options:** a `docloom plan` command that creates the run and exits
+        (run once, then scale out); or gate creation on a worker-ordinal env var
+        (`CLOUD_RUN_TASK_INDEX` / `AWS_BATCH_JOB_ARRAY_INDEX`) so only ordinal 0
+        plans; or make `create_run` conditional — insert-if-absent — which SQLite
+        already gets from its primary key and DynamoDB could get from a
+        `ConditionExpression`, but Firestore's `batch.set` would need
+        `create()` semantics.
+      - Documented as a sharp edge in `docs/deploy-gcp.md` with a two-step
+        workaround.
+
 - [ ] **DynamoDB `add_spend` writes two rows non-atomically.** The spend rollup
       increments a `(run, model)` row and the `(run, "*")` total. SQLite does both
       in one `BEGIN IMMEDIATE` transaction and Firestore in one batch, but
