@@ -24,8 +24,11 @@ from random import Random
 
 from docloom.core.money import ZERO, money, pct, sum_money
 from docloom.core.pipeline.source import stable_seed
+from docloom.core.enums import DocumentCondition
 from docloom.packs.invoice.catalog import Catalogue, Company, ProductTemplate, SeedCatalogue
 from docloom.packs.invoice.enums import (
+    GOODS_BUSINESS_TYPES,
+    GOODS_KINDS,
     BillingModel,
     BusinessType,
     DiscountScheme,
@@ -228,19 +231,50 @@ def _rate_text(rate: Decimal, language) -> str:  # noqa: ANN001
 class InvoiceSampler:
     """Deterministic invoice generation from a catalogue. No API keys."""
 
-    def __init__(self, catalogue: Catalogue | None = None, *, max_line_items: int = 8_000) -> None:
+    def __init__(
+        self,
+        catalogue: Catalogue | None = None,
+        *,
+        max_line_items: int = 8_000,
+        goods_receipt: bool = False,
+    ) -> None:
         self._catalogue = catalogue or SeedCatalogue()
         self._max_line_items = max_line_items
+        self._goods_receipt = goods_receipt
+
+    def _choose_company(self, rng: Random) -> Company:
+        """Pick an issuer, restricted to goods sellers for a goods receipt.
+
+        Rejection sampling against the weighted roster rather than a filtered
+        re-weighting: it preserves the roster's relative weights among the goods
+        companies, and the goods share is large enough that it terminates
+        quickly. Falls back to a plain draw if the roster somehow has none.
+        """
+        if not self._goods_receipt:
+            return self._catalogue.roster().choose(rng)
+        roster = self._catalogue.roster()
+        for _ in range(200):
+            company = roster.choose(rng)
+            if company.business_type in GOODS_BUSINESS_TYPES:
+                return company
+        goods = [c for c in roster.companies if c.business_type in GOODS_BUSINESS_TYPES]
+        return rng.choice(goods) if goods else roster.choose(rng)
 
     def generate(self, run_id: str, index: int) -> GoldenInvoice:
         rng = Random(stable_seed(run_id, index))
-        company = self._catalogue.roster().choose(rng)
+        company = self._choose_company(rng)
         spec = self._catalogue.business_spec(company.business_type)
+        products = spec.products
+        if self._goods_receipt:
+            # A receiver signs for things that were delivered, so every line has
+            # to be a physical good — the record validates this, and filtering
+            # here is what keeps that validator from ever firing in a real run.
+            products = tuple(p for p in spec.products if p.kind in GOODS_KINDS) or spec.products
 
         language = company.locale.language
         n = min(rng.randint(spec.line_count_low, spec.line_count_high), self._max_line_items)
         lines = tuple(
-            _build_line(rng, i + 1, rng.choice(spec.products), language) for i in range(n)
+            _build_line(rng, i + 1, rng.choice(products), language) for i in range(n)
         )
         if company.business_type is BusinessType.TELECOM:
             lines = _telecom_grouping(rng, lines, language)   # subscriber → category → event
@@ -286,4 +320,12 @@ class InvoiceSampler:
             discount_timing=timing,
             company_id=company.company_id,
             render_profile=company.render_profile,
+            # A goods receipt is a handwritten delivery note the customer signs,
+            # so the variant carries both flags together rather than leaving a
+            # receipt block that no archetype would render.
+            condition=(DocumentCondition.HANDWRITTEN if self._goods_receipt
+                       else DocumentCondition.CLEAN),
+            goods_receipt=self._goods_receipt,
+            received_date=(issue + timedelta(days=rng.randint(0, 6))
+                           if self._goods_receipt else None),
         )
