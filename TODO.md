@@ -63,7 +63,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         with, but is distinct from, the existing *legibility* dial (which is about
         the writer's hand, not the paper's condition).
 
-- [ ] **Goods-receipt variant with a receiver's signature line.** A second
+- [x] **Goods-receipt variant with a receiver's signature line.** A second
       handwritten layout for the case where a customer signs on receipt of goods:
       alongside the issuer's "authorised signature", a separate **received by**
       block — signature, printed name, and date received — that a different hand
