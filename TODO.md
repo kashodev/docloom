@@ -42,6 +42,35 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       resolve from their semantic fallback stack; add more the same way (drop
       woff2 into `fonts/files/`, extend `BUNDLED`, note it in `OFL.txt`).
 
+## Handwriting realism
+- [ ] **Stroke-level handwriting synthesis (top realism tier, optional extra).**
+      The font-based approach (bundled OFL handwriting faces + per-field jitter)
+      gets a convincing *filled-in form*, but every occurrence of a letter is the
+      same glyph — a trained eye, and a discriminative model, can detect the
+      reuse. Genuine variation needs **stroke-level synthesis**: a model that
+      emits pen trajectories for arbitrary text, so the same word differs every
+      time it is written.
+      - **Approach:** Graves-style RNN handwriting synthesis (the classic
+        `handwriting-synthesis` LSTM trained on IAM-OnDB) or a modern diffusion
+        HTR generator. Both take (text, style vector) -> a sequence of pen
+        points with pen-up/pen-down, which we render as variable-width strokes.
+      - **Why it preserves the golden data:** the model renders *the exact text
+        we give it*, so the computed values are unchanged — this is the crucial
+        difference from generating the whole document with an image model, which
+        would invent digits and break the cent-exact ground truth.
+      - **Per-writer consistency:** a style vector per catalogue company gives
+        the same "person" a consistent hand across their invoices, while each
+        instance still varies — the realism property fonts cannot provide.
+      - **Packaging:** ship behind an optional `docloom[handwriting]` extra
+        (PyTorch or, better, an exported ONNX model for a light CPU runtime).
+        Keep it out of core: it is a heavy dependency and the font path must
+        remain the key-free, local-first default. Determinism via a seeded
+        generator, as everywhere else.
+      - **Cost:** materially slower per document than fonts, so likely applied
+        to a *slice* of the corpus rather than every handwritten document.
+      - Depends on the `handwritten-form` archetype (built) supplying the field
+        geometry the strokes get drawn into.
+
 ## Concurrency & multi-cloud portability
 - [x] **Lease + reclaim for crashed workers.** Each claim now stamps a
       `lease_expires_at` (default 15 min, configurable per store) and clears it
@@ -154,5 +183,16 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       per seed. Verified with samples (clean / light-scan / heavy-scan /
       handwritten). Remaining: wire it into the run pipeline (assign a condition
       distribution in the sampler + a generic per-record hook to invoke it, à la
-      `header_fields`) so runs emit degraded artefacts; and render-time
-      handwriting *fonts* for true handwritten text (vs. the overlay here).
+      `header_fields`) so runs emit degraded artefacts. Render-time handwriting
+      is now done — see below.
+- [x] **Render-time handwriting (the `handwritten-form-01` archetype).** Replaces
+      the old PIL ink overlays, which drew a periodic sine-wave "signature" and a
+      crisp-bordered stamp in PIL's tiny default bitmap font — both read as vector
+      art, and the line items were still typeset. Now a pre-printed pad with
+      ruled item lines: every value is written in one of four bundled OFL
+      handwriting faces with per-field jitter, signed in a script face and
+      stamped, all roughened by an SVG turbulence/displacement filter so edges
+      read as ink. `DocumentCondition.HANDWRITTEN` routes to the archetype, and
+      `degrade.py` now only degrades — the ink is already on the paper. Face
+      choice is a legibility dial for OCR/HTR difficulty. Golden rows are
+      unchanged vs the clean twin (asserted by test).

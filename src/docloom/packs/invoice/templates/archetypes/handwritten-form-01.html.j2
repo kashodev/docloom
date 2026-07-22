@@ -1,0 +1,253 @@
+{# Hand-filled invoice pad — the HANDWRITTEN capture condition.
+
+   A handwritten invoice is not a typeset document with a filter over it: it is a
+   *pre-printed pad* someone wrote into. So the chrome — letterhead, column
+   headings, ruled lines, the totals box — is type, and every **value** is in the
+   writer's hand: dates, the buyer, each line item, the subtotal, the tax lines,
+   the total.
+
+   Three details do the work:
+   * the table is ruled like a notebook and padded past the last item, so blank
+     lines remain at the bottom the way a real pad looks;
+   * every written value carries its own rotation/offset/scale (`hw.jitter`), so
+     nothing sits on the rule as evenly as type would;
+   * the ink, signature and stamp go through an SVG turbulence filter, which
+     roughens their edges into something that reads as ink on paper rather than
+     as vector shapes.
+
+   The values are the record's own — a handwritten invoice and its clean twin
+   produce identical golden rows. Only the rendering differs. #}
+{% import "_macros.j2" as m with context %}<!doctype html>
+<html lang="{{ locale.value }}">
+<head>
+<meta charset="utf-8">
+<title>{{ "invoice" | label }} {{ invoice.invoice_number }}</title>
+<style>
+{% include "_styles.css.j2" %}
+{{ hw.face_css | safe }}
+
+/* ── The printed pad ─────────────────────────────────────────────────────── */
+.pad { border: 1pt solid var(--rule-strong); padding: 0; }
+.pad-head { display: flex; justify-content: space-between; align-items: flex-start;
+            padding: 4mm 5mm 3mm; border-bottom: 1pt solid var(--rule-strong); }
+.pad-head .who { font-size: 13pt; font-weight: 700; letter-spacing: 0.02em; }
+.pad-head .addr { font-size: 8pt; color: var(--ink-soft); margin-top: 1mm; }
+.pad-title { text-align: right; }
+.pad-title .word { font-size: 17pt; font-weight: 700; letter-spacing: 0.14em;
+                   text-transform: uppercase; }
+.pad-title .no { font-size: 8pt; color: var(--ink-soft); margin-top: 1mm; }
+
+/* Printed label + a rule to write on. */
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8mm;
+          padding: 4mm 5mm 2mm; }
+.field { display: flex; align-items: baseline; gap: 2mm; margin-bottom: 3.5mm; }
+.field .lab { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em;
+              color: var(--ink-soft); white-space: nowrap; }
+.field .rule { flex: 1; border-bottom: 0.5pt solid var(--rule);
+               min-height: 5.5mm; position: relative; }
+
+/* ── The writer's hand ───────────────────────────────────────────────────── */
+.hand { font-family: {{ hw.writer_stack | safe }};
+        color: {{ hw.ink }};
+        font-size: calc(13pt * {{ hw.size_scale }});
+        line-height: 1.05;
+        display: inline-block;
+        transform-origin: left bottom;
+        /* Ink, not vectors: roughen the outline and let it bleed a little. */
+        filter: url(#ink-rough); }
+/* Written values sit on the rule, not inside a box, so they can overhang it. */
+.rule .hand { position: absolute; left: 1mm; bottom: 0.6mm; white-space: nowrap; }
+.num .hand { font-variant-numeric: normal; }
+
+/* ── Ruled item table ────────────────────────────────────────────────────── */
+table.pad-items { width: 100%; border-collapse: collapse; margin-top: 1mm; }
+table.pad-items th { font-size: 7.5pt; text-transform: uppercase;
+                     letter-spacing: 0.06em; color: var(--ink-soft);
+                     font-weight: 600; text-align: left;
+                     padding: 0 2mm 1.5mm; border-bottom: 1pt solid var(--rule-strong); }
+table.pad-items th.num, table.pad-items td.num { text-align: right; }
+/* Every row is a notebook rule — including the blank ones after the last item. */
+table.pad-items td { height: 8mm; padding: 0 2mm; vertical-align: bottom;
+                     border-bottom: 0.5pt solid var(--rule); }
+table.pad-items tr.blank td { }
+.pad-body { padding: 0 5mm 3mm; }
+
+/* ── Totals: printed labels, handwritten figures ─────────────────────────── */
+.pad-totals { display: flex; justify-content: flex-end; padding: 3mm 5mm 4mm; }
+.pad-totals table { min-width: 78mm; border-collapse: collapse; }
+.pad-totals td { padding: 1.2mm 2mm; }
+.pad-totals td.lab { font-size: 8pt; text-transform: uppercase;
+                     letter-spacing: 0.05em; color: var(--ink-soft); }
+.pad-totals td.val { text-align: right; border-bottom: 0.5pt solid var(--rule);
+                     min-width: 34mm; }
+.pad-totals tr.grand td.lab { font-weight: 700; color: var(--ink); font-size: 9pt; }
+.pad-totals tr.grand td.val { border-bottom: 1.2pt double var(--rule-strong); }
+
+/* ── Signature and stamp ─────────────────────────────────────────────────── */
+.pad-foot { display: flex; justify-content: space-between; align-items: flex-end;
+            gap: 8mm; padding: 2mm 5mm 5mm; }
+.pad-foot .terms { font-size: 7.5pt; color: var(--ink-soft); max-width: 95mm; }
+.sign-slot { text-align: center; min-width: 55mm; }
+.sign-line { border-bottom: 0.5pt solid var(--rule); height: 12mm;
+             position: relative; }
+.signature { position: absolute; left: 4mm; bottom: 0.5mm;
+             font-family: {{ hw.signature_stack | safe }};
+             font-size: 25pt; color: {{ hw.ink }}; white-space: nowrap;
+             transform: rotate({{ hw.signature_rotate }}deg);
+             transform-origin: left bottom;
+             /* A pen leaves a variable-width, slightly ragged line. */
+             filter: url(#ink-rough); opacity: 0.92; }
+.sign-slot .cap { font-size: 7pt; text-transform: uppercase;
+                  letter-spacing: 0.06em; color: var(--ink-soft); margin-top: 1mm; }
+
+/* A rubber stamp: condensed lettering in pad ink, rotated, edges eaten away by
+   the turbulence filter and unevenly inked via the mask. */
+.stamp { position: absolute; top: {{ hw.stamp_top }}mm; left: {{ hw.stamp_left }}mm;
+         transform: rotate({{ hw.stamp_rotate }}deg);
+         color: {{ hw.stamp_ink }};
+         border: 2.2pt solid {{ hw.stamp_ink }};
+         border-radius: 1.5mm;
+         padding: 1.6mm 4mm;
+         font-family: {{ hw.stamp_stack | safe }};
+         font-size: 21pt; font-weight: 700;
+         letter-spacing: 0.16em; text-transform: uppercase;
+         /* Pad ink is translucent and never evenly laid down; the displacement
+            filter eats the edges so the border reads as rubber, not a rectangle. */
+         opacity: 0.74;
+         filter: url(#stamp-rough);
+         pointer-events: none; }
+body { position: relative; }
+</style>
+</head>
+<body class="{{ body_classes }} archetype-handwritten">
+{{ m.running_header(invoice) }}
+
+{# Ink texture. feTurbulence + feDisplacementMap chew the outlines so strokes
+   stop looking like clean vector edges; the mask makes stamp ink uneven. #}
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <filter id="ink-rough" x="-12%" y="-12%" width="124%" height="124%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.055 0.09"
+                    numOctaves="3" seed="{{ invoice.seed % 9973 }}" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="1.7"
+                         xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="stamp-rough" x="-15%" y="-15%" width="130%" height="130%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.11"
+                    numOctaves="4" seed="{{ (invoice.seed // 7) % 9973 }}" result="sn"/>
+      <feDisplacementMap in="SourceGraphic" in2="sn" scale="3.1"
+                         xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+</svg>
+
+<div class="stamp">{{ hw.stamp_text }}</div>
+
+<div class="pad">
+  <div class="pad-head">
+    <div>
+      <div class="who">{{ issuer.name }}</div>
+      <div class="addr">
+        {% for line in issuer.address_lines %}{{ line }}<br>{% endfor %}
+        {% if issuer.city %}{{ [issuer.city, issuer.region, issuer.postal_code] | select | join(", ") }}{% endif %}
+      </div>
+    </div>
+    <div class="pad-title">
+      <div class="word">{{ "invoice" | label }}</div>
+      <div class="no">{{ "invoice_number" | label }}</div>
+      <div><span class="hand" style="{{ hw.jitter(0).css }}">{{ invoice.invoice_number }}</span></div>
+    </div>
+  </div>
+
+  {# Printed labels, handwritten values — the way a pad is filled in. #}
+  <div class="fields">
+    <div class="field">
+      <span class="lab">{{ "bill_to" | label }}</span>
+      <span class="rule"><span class="hand" style="{{ hw.jitter(1).css }}">{{ recipient.name }}</span></span>
+    </div>
+    <div class="field">
+      <span class="lab">{{ "issue_date" | label }}</span>
+      <span class="rule"><span class="hand" style="{{ hw.jitter(2).css }}">{{ invoice.issue_date | date }}</span></span>
+    </div>
+    <div class="field">
+      <span class="lab">{{ "customer_id" | label }}</span>
+      <span class="rule"><span class="hand" style="{{ hw.jitter(3).css }}">{{ invoice.customer_reference or recipient.party_id }}</span></span>
+    </div>
+    <div class="field">
+      <span class="lab">{{ "due_date" | label }}</span>
+      <span class="rule"><span class="hand" style="{{ hw.jitter(4).css }}">{{ invoice.due_date | date }}</span></span>
+    </div>
+  </div>
+
+  <div class="pad-body">
+    <table class="pad-items">
+      <thead>
+        <tr>
+          <th>{{ cols.description }}</th>
+          {% if show_quantity %}<th class="num">{{ "quantity" | label }}</th>{% endif %}
+          {% if show_unit_price %}<th class="num">{{ cols.unit_price }}</th>{% endif %}
+          <th class="num">{{ cols.amount }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for line in lines %}
+        <tr>
+          <td><span class="hand" style="{{ hw.jitter(loop.index0 * 3 + 5).css }}">{{ line.description }}</span></td>
+          {% if show_quantity %}
+          <td class="num"><span class="hand" style="{{ hw.jitter(loop.index0 * 3 + 6).css }}">{{ line.quantity | qty }}</span></td>
+          {% endif %}
+          {% if show_unit_price %}
+          <td class="num"><span class="hand" style="{{ hw.jitter(loop.index0 * 3 + 7).css }}">{{ line.unit_price | money }}</span></td>
+          {% endif %}
+          <td class="num"><span class="hand" style="{{ hw.jitter(loop.index0 * 3 + 8).css }}">{{ line.extended_amount | money }}</span></td>
+        </tr>
+        {% endfor %}
+        {# Blank ruled lines to the bottom of the pad — a real one is never
+           exactly the length of the order. #}
+        {% for _ in range(hw.ruled_rows - lines | length) %}
+        <tr class="blank">
+          <td></td>
+          {% if show_quantity %}<td class="num"></td>{% endif %}
+          {% if show_unit_price %}<td class="num"></td>{% endif %}
+          <td class="num"></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="pad-totals">
+    <table>
+      <tr>
+        <td class="lab">{{ totals_labels.subtotal | label }}</td>
+        <td class="val"><span class="hand" style="{{ hw.jitter(60).css }}">{{ totals.subtotal | money }}</span></td>
+      </tr>
+      {% for bucket in tax_buckets %}
+      <tr>
+        <td class="lab">{{ bucket.label }}</td>
+        <td class="val"><span class="hand" style="{{ hw.jitter(61 + loop.index0).css }}">{{ bucket.amount | money }}</span></td>
+      </tr>
+      {% endfor %}
+      {% if has_discount %}
+      <tr>
+        <td class="lab">{{ "discount" | label }}</td>
+        <td class="val"><span class="hand" style="{{ hw.jitter(66).css }}">{{ totals.discount_total | money }}</span></td>
+      </tr>
+      {% endif %}
+      <tr class="grand">
+        <td class="lab">{{ totals_labels.total | label }}</td>
+        <td class="val"><span class="hand" style="{{ hw.jitter(67).css }}">{{ totals.grand_total | money }}</span></td>
+      </tr>
+    </table>
+  </div>
+
+  <div class="pad-foot">
+    <div class="terms">{{ m.terms_block(invoice, registrations, requires_late_penalty) }}</div>
+    <div class="sign-slot">
+      <div class="sign-line"><span class="signature">{{ hw.signature_text }}</span></div>
+      <div class="cap">{{ "authorised_signature" | label }}</div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

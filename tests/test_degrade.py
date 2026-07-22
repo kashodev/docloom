@@ -77,15 +77,25 @@ def test_heavy_scan_is_desaturated() -> None:
     assert np.abs(arr[..., 1] - arr[..., 2]).mean() < 3
 
 
-def test_handwritten_lays_down_coloured_ink() -> None:
-    page = a_page()
-    plain = degrade_image(page, DocumentCondition.HEAVY_SCAN, Random(3))
-    inked = degrade_image(page, DocumentCondition.HANDWRITTEN, Random(3))
-    # The stamp/signature introduce saturated colour the scan paths do not.
-    def max_channel_spread(img: Image.Image) -> int:
-        a = np.asarray(img).astype(np.int16)
-        return int((a.max(axis=2) - a.min(axis=2)).max())
-    assert max_channel_spread(inked) > max_channel_spread(plain)
+def test_handwritten_degradation_adds_no_marks_of_its_own() -> None:
+    """Handwriting, signature and stamp are drawn by the *renderer* (the
+    hand-filled pad archetype), so by the time a page reaches here the ink is
+    already on it. This stage must only degrade — never draw. Regression against
+    the earlier PIL overlays, whose periodic strokes and crisp stamp borders read
+    as vector art rather than ink."""
+    blank = Image.new("RGB", (300, 400), (244, 244, 244))
+    out = np.asarray(degrade_image(blank, DocumentCondition.HANDWRITTEN, Random(3)))
+    pixels = out.shape[0] * out.shape[1]
+
+    # Sparse dust specks are legitimate scanner grain; a drawn signature or
+    # stamp would darken whole strokes' worth of the page.
+    dark = int((out.mean(axis=2) < 120).sum())
+    assert dark / pixels < 0.01, f"{dark} dark pixels — something was drawn"
+
+    # And no saturated pad ink appears from nowhere.
+    spread = out.astype(np.int16)
+    coloured = int(((spread.max(axis=2) - spread.min(axis=2)) > 60).sum())
+    assert coloured / pixels < 0.005, "coloured ink appeared on a blank page"
 
 
 # ── PDF round-trip ──────────────────────────────────────────────────────────

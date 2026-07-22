@@ -62,6 +62,7 @@ LABELS: dict[Language, dict[str, str]] = {
         "thank_you": "Thank you for your business!",
         "page_of": "Page {page} of {pages}",
         "continued": "(cont'd)",
+        "authorised_signature": "Authorised Signature",
         "total_before_tax": "Total before taxes",
         "late_penalty": "Late payment charges apply.",
     },
@@ -103,6 +104,7 @@ LABELS: dict[Language, dict[str, str]] = {
         "thank_you": "Merci de votre confiance!",
         "page_of": "Page {page} de {pages}",
         "continued": "(suite)",
+        "authorised_signature": "Signature autorisée",
         "total_before_tax": "Total avant taxes",
         "late_penalty": "Des frais supplémentaires s'appliquent après l'échéance.",
     },
@@ -144,6 +146,7 @@ LABELS: dict[Language, dict[str, str]] = {
         "thank_you": "Nous vous remercions de votre confiance.",
         "page_of": "Page {page} sur {pages}",
         "continued": "(suite)",
+        "authorised_signature": "Signature autorisée",
         "total_before_tax": "Total HT",
         # Legally mandatory on a French invoice (Code de commerce L441-10).
         "late_penalty": (

@@ -12,8 +12,10 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
+from docloom.core.enums import DocumentCondition
 from docloom.core.money import money
 from docloom.packs.invoice.fonts import font_face_css, font_stack
+from docloom.packs.invoice.handwriting import handwriting_for
 from docloom.packs.invoice.logos import logo_mark, watermark_mark
 from docloom.packs.invoice.jurisdictions import profile_for
 from docloom.packs.invoice.labels import LABEL_REGISTRY
@@ -107,6 +109,14 @@ def build_context(invoice: GoldenInvoice) -> dict[str, Any]:
         "total": "total" if jp.uses_ht_ttc_totals else "balance_due",
     }
 
+    # Handwriting is resolved only for a handwritten document — it embeds three
+    # extra font faces, which no other archetype should pay for.
+    hw = (
+        handwriting_for(invoice.seed, line_count=len(invoice.line_items))
+        if invoice.condition is DocumentCondition.HANDWRITTEN
+        else None
+    )
+
     return {
         # Locale — read by the context-aware formatting filters.
         "locale": invoice.locale,
@@ -126,6 +136,8 @@ def build_context(invoice: GoldenInvoice) -> dict[str, Any]:
         "body_classes": body_classes(invoice),
         "font_stack": font_stack(invoice.render_profile.typeface),
         "font_face_css": font_face_css(invoice.render_profile.typeface),
+        # Present only on a handwritten document; templates branch on truthiness.
+        "hw": hw.to_context() if hw else None,
         # Procedural brand marks (key-free, deterministic from the issuer name).
         # Empty string when the company's identity is text-only, so the macro
         # falls back to a plain wordmark.

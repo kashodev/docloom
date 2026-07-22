@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from docloom.core.content import ContentCapability, ContentMode
+from docloom.core.enums import DocumentCondition
 from docloom.core.locale.labels import LabelRegistry
 from docloom.core.pack import RunningHeader
 from docloom.core.record import GoldenRecord
@@ -63,6 +64,10 @@ from docloom.packs.invoice.record import (
 
 TEMPLATE_ROOT = Path(__file__).resolve().parent / "templates"
 
+#: The archetype a HANDWRITTEN document is always rendered with — a pre-printed
+#: pad filled in by hand, rather than any of the typeset layouts.
+HANDWRITTEN_ARCHETYPE = "handwritten-form-01"
+
 
 class InvoicePack:
     """Teaches the kernel how to render and export invoices."""
@@ -100,7 +105,18 @@ class InvoicePack:
         return build_context(record)
 
     def archetype_for(self, record: GoldenRecord) -> str:
+        """Template for this record — the capture condition can override it.
+
+        A handwritten invoice is a different *document*, not a filtered one: it
+        needs the pre-printed pad with ruled lines that someone wrote into, which
+        no amount of post-processing can synthesise from a typeset layout. So
+        ``HANDWRITTEN`` routes to the hand-filled archetype regardless of the
+        company's usual look. The record is untouched — same values, same golden
+        rows as the clean twin.
+        """
         assert isinstance(record, GoldenInvoice)
+        if record.condition is DocumentCondition.HANDWRITTEN:
+            return HANDWRITTEN_ARCHETYPE
         return record.render_profile.archetype
 
     def header_fields(self, record: GoldenRecord) -> RunningHeader:

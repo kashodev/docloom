@@ -24,7 +24,15 @@ What the set covers:
   as base64 `@font-face` (byte-identical on any machine).
 - **Pagination** — `40_telecom-contd_en_multipage.pdf` is an 11-page itemised
   bill; page 2 shows the `(cont'd)` marker on a section that spans a page break.
-- **Capture conditions** — `41`–`44` are the same invoice as `clean`,
-  `light-scan`, `heavy-scan`, and `handwritten`, produced by the degradation
-  post-processor. The degraded ones are image-only PDFs with no text layer, so
-  OCR has to read the pixels.
+- **Capture conditions** — `41`–`43` are the same invoice as `clean`,
+  `light-scan` and `heavy-scan`, produced by the degradation post-processor. The
+  degraded ones are image-only PDFs with no text layer, so OCR has to read the
+  pixels.
+- **Handwritten** — `44`–`46` use the `handwritten-form-01` archetype: a
+  pre-printed pad with ruled item lines, filled in by hand. Every value — dates,
+  line items, quantities, prices, subtotal, tax and total — is rendered in a
+  bundled OFL handwriting face with per-field jitter, over printed chrome, and
+  signed and stamped in roughened ink, then scanned. `45` is the neatest hand
+  (in French) and `46` the messiest, showing the legibility dial: the same
+  invoice as `44`, much harder to read. The figures are identical to the clean
+  twin — handwriting changes the rendering, never the ground truth.

@@ -15,28 +15,40 @@ import pytest
 from docloom.packs.invoice.fonts import (
     BUNDLED,
     FONT_STACKS,
+    HANDWRITING_KEYS,
     TYPEFACE_KEYS,
     font_face_css,
+    font_faces_css,
     font_stack,
+    weights_for,
 )
 
 _FILES = Path(__file__).resolve().parents[1] / "src/docloom/packs/invoice/fonts/files"
 
 
 @pytest.mark.parametrize("key", sorted(BUNDLED))
-def test_bundled_keys_have_both_weight_files_present_and_valid(key: str) -> None:
-    for weight in (400, 700):
+def test_bundled_keys_have_every_declared_weight_present_and_valid(key: str) -> None:
+    for weight in weights_for(key):
         f = _FILES / f"{key}-{weight}.woff2"
         assert f.exists(), f
         assert f.read_bytes()[:4] == b"wOF2", f"{f} is not a woff2"
+
+
+def test_body_faces_ship_two_weights_and_mark_faces_one() -> None:
+    """Script and display faces have no bold cut; body text needs one."""
+    assert weights_for("serif-classic") == (400, 700)
+    assert weights_for("signature") == (400,)
+    assert all(weights_for(k) == (400,) for k in HANDWRITING_KEYS)
 
 
 @pytest.mark.parametrize("key", sorted(BUNDLED))
 def test_font_stack_leads_with_the_bundled_family(key: str) -> None:
     stack = font_stack(key)
     assert stack.startswith(f"'{BUNDLED[key]}', ")
-    # ...and keeps the semantic fallback chain behind it.
-    assert FONT_STACKS[key] in stack
+    # ...and keeps a fallback chain behind it, whether a body stack or a
+    # handwriting/mark fallback.
+    assert FONT_STACKS.get(key, "") in stack
+    assert stack.rstrip().endswith(("serif", "sans-serif", "monospace", "cursive"))
 
 
 def test_font_stack_unbundled_key_is_just_the_fallback() -> None:
@@ -45,11 +57,12 @@ def test_font_stack_unbundled_key_is_just_the_fallback() -> None:
 
 
 @pytest.mark.parametrize("key", sorted(BUNDLED))
-def test_font_face_css_embeds_both_weights_as_decodable_base64(key: str) -> None:
+def test_font_face_css_embeds_every_weight_as_decodable_base64(key: str) -> None:
     css = font_face_css(key)
-    assert css.count("@font-face") == 2
+    weights = weights_for(key)
+    assert css.count("@font-face") == len(weights)
     assert f"font-family: '{BUNDLED[key]}'" in css
-    assert "font-weight: 400" in css and "font-weight: 700" in css
+    assert all(f"font-weight: {w}" in css for w in weights)
     assert "format('woff2')" in css
     # Every embedded payload decodes and is a real woff2.
     for uri in css.split("data:font/woff2;base64,")[1:]:
@@ -67,3 +80,30 @@ def test_font_face_css_empty_for_unbundled_keys() -> None:
 def test_embedded_family_names_are_collision_proof() -> None:
     # The DL prefix stops the embedded font aliasing a same-named host font.
     assert all(name.startswith("DL ") for name in BUNDLED.values())
+
+
+# ── Handwriting faces are a separate pool ───────────────────────────────────
+def test_handwriting_faces_are_not_offered_as_body_typefaces() -> None:
+    """A company must never be assigned a handwriting face as its body type."""
+    assert not set(HANDWRITING_KEYS) & set(TYPEFACE_KEYS)
+    for key in ("signature", "stamp"):
+        assert key not in TYPEFACE_KEYS
+
+
+def test_handwriting_keys_are_ordered_least_to_most_messy() -> None:
+    """The order is the legibility dial, so it is load-bearing, not cosmetic."""
+    assert HANDWRITING_KEYS[0] == "hand-print"      # neatest
+    assert HANDWRITING_KEYS[-1] == "hand-scrawl"    # messiest
+
+
+def test_font_faces_css_embeds_several_faces_at_once() -> None:
+    """A handwritten document needs writer + signature + stamp in one file."""
+    css = font_faces_css(("hand-casual", "signature", "stamp"))
+    assert css.count("@font-face") == 3
+    for family in ("DL Caveat", "DL Great Vibes", "DL Oswald"):
+        assert f"font-family: '{family}'" in css
+
+
+def test_font_faces_css_skips_unknown_keys() -> None:
+    assert font_faces_css(("signature", "no-such-face")).count("@font-face") == 1
+    assert font_faces_css(()) == ""

@@ -12,21 +12,23 @@ invoice — so it lives in the kernel, keyed only off the condition and a seed.
 Deterministic: the same document and condition degrade identically, so a run is
 reproducible and the golden row's ``condition`` always matches the artefact.
 
-``HANDWRITTEN`` here is degradation plus procedural ink overlays (a signature, a
-stamp) — a scanned form someone wrote on. Rendering document *text* in a
-handwriting font is a heavier, render-time change (a handwriting archetype +
-bundled font); this covers the post-processing half. See TODO.md.
+This module deliberately adds **no marks of its own**. Handwriting, signatures and
+stamps belong to the *renderer* — the invoice pack's hand-filled pad archetype
+draws them in real handwriting faces with roughened ink edges — so by the time a
+page reaches here the ink is already on the paper and degrades along with it,
+which is how a scanned handwritten form actually looks. Drawing them here instead
+was tried and it showed: a procedurally drawn signature and stamp read as vector
+art, not ink.
 """
 
 from __future__ import annotations
 
 import io
-import math
 from random import Random
 
 import numpy as np
 import pypdfium2 as pdfium
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageFilter
 
 from docloom.core.enums import DocumentCondition
 
@@ -78,56 +80,34 @@ def _jpeg_artifacts(img: Image.Image, quality: int) -> Image.Image:
     return Image.open(buf).convert("RGB")
 
 
-def _ink_overlays(img: Image.Image, rng: Random) -> Image.Image:
-    """Procedural handwritten ink: a signature scrawl and a slanted stamp."""
-    img = img.copy()
-    draw = ImageDraw.Draw(img)
-    w, h = img.size
-    ink = (18, 24, 90)   # dark blue pen
-
-    # Signature: a jittered polyline across the lower third.
-    x0, y0 = int(w * 0.55), int(h * 0.80)
-    pts = []
-    x = x0
-    for i in range(28):
-        x += w * 0.012
-        y = y0 + math.sin(i * 0.9) * h * 0.012 + rng.uniform(-4, 4)
-        pts.append((x, y))
-    draw.line(pts, fill=ink, width=2, joint="curve")
-
-    # A slanted "PAID" stamp in translucent red, rotated onto the page.
-    stamp = Image.new("RGBA", (int(w * 0.28), int(h * 0.09)), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(stamp)
-    sd.rectangle([2, 2, stamp.width - 3, stamp.height - 3], outline=(170, 30, 30, 210), width=3)
-    sd.text((stamp.width * 0.16, stamp.height * 0.28), "PAID", fill=(170, 30, 30, 210))
-    stamp = stamp.rotate(rng.uniform(-18, -8), expand=True, resample=Image.BICUBIC)
-    img.paste(stamp, (int(w * 0.12), int(h * 0.15)), stamp)
-    return img
-
-
 #: Per-condition degradation parameters. CLEAN is absent — it is a no-op.
+#:
+#: ``HANDWRITTEN`` degrades like a light-to-mid scan and adds no marks of its
+#: own: the handwriting, signature and stamp are drawn by the *renderer* (the
+#: hand-filled pad archetype), so they are already on the paper by the time this
+#: runs and degrade along with it — which is exactly how real ink behaves. An
+#: earlier version drew them here with PIL and it showed: perfectly periodic
+#: signature strokes and razor-sharp stamp borders read as vector art, not ink.
 _PROFILES = {
     DocumentCondition.LIGHT_SCAN: {"rot": 0.6, "blur": 0.4, "noise": 6.0, "speckle": 0.0004,
-                                   "jpeg": 80, "grayscale": False, "ink": False},
+                                   "jpeg": 80, "grayscale": False},
     DocumentCondition.HEAVY_SCAN: {"rot": 1.8, "blur": 1.0, "noise": 14.0, "speckle": 0.002,
-                                   "jpeg": 45, "grayscale": True, "ink": False},
-    DocumentCondition.HANDWRITTEN: {"rot": 1.4, "blur": 0.8, "noise": 12.0, "speckle": 0.0015,
-                                    "jpeg": 55, "grayscale": False, "ink": True},
+                                   "jpeg": 45, "grayscale": True},
+    DocumentCondition.HANDWRITTEN: {"rot": 1.4, "blur": 0.8, "noise": 11.0, "speckle": 0.0012,
+                                    "jpeg": 58, "grayscale": False},
 }
 
 
 def degrade_image(img: Image.Image, condition: DocumentCondition, rng: Random) -> Image.Image:
     """Apply one condition's degradation to a single page image.
 
-    Order matters: ink is laid down first (it is on the paper), then the whole
-    page is skewed, blurred, noised, speckled and JPEG-crushed as one capture.
+    One capture, in order: skew, then blur, noise, speckle and a JPEG crush —
+    everything already on the page (including handwritten ink) degrades together.
     """
     profile = _PROFILES.get(condition)
     if profile is None:
         return img.convert("RGB")   # CLEAN or unknown → unchanged
     out = img.convert("RGB")
-    if profile["ink"]:
-        out = _ink_overlays(out, rng)
     out = _rotate(out, rng, profile["rot"])
     if profile["blur"]:
         out = out.filter(ImageFilter.GaussianBlur(profile["blur"]))

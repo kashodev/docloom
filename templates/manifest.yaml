@@ -233,6 +233,18 @@ archetype_coverage:
     - id: telecom-itemized-37
       skeleton: four-level hierarchy (account → subscriber → category → event)
       covers: telecom-itemized; the sampler now emits grouped/sectioned lines so it renders
+    - id: handwritten-form-01
+      skeleton: pre-printed pad filled in by hand (ruled item lines, printed chrome)
+      covers: >
+        the HANDWRITTEN capture condition, which the condition routes to rather
+        than the company's usual look — a handwritten invoice is a different
+        *document*, not a filtered one. Printed letterhead, column headings,
+        notebook rules and totals box; every value (dates, items, quantities,
+        prices, subtotal, tax, total) rendered in one of four bundled OFL
+        handwriting faces with per-field rotation/offset/scale jitter, plus a
+        script signature and a roughened rubber stamp. Choice of face is a
+        legibility dial — a controllable difficulty axis for OCR/HTR evaluation.
+        The record is untouched: identical golden rows to the clean twin.
 
   variation_matrix:
     meta_position: [top-left, top-right, top-row (banner), left-rail, right-rail, split]

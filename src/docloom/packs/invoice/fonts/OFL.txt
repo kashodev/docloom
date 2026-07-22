@@ -6,6 +6,13 @@ Font License, Version 1.1. Copyright notices for each bundled family:
   Zilla Slab     Copyright 2017 The Mozilla Foundation (https://github.com/mozilla/zilla-slab)
   JetBrains Mono Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
+  Caveat         Copyright 2014 The Caveat Project Authors (https://github.com/googlefonts/caveat)
+  Patrick Hand   Copyright (c) 2010-2012 Patrick Wagesreiter (mail@patrickwagesreiter.at)
+  Shadows Into Light  Copyright (c) 2010 Kimberly Geswein (kimberlygeswein.com)
+  Reenie Beanie  Copyright (c) 2010 Typeco (james@typeco.com)
+  Great Vibes    Copyright 2010 The Great Vibes Pro Project Authors (https://github.com/googlefonts/great-vibes)
+  Oswald         Copyright 2016 The Oswald Project Authors (https://github.com/googlefonts/OswaldFont)
+
 -------------------------------------------------------------------------------
 
 
