@@ -25,11 +25,28 @@ _ENTRY_POINTS_LOADED = False
 
 
 def register_pack(pack: DocumentPack) -> None:
-    """Register a pack under its ``name``. Re-registering the same name is an
-    error — silent shadowing would make a mis-installed plugin very hard to
-    diagnose."""
-    if pack.name in _REGISTRY and _REGISTRY[pack.name] is not pack:
-        raise ValueError(f"a different pack is already registered as {pack.name!r}")
+    """Register a pack under its ``name``.
+
+    Two *different* packs claiming one name is an error — silent shadowing would
+    make a mis-installed plugin very hard to diagnose. Two instances of the same
+    pack class is not: a built-in pack is registered on import by
+    ``docloom.packs`` **and** discovered through its entry point, so an installed
+    copy legitimately registers the same pack twice, from two code paths that do
+    not know about each other.
+
+    Comparing by identity treated that as a conflict, which broke every
+    installed copy of docloom — ``available_packs()`` raised before returning
+    anything. It survived because the test suite and local development both run
+    from a source checkout, where no entry points are declared and the second
+    registration never happens.
+    """
+    existing = _REGISTRY.get(pack.name)
+    if existing is not None and type(existing) is not type(pack):
+        raise ValueError(
+            f"a different pack is already registered as {pack.name!r}: "
+            f"{type(existing).__module__}.{type(existing).__qualname__} vs "
+            f"{type(pack).__module__}.{type(pack).__qualname__}"
+        )
     _REGISTRY[pack.name] = pack
 
 
