@@ -44,7 +44,12 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         documents per unit (`<run>/documents/unit-000123/…`), so the manifest
         just needs to describe that structure rather than invent one.
 
-- [x] **A "crisp" (well-preserved) handwritten variant.** Today every handwritten
+- [x] **A "crisp" (well-preserved) handwritten variant.** Shipped as the `wear`
+      dial (0..1) on the record: one value scales the SVG ink displacement at
+      render time and the scan degradation afterwards, so the two always agree.
+      Neither end reaches zero — a crisp document is still a capture of paper.
+      Recorded on the golden row (`wear`, `is_crisp`) as an eval slice, and kept
+      a separate axis from legibility. Sample 47. Original note: every handwritten
       invoice looks like an old, worn document: the ink-roughening turbulence and
       the scan degradation both run at full strength. Add a variant where the
       physical artefact is *recent and in good condition* — the paper is not
@@ -69,6 +74,25 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         accordingly for this variant.
       - The receiver's hand should differ from the issuer's writer (a different
         face and jitter stream), because it is a different person.
+
+- [ ] **Optional LLM token-usage and cost telemetry per run.** Record what every
+      LLM call cost, granular enough to answer "what did this one PDF cost, and
+      on which model?", queryable for analytics, in its own table separate from
+      the golden data. Must be **optional** — the invoice pack is procedural and
+      makes no LLM calls at all, so it should carry none of the cost.
+      - Not part of the golden record: token counts are not reproducible, and the
+        golden data's whole value is that it is exactly recomputable. This is
+        observability, and belongs in its own table.
+      - Costs stay unquantised `Decimal` like the rest of the money in the
+        project — a single completion can cost a small fraction of a cent.
+      - Analysis written up in `feature_explorations/llm-cost-telemetry.md`
+        (gitignored): volume/rate estimates, whether an OLAP store is justified,
+        the queue question, and DynamoDB/Firestore alternatives at reduced
+        granularity. Headline: the natural fit is another sharded table on the
+        existing unit→shard→sink pipeline (Parquet/DuckDB local, BigQuery cloud),
+        which is already columnar, already idempotent on unit retry, and needs no
+        new infrastructure; a queue only becomes necessary for live in-run cost
+        visibility across a fleet.
 
 - [ ] **Stroke-level handwriting synthesis (top realism tier, optional extra).**
       The font-based approach (bundled OFL handwriting faces + per-field jitter)
@@ -133,6 +157,20 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       documents the contract.
 
 ## Rendering fidelity
+- [x] **Move the font bundle into the kernel.** `docloom.core.fonts` now owns the
+      woff2 files, the semantic stacks and the base64 `@font-face` embedding;
+      packs keep only selection *policy* (which faces they draw from). A second
+      pack gets byte-identical typography without duplicating the bundle. Also
+      fixed a latent packaging bug it surfaced: the `force-include` table was
+      duplicating every font and template, so `pip wheel .` failed outright — a
+      test now pins the table empty.
+- [x] **Company stamps on handwritten documents.** Replaced the word-in-a-box
+      mark with a procedural SVG seal carrying the issuer's registered name, town
+      and registration number — circular / oval / rectangular, in desaturated
+      red/blue/violet pad ink, roughened by a turbulence filter. Placement is
+      drawn from six plausible zones with jitter and a hand-pressed angle, never a
+      corner or dead centre, and the die is keyed to the company so one office
+      keeps one stamp across its invoices.
 - [x] **Bundle OFL fonts for portable typography.** Four keys (serif-classic →
       Noto Serif, sans-neutral → Inter, slab → Zilla Slab, mono-invoice →
       JetBrains Mono) now embed a bundled OFL woff2 (weights 400/700) as base64
