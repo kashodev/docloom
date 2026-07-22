@@ -36,6 +36,11 @@ from docloom.packs.invoice.enums import (
 )
 from docloom.core.money import ZERO, money, sum_money
 
+#: At or below this ``wear`` a document counts as *crisp* — well preserved, not
+#: an old or heavily copied artefact. Recorded on the golden row so an evaluation
+#: can split accuracy by artefact quality without re-deriving the threshold.
+_CRISP_WEAR = 0.25
+
 
 class _Base(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -304,6 +309,18 @@ class GoldenInvoice(_Base):
     company_id: str
     render_profile: RenderProfile
     condition: DocumentCondition = DocumentCondition.CLEAN
+    wear: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "How worn the physical artefact is. 1.0 is the default well-used "
+            "look; 0.0 is a crisp document — fresh off the pad, sharply copied. "
+            "Drives the ink roughening at render time and the scan degradation "
+            "afterwards, so the two stay consistent. Never reaches perfectly "
+            "clean lines: real ink and real scanners are not vector-exact."
+        ),
+    )
     page_count: int | None = Field(default=None, description="Filled in after rendering")
 
     # ── Storage pointers ───────────────────────────────────────────────────
@@ -421,6 +438,11 @@ class GoldenInvoice(_Base):
             "condition": str(self.condition),
             "is_handwritten": self.condition == DocumentCondition.HANDWRITTEN,
             "is_degraded": self.condition != DocumentCondition.CLEAN,
+            # Recorded so an evaluation can slice accuracy by artefact quality —
+            # "how much worse is OCR on a worn copy?" is a question the corpus
+            # should be able to answer directly.
+            "wear": self.wear,
+            "is_crisp": self.wear <= _CRISP_WEAR,
             "page_count": self.page_count,
             "meta_position": self.render_profile.meta_position,
             "totals_style": self.render_profile.totals_style,

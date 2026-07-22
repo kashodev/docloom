@@ -38,5 +38,8 @@ What the set covers:
   landing somewhere plausible on the page at a hand-pressed angle. `45` is the
   neatest hand
   (in French) and `46` the messiest, showing the legibility dial: the same
-  invoice as `44`, much harder to read. The figures are identical to the clean
+  invoice as `44`, much harder to read. `46` also shows the **wear** dial at its
+  worn default; `47_handwritten_crisp.pdf` is the same kind of document at
+  `wear = 0` — a well-preserved artefact, sharp and legible, though the seal
+  edges and pen strokes are still not vector-clean, because real ink never is. The figures are identical to the clean
   twin — handwriting changes the rendering, never the ground truth.
