@@ -95,6 +95,21 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         live fleet-wide cost visibility is ever needed — see
         `feature_explorations/llm-cost-telemetry.md`.
 
+- [ ] **Investigate logging and metrics.** The project has `structlog` as a
+      dependency but no deliberate logging or metrics story: what a run should
+      emit, at what level, in what format, and where it goes on each platform.
+      Worth covering when investigated — structured vs human-readable output and
+      how they coexist in a CLI; per-worker vs per-run context (run id, unit
+      index) threaded through without passing a logger everywhere; which
+      operational metrics matter (documents/sec, unit duration, render failures,
+      claim contention, lease reclaims) and whether they belong in logs, a
+      metrics endpoint, or the existing run state; how it lands on Cloud
+      Run/Batch/local; and what *not* to log (document content — the corpus is
+      synthetic, but the habit should hold if a pack ever handles real input).
+      Distinct from the LLM cost telemetry already built, which is analytics
+      data, not operational signal — though the two should agree on how a run is
+      identified. Investigation first, no implementation.
+
 - [ ] **Stroke-level handwriting synthesis (top realism tier, optional extra).**
       The font-based approach (bundled OFL handwriting faces + per-field jitter)
       gets a convincing *filled-in form*, but every occurrence of a letter is the
