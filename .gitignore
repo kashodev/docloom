@@ -57,3 +57,11 @@ htmlcov/
 # and are committed so the rendering can be reviewed without running a job.
 !samples/**/*.pdf
 !samples/**/*.PDF
+
+# Real run configurations. `run.example.yaml` is the committed template; every
+# other run.yaml is one operator's actual run — project ids, bucket names, doc
+# counts and secret *names* — which is noise in review at best and a leak at
+# worst. Copy the example, never commit the copy.
+run.yaml
+run.*.yaml
+!run.example.yaml
