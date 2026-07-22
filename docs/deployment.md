@@ -22,7 +22,7 @@ writes, so any worker with credentials can use them.
 
 ## Configuration surface
 
-Three URIs decide the whole deployment. They are CLI flags (`docloom generate`),
+Four URIs decide the whole deployment. They are CLI flags (`docloom generate`),
 and the calling code never changes when they do:
 
 | Concern | Flag | Local default | Cloud options |
@@ -30,6 +30,7 @@ and the calling code never changes when they do:
 | Blob storage | `--storage` | `file://./out` | `gs://bucket/prefix` · `s3://bucket/prefix` |
 | Run state | `--state` | `sqlite://./runs.db` | `firestore://project/database` · `dynamodb://table` |
 | Golden sink | (export) | `parquet://` · `duckdb://` | `bigquery://project/dataset?staging=gs://…` |
+| LLM cost telemetry | `--llm-usage` | `shard://` (**on by default**) | `firestore://…` · `dynamodb://table` · `off` |
 
 Plus the two knobs that shape the work itself:
 
@@ -54,6 +55,7 @@ Be aware of the gaps before planning a platform:
 | `dynamodb://` | ✅ built, verified against DynamoDB Local |
 | `s3://` | ✅ built, unit-tested (no emulator run yet) |
 | `bigquery://` | ✅ built; end-to-end test needs a real project |
+| `--llm-usage` `shard://` / `firestore://` / `dynamodb://` | ✅ built; DynamoDB verified against moto |
 | `az://` (Azure Blob) | ❌ **not written** |
 | Cosmos DB / Table Storage state | ❌ **not written** |
 | Athena / Synapse sinks | ❌ **not written** |

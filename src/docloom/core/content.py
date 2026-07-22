@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from docloom.core.providers.budget import BudgetGuard
     from docloom.core.providers.catalogue_runner import CatalogueItem, RunReport
     from docloom.core.providers.mix import ProviderMix
+    from docloom.core.usage.base import UsageSink
 
 
 class ContentMode(StrEnum):
@@ -103,12 +104,18 @@ async def build_catalogue(
     budget: BudgetGuard | None = None,
     concurrency: int = 8,
     use_batch: bool = True,
+    usage: UsageSink | None = None,
 ) -> RunReport:
     """Run an LLM-backed pack's offline catalogue step.
 
     Drives the pack's items through the weighted provider mix under the budget
     — batching the batch-capable slice — then hands the results back to the pack.
     Raises for a procedural pack, which has no catalogue to build.
+
+    ``usage`` records what each call cost. Catalogue calls are attributed to the
+    *item* they generated, not a document: one item is reused across many
+    documents, so per-document cost from a catalogue build is amortised rather
+    than measured.
     """
     from docloom.core.providers.catalogue_runner import CatalogueRunner
 
@@ -123,7 +130,8 @@ async def build_catalogue(
             f"{getattr(pack, 'name', pack)!r} declares {ContentMode.LLM_BACKED} but does "
             "not implement LlmContentBuilder (catalogue_items / ingest)"
         )
-    runner = CatalogueRunner(mix, budget=budget, concurrency=concurrency, use_batch=use_batch)
+    runner = CatalogueRunner(mix, budget=budget, concurrency=concurrency,
+                             use_batch=use_batch, usage=usage)
     report = await runner.run(pack.catalogue_items())
     pack.ingest(report.results)
     return report
