@@ -100,22 +100,19 @@ table.pad-items tr.blank td { }
 .sign-slot .cap { font-size: 7pt; text-transform: uppercase;
                   letter-spacing: 0.06em; color: var(--ink-soft); margin-top: 1mm; }
 
-/* A rubber stamp: condensed lettering in pad ink, rotated, edges eaten away by
-   the turbulence filter and unevenly inked via the mask. */
-.stamp { position: absolute; top: {{ hw.stamp_top }}mm; left: {{ hw.stamp_left }}mm;
+/* The company's own stamp — a procedural SVG seal carrying its registered name,
+   town and registration number. `currentColor` lets one pad-ink colour drive
+   every stroke. Pad ink is translucent and never evenly laid down, so the
+   displacement filter eats the edges: it reads as rubber, not vector art. */
+.stamp { position: absolute;
+         top: {{ hw.stamp_top }}mm; left: {{ hw.stamp_left }}mm;
+         width: {{ hw.stamp_width }}mm;
          transform: rotate({{ hw.stamp_rotate }}deg);
          color: {{ hw.stamp_ink }};
-         border: 2.2pt solid {{ hw.stamp_ink }};
-         border-radius: 1.5mm;
-         padding: 1.6mm 4mm;
-         font-family: {{ hw.stamp_stack | safe }};
-         font-size: 21pt; font-weight: 700;
-         letter-spacing: 0.16em; text-transform: uppercase;
-         /* Pad ink is translucent and never evenly laid down; the displacement
-            filter eats the edges so the border reads as rubber, not a rectangle. */
-         opacity: 0.74;
+         opacity: 0.66;
          filter: url(#stamp-rough);
          pointer-events: none; }
+.stamp svg { width: 100%; height: auto; display: block; }
 body { position: relative; }
 </style>
 </head>
@@ -141,7 +138,7 @@ body { position: relative; }
   </defs>
 </svg>
 
-<div class="stamp">{{ hw.stamp_text }}</div>
+<div class="stamp">{{ hw.stamp_svg | safe }}</div>
 
 <div class="pad">
   <div class="pad-head">

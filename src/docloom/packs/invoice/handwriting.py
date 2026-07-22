@@ -38,6 +38,7 @@ from docloom.packs.invoice.fonts import (
     font_faces_css,
     font_stack,
 )
+from docloom.packs.invoice.stamps import INKS, stamp_svg
 
 #: Ballpoint and fountain-pen inks people actually fill forms with.
 _INKS: tuple[str, ...] = (
@@ -47,12 +48,29 @@ _INKS: tuple[str, ...] = (
     "#2d2a26",   # soft pencil-black
 )
 
-#: Rubber-stamp colours — always a saturated pad ink, never document black.
-_STAMP_INKS: tuple[str, ...] = ("#b0322c", "#1d4f8b", "#7a2470")
+#: Where a stamp actually lands. Someone pressing a die onto a finished invoice
+#: aims at empty paper near what they are approving — beside the totals, over the
+#: signature, in the lower margin — not at a corner, and never dead centre. Each
+#: zone is a (left, top) fraction *range* of the printable box, so the draw is
+#: varied within a plausible area rather than uniform over the page.
+_STAMP_ZONES: tuple[tuple[str, tuple[float, float], tuple[float, float]], ...] = (
+    ("beside-totals", (0.50, 0.70), (0.60, 0.71)),
+    ("over-signature", (0.52, 0.72), (0.73, 0.83)),
+    ("lower-left", (0.07, 0.24), (0.70, 0.82)),
+    ("across-middle", (0.28, 0.48), (0.40, 0.55)),
+    ("upper-right", (0.54, 0.71), (0.09, 0.19)),
+    ("over-items", (0.13, 0.33), (0.33, 0.47)),
+)
+#: The printable box a placement is measured against (A4 less the page margins).
+_BOX_W_MM, _BOX_H_MM = 182.0, 261.0
 
-#: What the stamp says. Localised at the call site would be nicer, but these
-#: read as stock office stamps in every locale the pack supports today.
-_STAMP_TEXTS: tuple[str, ...] = ("PAID", "RECEIVED", "APPROVED", "ENTERED")
+#: Nominal width and aspect per stamp shape, in mm — a corporate seal is roughly
+#: 40mm across, a self-inking rectangle wider and shallower.
+_STAMP_GEOMETRY: dict[str, tuple[float, float]] = {
+    "circle": (40.0, 1.0),
+    "oval": (58.0, 300 / 200),
+    "rect": (54.0, 300 / 122),
+}
 
 #: Given names + surnames a signature is built from. Synthetic and generic on
 #: purpose: a signature must never resemble a real person's.
@@ -90,12 +108,14 @@ class Handwriting:
     signature_stack: str
     signature_text: str
     signature_rotate: float
-    stamp_stack: str
-    stamp_text: str
+    stamp_svg: str
+    stamp_shape: str
+    stamp_zone: str
     stamp_ink: str
     stamp_rotate: float
     stamp_top: float
     stamp_left: float
+    stamp_width: float
     face_css: str
     ruled_rows: int
     _jitters: tuple[Jitter, ...] = field(default=(), repr=False)
@@ -114,12 +134,14 @@ class Handwriting:
             "signature_stack": self.signature_stack,
             "signature_text": self.signature_text,
             "signature_rotate": self.signature_rotate,
-            "stamp_stack": self.stamp_stack,
-            "stamp_text": self.stamp_text,
+            "stamp_svg": self.stamp_svg,
+            "stamp_shape": self.stamp_shape,
+            "stamp_zone": self.stamp_zone,
             "stamp_ink": self.stamp_ink,
             "stamp_rotate": self.stamp_rotate,
             "stamp_top": self.stamp_top,
             "stamp_left": self.stamp_left,
+            "stamp_width": self.stamp_width,
             "face_css": self.face_css,
             "ruled_rows": self.ruled_rows,
             "jitter": self.jitter,
@@ -131,8 +153,56 @@ class Handwriting:
 _JITTER_POOL = 37
 
 
+def _stamp(rng: Random, *, company: str, town: str, registration: str) -> dict[str, Any]:
+    """Build the company's stamp and decide where it was pressed.
+
+    The seal's *design* is derived from the company name alone, so one office
+    keeps one stamp across all its invoices. Everything about the *impression* —
+    which zone it landed in, the angle, how heavily it inked — is per document.
+    """
+    svg, shape = stamp_svg(
+        company=company or "OFFICIAL",
+        town=town,
+        registration=registration,
+        # Design keyed to the company, not the document.
+        seed=None if company else rng.getrandbits(32),
+    )
+    ink_family = rng.choice(("red", "red", "blue", "blue", "violet"))
+    ink = rng.choice(INKS[ink_family])
+
+    width, aspect = _STAMP_GEOMETRY[shape]
+    width = round(width * rng.uniform(0.92, 1.08), 1)
+    height = width / aspect
+
+    zone, (l0, l1), (t0, t1) = rng.choice(_STAMP_ZONES)
+    left = rng.uniform(l0, l1) * _BOX_W_MM
+    top = rng.uniform(t0, t1) * _BOX_H_MM
+    # Keep the whole impression on the paper — a die pressed half off the sheet
+    # is a different artefact, and not the one we are modelling.
+    left = min(max(left, 4.0), _BOX_W_MM - width - 4.0)
+    top = min(max(top, 4.0), _BOX_H_MM - height - 4.0)
+
+    return {
+        "stamp_svg": svg,
+        "stamp_shape": shape,
+        "stamp_zone": zone,
+        "stamp_ink": ink,
+        # Hand-pressed, so askew — but a die is held roughly square, not spun.
+        "stamp_rotate": round(rng.uniform(-15.0, 11.0), 2),
+        "stamp_top": round(top, 1),
+        "stamp_left": round(left, 1),
+        "stamp_width": width,
+    }
+
+
 def handwriting_for(
-    seed: int, *, line_count: int = 0, legibility: float | None = None
+    seed: int,
+    *,
+    line_count: int = 0,
+    legibility: float | None = None,
+    company: str = "",
+    town: str = "",
+    registration: str = "",
 ) -> Handwriting:
     """Resolve the handwriting for one document, deterministically from ``seed``.
 
@@ -140,6 +210,12 @@ def handwriting_for(
     neatest hand, 0.0 the messiest. Left ``None`` it is drawn from the seed, so a
     corpus spans the range. ``line_count`` sizes the pad so there are always a
     few blank ruled lines after the last item, the way a real pad looks.
+
+    ``company`` / ``town`` / ``registration`` are stamped into the seal, so the
+    mark carries the issuer's real identity rather than a generic word. The stamp
+    *design* is keyed off the company alone — one office, one stamp, reused on
+    every invoice — while where it lands and how hard it was pressed vary per
+    document.
     """
     rng = Random(seed)
 
@@ -167,12 +243,7 @@ def handwriting_for(
         signature_stack=font_stack(SIGNATURE_KEY),
         signature_text=f"{rng.choice(_FIRST)}. {rng.choice(_LAST)}",
         signature_rotate=round(rng.uniform(-5.0, 3.0), 2),
-        stamp_stack=font_stack(STAMP_KEY),
-        stamp_text=rng.choice(_STAMP_TEXTS),
-        stamp_ink=rng.choice(_STAMP_INKS),
-        stamp_rotate=round(rng.uniform(-17.0, -5.0), 2),
-        stamp_top=round(rng.uniform(46.0, 60.0), 1),
-        stamp_left=round(rng.uniform(8.0, 26.0), 1),
+        **_stamp(rng, company=company, town=town, registration=registration),
         # Embed only the three faces this document actually uses.
         face_css=font_faces_css((writer_key, SIGNATURE_KEY, STAMP_KEY)),
         # Enough rules to reach the foot of the pad, so the blank remainder

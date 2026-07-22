@@ -32,7 +32,11 @@ What the set covers:
   pre-printed pad with ruled item lines, filled in by hand. Every value — dates,
   line items, quantities, prices, subtotal, tax and total — is rendered in a
   bundled OFL handwriting face with per-field jitter, over printed chrome, and
-  signed and stamped in roughened ink, then scanned. `45` is the neatest hand
+  signed and stamped in roughened ink, then scanned. The stamp is the issuer's
+  own **official seal** — a procedural SVG carrying its registered name, town and
+  registration number, circular/oval/rectangular, in red, blue or violet pad ink,
+  landing somewhere plausible on the page at a hand-pressed angle. `45` is the
+  neatest hand
   (in French) and `46` the messiest, showing the legibility dial: the same
   invoice as `44`, much harder to read. The figures are identical to the clean
   twin — handwriting changes the rendering, never the ground truth.

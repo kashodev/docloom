@@ -112,7 +112,19 @@ def build_context(invoice: GoldenInvoice) -> dict[str, Any]:
     # Handwriting is resolved only for a handwritten document — it embeds three
     # extra font faces, which no other archetype should pay for.
     hw = (
-        handwriting_for(invoice.seed, line_count=len(invoice.line_items))
+        handwriting_for(
+            invoice.seed,
+            line_count=len(invoice.line_items),
+            # The stamp carries the issuer's real identity, so an extractor can
+            # cross-check the mark against the golden record.
+            company=invoice.issuer.name,
+            town=", ".join(x for x in (invoice.issuer.city, invoice.issuer.region) if x),
+            registration=(
+                f"{invoice.issuer.registrations[0].kind} "
+                f"{invoice.issuer.registrations[0].value}"
+                if invoice.issuer.registrations else ""
+            ),
+        )
         if invoice.condition is DocumentCondition.HANDWRITTEN
         else None
     )

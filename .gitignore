@@ -5,6 +5,11 @@
 *-service-account*.json
 gcp-credentials*.json
 
+# ─── Reference material (never committed) ───────────────────────────────────
+# Third-party images used only as visual reference while building the
+# procedural equivalents. Not ours to redistribute, and not needed to build.
+templates/stamps/
+
 # ─── Generated artefacts ────────────────────────────────────────────────────
 out/
 catalog/

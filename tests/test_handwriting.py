@@ -80,11 +80,47 @@ def test_signature_is_synthetic_and_non_empty() -> None:
         assert len(text) < 24
 
 
-def test_stamp_is_a_stock_office_mark_in_pad_ink() -> None:
-    hw = handwriting_for(5)
-    assert hw.stamp_text in {"PAID", "RECEIVED", "APPROVED", "ENTERED"}
+def test_stamp_carries_the_companys_own_identity() -> None:
+    """The mark is the issuer's seal, not a generic word — so an extractor can
+    cross-check it against the golden record."""
+    hw = handwriting_for(5, company="Copperline Halcyon LLC",
+                         town="Denver, CO", registration="EIN 54-4368743")
+    assert "COPPERLINE HALCYON LLC" in hw.stamp_svg
+    assert "DENVER, CO" in hw.stamp_svg
+    assert "EIN 54-4368743" in hw.stamp_svg
+    assert hw.stamp_shape in {"circle", "oval", "rect"}
     assert hw.stamp_ink.startswith("#")
-    assert -20 < hw.stamp_rotate < 0          # stamps land askew, never square
+
+
+def test_stamp_design_is_the_same_for_a_company_across_documents() -> None:
+    """One office, one stamp: the die does not change between invoices, even
+    though where it lands does."""
+    a = handwriting_for(1, company="Northwind Supply", town="New York, NY")
+    b = handwriting_for(999, company="Northwind Supply", town="New York, NY")
+    assert a.stamp_svg == b.stamp_svg
+    assert a.stamp_shape == b.stamp_shape
+
+
+def test_stamp_is_pressed_askew_but_not_spun() -> None:
+    for seed in range(40):
+        assert -16 < handwriting_for(seed).stamp_rotate < 12
+
+
+def test_stamp_lands_in_varied_but_plausible_places() -> None:
+    """A human aims at empty paper near what they are approving — so placement
+    varies, but never off the sheet and never jammed in a corner."""
+    placements = {(hw.stamp_left, hw.stamp_top)
+                  for hw in (handwriting_for(s, company="Acme Ltd") for s in range(60))}
+    assert len(placements) > 20                 # genuinely varied, not one spot
+
+    zones = {handwriting_for(s, company="Acme Ltd").stamp_zone for s in range(60)}
+    assert len(zones) >= 4                      # several different areas used
+
+    for seed in range(60):
+        hw = handwriting_for(seed, company="Acme Ltd")
+        assert 0 < hw.stamp_left < 182          # inside the printable box
+        assert 0 < hw.stamp_top < 261
+        assert hw.stamp_left + hw.stamp_width <= 182
 
 
 def test_pad_always_has_blank_rules_after_the_last_item() -> None:

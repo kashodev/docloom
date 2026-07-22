@@ -19,30 +19,31 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       (Intro leads with the golden-dataset-for-scoring-extraction purpose; the
       "local-first" section was rescoped — see below.)
 
-## Content generation strategy per pack
-- [x] **Make "local-first" a per-pack property, and give text-heavy packs a
-      first-class LLM source.** `core/content.py` formalises the contract:
-      `ContentMode` (`procedural` | `llm_backed`) + `ContentCapability` (with
-      derived `local_first` / `requires_api_key`), declared by every pack via
-      `DocumentPack.content_capability` and read defensively through
-      `capability_of` (defaults to procedural for older packs). An LLM-backed
-      pack also implements the `LlmContentBuilder` protocol (`catalogue_items` /
-      `ingest`), and `build_catalogue(pack, mix, budget=...)` drives that offline
-      step through the provider mix + catalogue runner (Batch slice included),
-      refusing a procedural pack. InvoicePack declares `PROCEDURAL`; README
-      documents the contract.
+## Features (larger, self-contained work)
 
-## Rendering fidelity
-- [x] **Bundle OFL fonts for portable typography.** Four keys (serif-classic →
-      Noto Serif, sans-neutral → Inter, slab → Zilla Slab, mono-invoice →
-      JetBrains Mono) now embed a bundled OFL woff2 (weights 400/700) as base64
-      `@font-face` via `fonts.font_face_css`, and `font_stack` leads with the
-      embedded family — byte-identical rendering for those typefaces on any host.
-      Files + licence in `src/docloom/packs/invoice/fonts/`. Remaining keys still
-      resolve from their semantic fallback stack; add more the same way (drop
-      woff2 into `fonts/files/`, extend `BUNDLED`, note it in `OFL.txt`).
+- [ ] **Per-run manifest (and a split manifest for large runs).** Every
+      generation run should emit a manifest describing what it produced, so a
+      consumer can discover and validate a run without walking the bucket. It
+      belongs next to the artefacts under the run prefix.
+      - **Contents:** run id, pack, config id, created/completed timestamps,
+        totals (documents, units, per-table golden rows), the unit -> index-range
+        map, storage layout (document and shard key patterns), per-unit counts
+        and checksums, the pack/schema version, and the condition/archetype mix
+        actually generated.
+      - **Splitting:** a run of hundreds of thousands of documents produces a
+        manifest too large to be one useful file. Shard it the way the golden
+        data is already sharded — a manifest part per unit-range, written into a
+        subfolder — with a **main manifest** at the run root that indexes the
+        parts (part key, unit range, document count, byte size, checksum) plus
+        the run-level totals. One small file to fetch first; the parts only when
+        needed.
+      - **Why:** it makes a run self-describing for evaluation and transfer,
+        gives export something authoritative to reconcile against, and is the
+        natural place to record that a run finished cleanly vs. was resumed.
+      - Note the storage layout already gives each run its own prefix and buckets
+        documents per unit (`<run>/documents/unit-000123/…`), so the manifest
+        just needs to describe that structure rather than invent one.
 
-## Handwriting realism
 - [ ] **Stroke-level handwriting synthesis (top realism tier, optional extra).**
       The font-based approach (bundled OFL handwriting faces + per-field jitter)
       gets a convincing *filled-in form*, but every occurrence of a letter is the
@@ -70,6 +71,50 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         to a *slice* of the corpus rather than every handwritten document.
       - Depends on the `handwritten-form` archetype (built) supplying the field
         geometry the strokes get drawn into.
+
+- [ ] **Separately deployable landing page + developer-docs app, in this repo,
+      backed by mkdocs-material.** One site that houses *all* the documentation:
+      a marketing/landing front page plus the full developer docs (getting
+      started, architecture, the pack contract, the concurrency model, the
+      deployment guide, API/reference). Requirements to work out when actioned:
+      - **In-repo, independently deployable.** Its own subdirectory (e.g.
+        `docs-site/`) with its own `mkdocs.yml`, build, and deploy pipeline —
+        buildable and shippable without publishing the Python package, and vice
+        versa.
+      - **mkdocs-material** as the framework (nav, search, theming, versioning
+        via `mike` if we want per-release docs).
+      - **Single source of truth.** Fold the existing Markdown docs
+        (`README.md`, `DESIGN.md`, `docs/concurrency.md`, the deployment guide
+        once written) into the site rather than duplicating them; keep authoring
+        in Markdown so they stay diffable.
+      - **Landing page** distinct from the docs tree (custom `index.html` /
+        overrides or a Material "splash" home) — the project pitch, not a doc.
+      - Decide hosting/deploy (GitHub Pages via `gh-deploy`, or a static host)
+        and wire CI so docs deploy on merge. Do this **last** — it depends on the
+        deployment guide and the rest of the docs being settled.
+
+## Content generation strategy per pack
+- [x] **Make "local-first" a per-pack property, and give text-heavy packs a
+      first-class LLM source.** `core/content.py` formalises the contract:
+      `ContentMode` (`procedural` | `llm_backed`) + `ContentCapability` (with
+      derived `local_first` / `requires_api_key`), declared by every pack via
+      `DocumentPack.content_capability` and read defensively through
+      `capability_of` (defaults to procedural for older packs). An LLM-backed
+      pack also implements the `LlmContentBuilder` protocol (`catalogue_items` /
+      `ingest`), and `build_catalogue(pack, mix, budget=...)` drives that offline
+      step through the provider mix + catalogue runner (Batch slice included),
+      refusing a procedural pack. InvoicePack declares `PROCEDURAL`; README
+      documents the contract.
+
+## Rendering fidelity
+- [x] **Bundle OFL fonts for portable typography.** Four keys (serif-classic →
+      Noto Serif, sans-neutral → Inter, slab → Zilla Slab, mono-invoice →
+      JetBrains Mono) now embed a bundled OFL woff2 (weights 400/700) as base64
+      `@font-face` via `fonts.font_face_css`, and `font_stack` leads with the
+      embedded family — byte-identical rendering for those typefaces on any host.
+      Files + licence in `src/docloom/packs/invoice/fonts/`. Remaining keys still
+      resolve from their semantic fallback stack; add more the same way (drop
+      woff2 into `fonts/files/`, extend `BUNDLED`, note it in `OFL.txt`).
 
 ## Concurrency & multi-cloud portability
 - [x] **Lease + reclaim for crashed workers.** Each claim now stamps a
@@ -112,28 +157,6 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       reset + lease reclaim on resume; large-document routing (planned); and why
       the compute layer is swappable (coordination lives in the StateStore).
       Cross-links the deployment guide (still TODO).
-
-## Docs & landing site (large, do last)
-- [ ] **Separately deployable landing page + developer-docs app, in this repo,
-      backed by mkdocs-material.** One site that houses *all* the documentation:
-      a marketing/landing front page plus the full developer docs (getting
-      started, architecture, the pack contract, the concurrency model, the
-      deployment guide, API/reference). Requirements to work out when actioned:
-      - **In-repo, independently deployable.** Its own subdirectory (e.g.
-        `docs-site/`) with its own `mkdocs.yml`, build, and deploy pipeline —
-        buildable and shippable without publishing the Python package, and vice
-        versa.
-      - **mkdocs-material** as the framework (nav, search, theming, versioning
-        via `mike` if we want per-release docs).
-      - **Single source of truth.** Fold the existing Markdown docs
-        (`README.md`, `DESIGN.md`, `docs/concurrency.md`, the deployment guide
-        once written) into the site rather than duplicating them; keep authoring
-        in Markdown so they stay diffable.
-      - **Landing page** distinct from the docs tree (custom `index.html` /
-        overrides or a Material "splash" home) — the project pitch, not a doc.
-      - Decide hosting/deploy (GitHub Pages via `gh-deploy`, or a static host)
-        and wire CI so docs deploy on merge. Do this **last** — it depends on the
-        deployment guide and the rest of the docs being settled.
 
 ## Backlog
 - [x] Cloud adapters end-to-end verification against emulators. GCS
