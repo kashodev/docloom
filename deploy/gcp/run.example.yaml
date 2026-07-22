@@ -50,20 +50,76 @@ run:
   # no LLM calls and so writes nothing either way.
   llm_usage: "shard://"
 
-# ── Document types and their split ──────────────────────────────────────────
-# `share` is a percentage and the shares must total 100. Each type becomes its
-# own Cloud Run execution with `--total` apportioned, so a 50/50 split of
-# 1,000,000 is two runs of 500,000.
+# ── Document slices ─────────────────────────────────────────────────────────
+# Each entry is a *slice*: a batch of documents with its own size and its own
+# composition. Every slice becomes its own Cloud Run execution and its own run
+# id (`<run.id>-<name>`), so slices are separately resumable, exportable and
+# queryable — `run_id` is on every golden row.
 #
-# Only packs registered in the image are valid — today that is `invoice`. A
-# `contract` entry will fail fast with "unknown pack", which is the correct
-# behaviour rather than a silent zero.
+# Size a slice with EITHER `count` (absolute) or `share` (percent of run.total).
+# Mixing the two styles is rejected. With `count`, `run.total` may be omitted and
+# is taken as the sum.
+#
+# Everything else is optional. Omit a field and the slice is unconstrained on
+# that axis — the sampler's normal behaviour: companies drawn from the weighted
+# roster, each company's own template and locale, condition `clean`.
+#
+#   name        slice id; defaults to slice-1, slice-2, …
+#   pack        document type; defaults to `invoice`
+#   count       absolute number of documents
+#   share       percent of run.total (use instead of count, not as well)
+#   locales     restrict to these locales   [en-US en-CA en-GB fr-CA fr-FR]
+#   companies   a list of company ids to pin to, or an integer "use N companies"
+#   archetypes  a list of template names, an integer "use N templates", or `all`
+#   condition   clean | light_scan | heavy_scan | handwritten
+#   format      pdf | html                    (defaults to run.format)
+#   goods_receipt  true → delivery note with a receiver's signature; forces
+#                  physical goods, so it implies handwritten
+#
+# ⚠ Read this before relying on the composition fields. `count`, `pack`,
+# `format` and `name` are honoured today. The *composition* fields — locales,
+# companies, archetypes, condition, goods_receipt — are validated and shown by
+# `plan`, but the generator cannot yet be told to obey them: `docloom generate`
+# has no such flags, and the sampler draws companies from the full weighted
+# roster with each company's own locale and template. A slice named `french`
+# will NOT be French until that lands. Tracked in TODO.md. Until then, treat
+# them as the declared intent for the run, and check what you actually got with
+# a query — locale, company_id, condition and is_handwritten are all on the
+# golden row.
 documents:
-  - pack: invoice
-    share: 100
+  # 10,000 from a single vendor on a single template — the "same company, same
+  # look" slice, useful for testing whether an extractor overfits one layout.
+  - name: anchor-vendor
+    pack: invoice
+    count: 10000
+    companies: [anchor]
+    archetypes: [meta-sidebar-01]
 
-  # - pack: contract
-  #   share: 50
+  # 10,000 spread across every template and the whole roster.
+  - name: mixed
+    count: 10000
+    archetypes: all
+
+  # 2,500 French, both variants — Québec's two tax buckets differ from France's
+  # TVA, so this is a genuinely different extraction problem, not a translation.
+  - name: french
+    count: 2500
+    locales: [fr-CA, fr-FR]
+
+  # 2,500 hand-filled pads, drawn from a deliberately small pool so the same
+  # hands and layouts recur the way one office's paperwork would.
+  - name: handwritten
+    count: 2500
+    condition: handwritten
+    locales: [en-US]
+    companies: 10
+    archetypes: 3
+
+# Minimal alternative — omit `documents` entirely and you get one unconstrained
+# invoice slice for the whole of run.total:
+#
+# documents:
+#   - {pack: invoice, share: 100}
 
 # ── LLM providers for the catalogue step ────────────────────────────────────
 # NOT used by document generation. Generation makes no LLM calls: a procedural

@@ -136,34 +136,92 @@ emit("TASK_TIMEOUT", get("job.task_timeout", "3600s"))
 emit("MAX_RETRIES", int(get("job.max_retries", 3)))
 emit("SINK_URI", get("export.sink", ""))
 
-# ── Document mix ────────────────────────────────────────────────────────────
-docs = get("documents", []) or []
-if not docs:
-    sys.exit("config is missing `documents` — at least one {pack, share} entry")
-shares = sum(float(d.get("share", 0)) for d in docs)
-if abs(shares - 100.0) > 1e-6:
-    sys.exit(f"`documents` shares must total 100, got {shares:g}")
+# ── Document slices ─────────────────────────────────────────────────────────
+# Vocabularies are validated so a typo fails here rather than 40 minutes into a
+# run. Sources: docloom.core.locale.enums.Locale, core.enums.DocumentCondition,
+# and packs/invoice/templates/archetypes/.
+LOCALES = {"en-US", "en-CA", "en-GB", "fr-CA", "fr-FR"}
+CONDITIONS = {"clean", "light_scan", "heavy_scan", "handwritten"}
+ARCHETYPES = {
+    "banner-header-06", "boxed-form-01", "fullbleed-05", "handwritten-form-01",
+    "meta-sidebar-01", "receipt-compact-01", "telecom-itemized-37",
+}
 
-total = int(get("run.total", 0))
-if total <= 0:
-    sys.exit("`run.total` must be a positive number of documents")
+slices = get("documents") or [{"pack": "invoice", "share": 100}]
+total = int(get("run.total", 0) or 0)
 
-# Apportion by share, giving the rounding remainder to the last entry so the
-# parts always sum to exactly run.total — a silently short run is worse than an
-# uneven split.
-parts, assigned = [], 0
-for i, d in enumerate(docs):
-    pack = d.get("pack")
-    if not pack:
-        sys.exit("every `documents` entry needs a `pack`")
-    if i == len(docs) - 1:
-        count = total - assigned
-    else:
-        count = int(round(total * float(d.get("share", 0)) / 100.0))
-        assigned += count
-    parts.append(f"{pack}:{count}:{d.get('share', 0)}")
-emit("DOC_MIX", " ".join(parts))
-emit("DOC_COUNT", len(parts))
+sized_by_count = [s for s in slices if s.get("count") is not None]
+sized_by_share = [s for s in slices if s.get("share") is not None]
+if sized_by_count and sized_by_share:
+    sys.exit("size slices with `count` or `share`, not a mix of both")
+if not sized_by_count and not sized_by_share:
+    sys.exit("every slice needs a `count` or a `share`")
+
+if sized_by_count:
+    counts = [int(s["count"]) for s in slices]
+    if any(c <= 0 for c in counts):
+        sys.exit("`count` must be positive")
+    summed = sum(counts)
+    if total and total != summed:
+        sys.exit(f"slice counts total {summed} but run.total is {total}; drop one or align them")
+    total = summed
+else:
+    shares = sum(float(s.get("share", 0)) for s in slices)
+    if abs(shares - 100.0) > 1e-6:
+        sys.exit(f"slice shares must total 100, got {shares:g}")
+    if total <= 0:
+        sys.exit("`run.total` is required when slices are sized by `share`")
+    # Rounding remainder to the last slice, so the parts sum to exactly
+    # run.total — a silently short run is worse than an uneven split.
+    counts, assigned = [], 0
+    for i, s in enumerate(slices):
+        c = total - assigned if i == len(slices) - 1 else int(round(total * float(s["share"]) / 100.0))
+        counts.append(c)
+        assigned += c if i < len(slices) - 1 else 0
+
+def as_list(value, field, allowed=None):
+    """A slice constraint is a list, a scalar, or an int meaning 'use N of them'."""
+    if value is None:
+        return "", ""                      # unconstrained
+    if isinstance(value, bool):
+        sys.exit(f"`{field}` takes names or a count, not a boolean")
+    if isinstance(value, int):
+        return "", str(value)              # "use N"
+    if isinstance(value, str):
+        if value == "all":
+            return "all", ""
+        value = [value]
+    names = [str(v) for v in value]
+    if allowed:
+        bad = sorted(set(names) - allowed)
+        if bad:
+            sys.exit(f"unknown {field}: {', '.join(bad)} (known: {', '.join(sorted(allowed))})")
+    return ",".join(names), ""
+
+emit("TOTAL", total)
+rows = []
+for i, (s, count) in enumerate(zip(slices, counts), start=1):
+    name = str(s.get("name") or f"slice-{i}")
+    if "/" in name or " " in name:
+        sys.exit(f"slice name {name!r} must not contain spaces or slashes — it becomes a run id")
+    pack = s.get("pack", "invoice")
+    fmt = s.get("format", get("run.format", "pdf"))
+    locales, _ = as_list(s.get("locales"), "locales", LOCALES)
+    companies, company_n = as_list(s.get("companies"), "companies")
+    archetypes, archetype_n = as_list(s.get("archetypes"), "archetypes", ARCHETYPES)
+    condition = s.get("condition") or ""
+    if condition and condition not in CONDITIONS:
+        sys.exit(f"unknown condition {condition!r} (known: {', '.join(sorted(CONDITIONS))})")
+    goods = "yes" if s.get("goods_receipt") else ""
+    if goods and condition and condition != "handwritten":
+        sys.exit(f"slice {name!r}: goods_receipt is a handwritten delivery note, "
+                 f"so condition cannot be {condition!r}")
+    # \x1f (ASCII Unit Separator), NOT tab: `read` collapses runs of *whitespace*
+    # delimiters, so an omitted field would silently shift every later field left.
+    rows.append("\x1f".join([name, pack, str(count), fmt, locales, companies,
+                           company_n, archetypes, archetype_n, condition, goods]))
+emit("SLICES", "\n".join(rows))
+emit("SLICE_COUNT", len(rows))
 
 # ── Catalogue provider mix (validated, not yet executable) ──────────────────
 providers = get("catalogue.providers", []) or []
@@ -197,20 +255,42 @@ STATE_URI="firestore://${PROJECT}/${FIRESTORE_DB}"
 say() { printf '\n\033[1m▸ %s\033[0m\n' "$*"; }
 have() { gcloud "$@" >/dev/null 2>&1; }
 
-# A run holds exactly one pack in its plan, so each document type gets its own
-# run id when there is more than one.
+# Each slice is its own run: one pack per run plan, and separate ids keep slices
+# independently resumable, exportable and queryable (run_id is on every row).
 run_id_for() {
-  [[ "${DOC_COUNT}" -eq 1 ]] && echo "${RUN_ID}" || echo "${RUN_ID}-$1"
+  [[ "${SLICE_COUNT}" -eq 1 ]] && echo "${RUN_ID}" || echo "${RUN_ID}-$1"
 }
 
-gen_args() {  # pack, count, [extra flag]
-  local pack="$1" count="$2" extra="${3:-}"
-  local args="^|^generate|--run-id=$(run_id_for "${pack}")|--total=${count}"
-  args+="|--pack=${pack}|--unit-size=${UNIT_SIZE}|--format=${FORMAT}"
-  args+="|--config-id=${CONFIG_ID}|--max-line-items=${MAX_LINE_ITEMS}"
+# Feed the slice table to a `while read` loop. Fields are separated by \x1f
+# rather than a tab: `read` treats whitespace delimiters as collapsible, so an
+# empty composition field would shift every later field left.
+each_slice() { printf '%s\n' "${SLICES}"; }
+
+gen_args() {  # name, pack, count, format, [extra flag]
+  local name="$1" pack="$2" count="$3" fmt="$4" extra="${5:-}"
+  local args="^|^generate|--run-id=$(run_id_for "${name}")|--total=${count}"
+  args+="|--pack=${pack}|--unit-size=${UNIT_SIZE}|--format=${fmt}"
+  # config_id records which slice produced a run. It is on the Run, not on the
+  # golden rows — filter documents by run_id, not by this.
+  args+="|--config-id=${name}|--max-line-items=${MAX_LINE_ITEMS}"
   args+="|--storage=${STORAGE_URI}|--state=${STATE_URI}|--llm-usage=${LLM_USAGE}"
   [[ -n "${extra}" ]] && args+="|${extra}"
   echo "${args}"
+}
+
+# One line describing a slice's composition, or a note that it has none.
+constraints_of() {  # locales, companies, company_n, archetypes, archetype_n, condition, goods
+  local out=""
+  [[ -n "$1" ]] && out+="locales=$1 "
+  [[ -n "$2" ]] && out+="companies=[$2] "
+  [[ -n "$3" ]] && out+="companies=${3}× "
+  [[ "$4" == "all" ]] && out+="templates=all "
+  [[ -n "$4" && "$4" != "all" ]] && out+="templates=[$4] "
+  [[ -n "$5" ]] && out+="templates=${5}× "
+  [[ -n "$6" ]] && out+="condition=$6 "
+  [[ -n "$7" ]] && out+="goods-receipt "
+  [[ -z "${out}" ]] && out="unconstrained"
+  echo "${out}"
 }
 
 # ── Commands ────────────────────────────────────────────────────────────────
@@ -224,18 +304,18 @@ plan() {
   state           ${STATE_URI}  (${FIRESTORE_LOCATION})
   service account ${SA}
 
-  documents       ${TOTAL} total, unit size ${UNIT_SIZE}, format ${FORMAT}
+  documents       ${TOTAL} total, unit size ${UNIT_SIZE}
 EOF
   local units_total=0
-  for entry in ${DOC_MIX}; do
-    IFS=: read -r pack count share <<<"${entry}"
+  while IFS=$'\x1f' read -r name pack count fmt loc comp comp_n arch arch_n cond goods; do
+    [[ -n "${name}" ]] || continue
     local units=$(( (count + UNIT_SIZE - 1) / UNIT_SIZE ))
     units_total=$(( units_total + units ))
-    printf '    %-12s %8s docs (%s%%)  → %4s units  run id: %s\n' \
-      "${pack}" "${count}" "${share}" "${units}" "$(run_id_for "${pack}")"
-  done
+    printf '    %-16s %8s %-8s %4s units  run id: %s\n' \
+      "${name}" "${count}" "${pack}/${fmt}" "${units}" "$(run_id_for "${name}")"
+    printf '                     %s\n' "$(constraints_of "${loc}" "${comp}" "${comp_n}" "${arch}" "${arch_n}" "${cond}" "${goods}")"
+  done < <(each_slice)
   cat <<EOF
-
   job             ${JOB}: ${TASKS} task(s), parallelism ${PARALLELISM}
                   ${CPU} vCPU / ${MEMORY}, timeout ${TASK_TIMEOUT}, retries ${MAX_RETRIES}
   units per task  ~$(( units_total / (TASKS > 0 ? TASKS : 1) )) of ${units_total}
@@ -340,42 +420,42 @@ deploy_job() {
   say "Deploying job ${JOB} (${TASKS} tasks, parallelism ${PARALLELISM})"
   # Args are set per execution, so the job definition carries the first type's
   # only as a sane default.
-  IFS=: read -r first_pack first_count _ <<<"${DOC_MIX%% *}"
+  IFS=$'\x1f' read -r f_name f_pack f_count f_fmt _ < <(each_slice)
   gcloud run jobs deploy "${JOB}" \
     --image="${IMAGE}" --region="${REGION}" --project="${PROJECT}" \
     --service-account="${SA}" \
     --tasks="${TASKS}" --parallelism="${PARALLELISM}" \
     --task-timeout="${TASK_TIMEOUT}" --max-retries="${MAX_RETRIES}" \
     --cpu="${CPU}" --memory="${MEMORY}" \
-    --args="$(gen_args "${first_pack}" "${first_count}")"
+    --args="$(gen_args "${f_name}" "${f_pack}" "${f_count}" "${f_fmt}")"
 }
 
 run_job() {
-  for entry in ${DOC_MIX}; do
-    IFS=: read -r pack count _ <<<"${entry}"
-    say "Executing ${JOB} — ${count} ${pack} document(s), run '$(run_id_for "${pack}")'"
+  while IFS=$'\x1f' read -r name pack count fmt _ _ _ _ _ _ _; do
+    [[ -n "${name}" ]] || continue
+    say "Executing ${JOB} — slice '${name}': ${count} ${pack} document(s)"
     gcloud run jobs execute "${JOB}" --region="${REGION}" --project="${PROJECT}" \
-      --wait --args="$(gen_args "${pack}" "${count}")"
-  done
+      --wait --args="$(gen_args "${name}" "${pack}" "${count}" "${fmt}")"
+  done < <(each_slice)
 }
 
 resume() {
-  for entry in ${DOC_MIX}; do
-    IFS=: read -r pack count _ <<<"${entry}"
-    say "Resuming '$(run_id_for "${pack}")' — re-queue failed, reclaim crashed"
+  while IFS=$'\x1f' read -r name pack count fmt _ _ _ _ _ _ _; do
+    [[ -n "${name}" ]] || continue
+    say "Resuming '$(run_id_for "${name}")' — re-queue failed, reclaim crashed"
     gcloud run jobs execute "${JOB}" --region="${REGION}" --project="${PROJECT}" \
-      --wait --args="$(gen_args "${pack}" "${count}" "--resume")"
-  done
+      --wait --args="$(gen_args "${name}" "${pack}" "${count}" "${fmt}" "--resume")"
+  done < <(each_slice)
 }
 
 status() {
-  for entry in ${DOC_MIX}; do
-    IFS=: read -r pack _ _ <<<"${entry}"
-    say "Status — $(run_id_for "${pack}")"
+  while IFS=$'\x1f' read -r name _ _ _ _ _ _ _ _ _ _; do
+    [[ -n "${name}" ]] || continue
+    say "Status — $(run_id_for "${name}")"
     gcloud run jobs execute "${JOB}" --region="${REGION}" --project="${PROJECT}" \
       --wait --tasks=1 --parallelism=1 \
-      --args="^|^status|--run-id=$(run_id_for "${pack}")|--state=${STATE_URI}"
-  done
+      --args="^|^status|--run-id=$(run_id_for "${name}")|--state=${STATE_URI}"
+  done < <(each_slice)
 }
 
 logs() {
@@ -388,30 +468,29 @@ logs() {
 
 export_golden() {
   [[ -n "${SINK_URI}" ]] || { echo "set export.sink in ${CONFIG} first"; exit 1; }
-  for entry in ${DOC_MIX}; do
-    IFS=: read -r pack _ _ <<<"${entry}"
-    say "Exporting $(run_id_for "${pack}") → ${SINK_URI}"
+  while IFS=$'\x1f' read -r name _ _ _ _ _ _ _ _ _ _; do
+    [[ -n "${name}" ]] || continue
+    say "Exporting $(run_id_for "${name}") → ${SINK_URI}"
     # One task: export is a single sequential read of the shards.
     gcloud run jobs execute "${JOB}" --region="${REGION}" --project="${PROJECT}" \
       --wait --tasks=1 --parallelism=1 \
-      --args="^|^export|--run-id=$(run_id_for "${pack}")|--storage=${STORAGE_URI}|--sink=${SINK_URI}"
-  done
+      --args="^|^export|--run-id=$(run_id_for "${name}")|--storage=${STORAGE_URI}|--sink=${SINK_URI}"
+  done < <(each_slice)
 }
 
 teardown() {
   say "Teardown — deletes this run's output. Not reversible."
   echo "  job    : ${JOB}"
-  for entry in ${DOC_MIX}; do
-    IFS=: read -r pack _ _ <<<"${entry}"
-    echo "  output : gs://${BUCKET}/runs/$(run_id_for "${pack}")"
-  done
+  while IFS=$'\x1f' read -r name _ _ _ _ _ _ _ _ _ _; do
+    [[ -n "${name}" ]] && echo "  output : gs://${BUCKET}/runs/$(run_id_for "${name}")"
+  done < <(each_slice)
   read -r -p "  proceed? [y/N] " reply
   [[ "${reply}" == "y" ]] || { echo "  aborted"; exit 0; }
   gcloud run jobs delete "${JOB}" --region="${REGION}" --project="${PROJECT}" --quiet || true
-  for entry in ${DOC_MIX}; do
-    IFS=: read -r pack _ _ <<<"${entry}"
-    gcloud storage rm -r "gs://${BUCKET}/runs/$(run_id_for "${pack}")" --project="${PROJECT}" || true
-  done
+  while IFS=$'\x1f' read -r name _ _ _ _ _ _ _ _ _ _; do
+    [[ -n "${name}" ]] && gcloud storage rm -r "gs://${BUCKET}/runs/$(run_id_for "${name}")" \
+      --project="${PROJECT}" || true
+  done < <(each_slice)
   echo "  bucket, Firestore database and service account left in place"
 }
 

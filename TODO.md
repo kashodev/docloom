@@ -101,6 +101,28 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         (~35 rows/s); only for latency, and it would reintroduce the duplicate
         problem the shard keys currently avoid.
 
+- [ ] **Let a run's composition be constrained (locale / company / template /
+      condition).** `deploy/gcp/run.example.yaml` lets an operator describe
+      slices — "10k from one company on one template", "2.5k in French", "2.5k
+      handwritten from a pool of 10 companies" — and the deploy script validates
+      and displays them, but nothing can execute them: `docloom generate` has no
+      such flags and the sampler draws from the full weighted roster with each
+      company's own locale and template.
+      - **The seam already exists.** `InvoiceSampler(goods_receipt=True)` filters
+        the roster and the product pool; this is the same idea generalised, not
+        new machinery.
+      - Shape: sampler selection options (locales, company ids or a count,
+        archetypes or a count, a condition mix) built as roster/product filters,
+        surfaced as `docloom generate --locale … --company … --archetype …
+        --condition …`, or as a `--selection-file` taking the same YAML block the
+        deploy config already uses rather than inventing a second format.
+      - Choosing *N of something* (10 companies, 3 templates) should be seeded
+        from the run id so the chosen subset is reproducible.
+      - Until then a slice is only a size and a run id; the composition fields
+        are documented intent. What was actually produced is queryable —
+        `locale`, `company_id`, `condition`, `is_handwritten` are on the golden
+        row — so a run can at least be audited after the fact.
+
 - [ ] **Expose the catalogue build on the CLI (`docloom catalogue`).** The
       provider mix, budget guard and `build_catalogue` all exist in
       `core/providers` and `core/content`, but nothing reaches them from the

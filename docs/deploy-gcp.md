@@ -51,28 +51,82 @@ units than tasks, and validates that both percentage splits total 100:
   units per task  ~5 of 1000
 ```
 
-### Document types and their split
+### Document slices — size *and* composition
+
+A slice is a batch with its own size and its own make-up. This is the requested
+shape — one vendor on one template, a mixed batch, a French batch, a handwritten
+batch — expressed directly:
 
 ```yaml
-run:
-  total: 1000000
 documents:
-  - {pack: invoice,  share: 50}
-  - {pack: contract, share: 50}
+  - name: anchor-vendor          # 10k from one company on one template
+    count: 10000
+    companies: [anchor]
+    archetypes: [meta-sidebar-01]
+
+  - name: mixed                  # 10k across every template and the roster
+    count: 10000
+    archetypes: all
+
+  - name: french                 # 2.5k French, both variants
+    count: 2500
+    locales: [fr-CA, fr-FR]
+
+  - name: handwritten            # 2.5k hand-filled, small pool of hands/layouts
+    count: 2500
+    condition: handwritten
+    locales: [en-US]
+    companies: 10
+    archetypes: 3
 ```
 
-Shares are percentages and must total 100. `run.total` is apportioned between
-them, with the rounding remainder given to the last entry so the parts sum to
-*exactly* the total — a silently short run is worse than an uneven split.
+Size with **either** `count` (absolute) or `share` (percent of `run.total`) —
+mixing the two is rejected. With `count`, `run.total` may be omitted and is
+taken as the sum; if you give both they must agree.
 
-**Each type becomes its own execution and its own run id** (`<id>-invoice`,
-`<id>-contract`). Not a workaround: a run records exactly one pack in its plan,
-so two document types are genuinely two runs. With a single type the id is used
-unchanged.
+| Field | Meaning |
+|---|---|
+| `name` | slice id; becomes the run id suffix. Defaults to `slice-1`, `slice-2`, … |
+| `pack` | document type; defaults to `invoice` |
+| `count` / `share` | size |
+| `locales` | restrict to `en-US en-CA en-GB fr-CA fr-FR` |
+| `companies` | list of company ids to pin to, **or** an integer "use N companies" |
+| `archetypes` | list of template names, an integer "use N", or `all` |
+| `condition` | `clean` · `light_scan` · `heavy_scan` · `handwritten` |
+| `format` | `pdf` · `html`; defaults to `run.format` |
+| `goods_receipt` | delivery note with a receiver's signature (implies handwritten) |
 
-Only packs registered in the image are valid — **today that is `invoice` alone**.
-A `contract` entry fails fast with `unknown pack 'contract'; available: invoice`,
-which is better than a silent zero.
+**Everything is optional.** Omit a field and the slice is unconstrained on that
+axis — the sampler's normal behaviour. Omit `documents` entirely and you get one
+unconstrained invoice slice for the whole of `run.total`.
+
+Vocabularies are validated, so a typo fails in `plan` rather than forty minutes
+into a run:
+
+```
+$ ./deploy.sh -c run.yaml plan
+unknown locales: fr_FR (known: en-CA, en-GB, en-US, fr-CA, fr-FR)
+```
+
+**Each slice is its own run** (`<run.id>-<name>`), so slices are independently
+resumable, exportable and queryable — `run_id` is on every golden row. That also
+follows from the model: a run records exactly one pack in its plan.
+
+> **⚠ Composition is declared, not yet enforced.** `count`, `pack`, `format` and
+> `name` are honoured today. `locales`, `companies`, `archetypes`, `condition`
+> and `goods_receipt` are validated and shown by `plan`, but **the generator
+> cannot be told to obey them**: `docloom generate` has no such flags, and the
+> sampler draws companies from the full weighted roster, taking each company's
+> own locale and template. **A slice named `french` will not be French until
+> that lands.**
+>
+> The seam exists — `InvoiceSampler` already takes `goods_receipt=True` and
+> filters its roster on it — so this is roster/product filtering exposed as CLI
+> flags, not new machinery. Tracked in `TODO.md`.
+>
+> Meanwhile the intent is recorded as `--config-id` on each run, and what you
+> *actually* got is queryable: `locale`, `company_id`, `condition` and
+> `is_handwritten` are all columns on the golden row.
 
 ### Which LLMs, and their split
 
