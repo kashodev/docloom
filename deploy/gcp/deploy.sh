@@ -290,6 +290,29 @@ STATE_URI="firestore://${PROJECT}/${FIRESTORE_DB}"
 say() { printf '\n\033[1m▸ %s\033[0m\n' "$*"; }
 have() { gcloud "$@" >/dev/null 2>&1; }
 
+# A freshly created service account is not immediately visible to the IAM
+# binding APIs — `add-iam-policy-binding` fails with "Service account … does not
+# exist" for a few seconds after `create` returns success. Eventual consistency
+# across Google's IAM replicas, not a bug in the create.
+#
+# It only bites on a first-ever provision, which is exactly when nobody is
+# watching for it and the script looks broken. Re-running would work, so this
+# waits rather than failing and telling the operator to try again.
+await_service_account() {
+  local attempt
+  for attempt in $(seq 1 30); do
+    if have iam service-accounts describe "${SA}" --project="${PROJECT}"; then
+      # Visible to `describe` is necessary but not sufficient — give the binding
+      # replicas a moment behind it.
+      sleep 5
+      return 0
+    fi
+    sleep 2
+  done
+  echo "  service account ${SA} did not become visible after ~60s; re-run provision" >&2
+  return 1
+}
+
 # Each slice is its own run: one pack per run plan, and separate ids keep slices
 # independently resumable, exportable and queryable (run_id is on every row).
 run_id_for() {
@@ -400,6 +423,7 @@ provision() {
   else
     gcloud iam service-accounts create "${SA_NAME}" \
       --display-name="docloom Cloud Run job" --project="${PROJECT}"
+    await_service_account
   fi
 
   say "Firestore composite index for the unit claim"
