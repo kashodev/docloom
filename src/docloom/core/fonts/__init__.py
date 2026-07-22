@@ -1,16 +1,23 @@
-"""Typeface stacks for invoice rendering.
+"""Typography for document rendering — stacks, and a bundled OFL font library.
+
+Kernel-level, not pack-level: a font file and the machinery to embed it say
+nothing about invoices. A contract or delivery-note pack wants byte-identical
+typography for exactly the same reason this one does, and duplicating a font
+bundle per pack would be absurd. What *is* pack business is **selection policy** —
+which faces a given document type draws from, and what it does with them; the
+invoice pack decides that in its catalogue and its handwriting module.
 
 The earlier design named single web fonts (``Inter``, ``Work Sans``, …) that are
 not installed in most render environments, so Chromium fell back to the *same*
-generic and every invoice looked identical. This replaces font *names* with
+generic and every document looked identical. This replaces font *names* with
 semantic *stacks*, each with a deliberately distinct character and a fallback
 chain that resolves to a different family on macOS, Linux, and the Docker image.
-So even without a bundled font, a "serif-elegant" invoice and a "sans-geometric"
+So even without a bundled font, a "serif-elegant" document and a "sans-geometric"
 one genuinely differ.
 
-``profile.typeface`` now holds one of these keys (recorded in the golden data,
-useful for slicing eval by typeface). :func:`font_stack` resolves a key to the
-CSS ``font-family`` value.
+A record's typeface key (for invoices, ``profile.typeface``) is recorded in the
+golden data, which makes it a useful axis to slice an evaluation by.
+:func:`font_stack` resolves a key to the CSS ``font-family`` value.
 
 For byte-identical rendering across machines, four of the stacks are backed by
 a **bundled OFL font** embedded as base64 ``@font-face`` (see :data:`BUNDLED`):
@@ -19,9 +26,12 @@ a document uses one of those typefaces, :func:`font_stack` prepends the embedded
 family and :func:`font_face_css` emits the ``@font-face`` rules, so Chromium
 renders from the bundled file rather than whatever the host happens to have. The
 remaining stacks still resolve from the fallback chain — visible variety without
-the byte-for-byte guarantee. The font files live in ``fonts/files/`` and are
-redistributed under the SIL Open Font License 1.1 (see ``fonts/OFL.txt`` and
-``fonts/ATTRIBUTION.md``).
+the byte-for-byte guarantee. Four handwriting faces plus a signature script and
+a stamp face are bundled the same way, for packs that render hand-filled forms.
+
+The font files live in ``core/fonts/files/`` and are redistributed under the SIL
+Open Font License 1.1 (see ``core/fonts/OFL.txt`` and
+``core/fonts/ATTRIBUTION.md``).
 """
 
 from __future__ import annotations

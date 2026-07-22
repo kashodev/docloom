@@ -26,8 +26,8 @@ from decimal import Decimal
 from random import Random
 from typing import Protocol, runtime_checkable
 
+from docloom.core.fonts import TYPEFACE_KEYS
 from docloom.core.locale.enums import Currency, Locale
-from docloom.packs.invoice.fonts import TYPEFACE_KEYS
 from docloom.packs.invoice.enums import (
     BillingModel,
     BusinessType,
