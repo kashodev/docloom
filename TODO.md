@@ -203,6 +203,27 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       woff2 into `fonts/files/`, extend `BUNDLED`, note it in `OFL.txt`).
 
 ## Concurrency & multi-cloud portability
+- [ ] **DynamoDB `add_spend` writes two rows non-atomically.** The spend rollup
+      increments a `(run, model)` row and the `(run, "*")` total. SQLite does both
+      in one `BEGIN IMMEDIATE` transaction and Firestore in one batch, but
+      DynamoDB issues two `UpdateItem` calls — each atomic on its own, **not
+      atomic as a pair**. A crash, throttle or network failure between them leaves
+      the per-model rows summing to slightly less than the total.
+      - **Mitigated by write order, not fixed.** The total is incremented
+        **first**, so an interrupted pair over-counts the total relative to the
+        per-model rows: a budget then stops slightly *early*. The reverse order
+        would under-count the total and let a run quietly overshoot its cap —
+        the exact failure a budget exists to prevent. Ordering makes the failure
+        safe; it does not make the two rows consistent.
+      - **Fix:** `TransactWriteItems` over the two items — DynamoDB supports up to
+        100, so two is comfortable. Costs roughly 2× the write units of a plain
+        update, which is the reason to decide deliberately rather than by default.
+      - **Alternative:** drop the per-model rows and derive them from the
+        `llm_usage` fact table at query time, leaving only the total in the state
+        store. Fewer writes and no divergence possible, at the cost of losing the
+        *live* per-model view during a run.
+      - Worth a reconciliation check either way: per-model rows should sum to the
+        total, and a mismatch is a useful signal that something died mid-write.
 - [x] **Lease + reclaim for crashed workers.** Each claim now stamps a
       `lease_expires_at` (default 15 min, configurable per store) and clears it
       on complete/fail/reset. `StateStore.reclaim_expired_units` returns

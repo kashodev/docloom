@@ -331,10 +331,18 @@ class DynamoDbStateStore:
         the post-increment value a budget check needs.
         """
         nano = to_nano(cost)
-        self._add_spend_row(run_id, model, nano, calls, input_tokens, output_tokens)
+        # The total goes FIRST, deliberately. These are two UpdateItems — each
+        # atomic, but not atomic as a pair — so a crash between them leaves the
+        # two disagreeing, and the *direction* of that disagreement is a safety
+        # property. Total first means a failure over-counts the total relative to
+        # the per-model rows, so a budget stops slightly early. Model first would
+        # under-count the total, letting a run quietly overshoot its cap, which is
+        # the failure a budget exists to prevent. See TODO.md for the fix
+        # (TransactWriteItems) and why it was not taken yet.
         total = self._add_spend_row(
             run_id, TOTAL_MODEL, nano, calls, input_tokens, output_tokens
         )
+        self._add_spend_row(run_id, model, nano, calls, input_tokens, output_tokens)
         return from_nano(total)
 
     def _add_spend_row(
