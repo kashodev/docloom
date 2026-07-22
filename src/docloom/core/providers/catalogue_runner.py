@@ -30,6 +30,7 @@ from decimal import Decimal
 from docloom.core.providers.base import CompletionRequest, CompletionResult, TextProvider
 from docloom.core.providers.budget import BudgetGuard
 from docloom.core.providers.mix import ProviderMix
+from docloom.core.usage.base import LlmUsage, UsageSink
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,11 +67,13 @@ class CatalogueRunner:
         budget: BudgetGuard | None = None,
         concurrency: int = 8,
         use_batch: bool = True,
+        usage: UsageSink | None = None,
     ) -> None:
         self._mix = mix
         self._budget = budget
         self._concurrency = max(concurrency, 1)
         self._use_batch = use_batch
+        self._usage = usage
 
     async def run(self, items: list[CatalogueItem]) -> RunReport:
         report = RunReport()
@@ -89,6 +92,8 @@ class CatalogueRunner:
                 await self._run_batched(provider, group, report)
             else:
                 await self._run_concurrent(provider, group, report)
+        if self._usage is not None:
+            self._usage.flush()
         return report
 
     async def _run_batched(
@@ -106,6 +111,7 @@ class CatalogueRunner:
                 report.failures[it.item_id] = repr(exc)
             return
         for it, result in zip(group, results, strict=True):
+            self._record_usage(it, result, is_batch=True)
             self._record(report, it.item_id, result)
 
     async def _run_concurrent(
@@ -122,11 +128,30 @@ class CatalogueRunner:
                 except Exception as exc:  # noqa: BLE001 - collected per item
                     return item.item_id, exc
 
+        by_id = {it.item_id: it for it in group}
         for item_id, outcome in await asyncio.gather(*(one(it) for it in group)):
             if isinstance(outcome, Exception):
                 report.failures[item_id] = repr(outcome)
             else:
+                self._record_usage(by_id[item_id], outcome)
                 self._record(report, item_id, outcome)
+
+    def _record_usage(
+        self, item: CatalogueItem, result: CompletionResult, *, is_batch: bool = False
+    ) -> None:
+        """Attribute one call's cost to the catalogue item it generated.
+
+        A catalogue item is reused across many documents, so per-document cost
+        here is *amortised* over its users rather than measured — which is why
+        this sets ``catalogue_item_id`` and leaves ``document_id`` unset. Mixing
+        the two would quietly turn an amortised figure into a claimed direct one.
+        """
+        if self._usage is None:
+            return
+        metadata = {"catalogue_item_id": item.item_id, **item.request.metadata}
+        self._usage.record(
+            LlmUsage.from_completion(result, metadata=metadata, is_batch=is_batch)
+        )
 
     def _record(self, report: RunReport, item_id: str, result: CompletionResult) -> None:
         report.results[item_id] = result

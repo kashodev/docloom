@@ -19,10 +19,12 @@ completion through a :class:`~docloom.core.providers.budget.BudgetGuard`.
 
 from __future__ import annotations
 
+import time
 from random import Random
 
 from docloom.core.providers.base import CompletionRequest, CompletionResult, TextProvider
 from docloom.core.providers.budget import BudgetGuard
+from docloom.core.usage.base import LlmUsage, UsageSink
 
 
 class ProviderMix:
@@ -34,6 +36,7 @@ class ProviderMix:
         weights: list[float],
         *,
         budget: BudgetGuard | None = None,
+        usage: UsageSink | None = None,
     ) -> None:
         if len(providers) != len(weights):
             raise ValueError("providers and weights must be the same length")
@@ -50,6 +53,7 @@ class ProviderMix:
             acc += w / total
             self._cumulative.append(acc)
         self._budget = budget
+        self._usage = usage
 
     @property
     def providers(self) -> list[TextProvider]:
@@ -64,11 +68,31 @@ class ProviderMix:
         return self._providers[-1]   # guard against float rounding at 1.0
 
     async def complete(self, request: CompletionRequest, *, seed: int) -> CompletionResult:
-        """Route one request to its seed-chosen provider, honouring the budget."""
+        """Route one request to its seed-chosen provider, honouring the budget.
+
+        Usage is recorded around the call — including failures, which are often
+        still billed and always worth knowing about. Recording buffers in memory;
+        nothing here touches I/O, so the call path is not slowed by telemetry.
+        """
         provider = self.choose(seed)
         if self._budget is not None:
             self._budget.check(provider.estimate_cost(request))
-        result = await provider.complete(request)
+        started = time.perf_counter()
+        try:
+            result = await provider.complete(request)
+        except Exception as exc:
+            if self._usage is not None:
+                self._usage.record(LlmUsage.failure(
+                    provider=provider.name, model=provider.model,
+                    error=repr(exc), metadata=request.metadata,
+                ))
+            raise
+        if self._usage is not None:
+            self._usage.record(LlmUsage.from_completion(
+                result,
+                metadata=request.metadata,
+                latency_ms=int((time.perf_counter() - started) * 1000),
+            ))
         if self._budget is not None:
             self._budget.add(result.cost)
         return result

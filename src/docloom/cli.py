@@ -32,11 +32,20 @@ from docloom.core.pipeline import (
 from docloom.core.sinks import open_sink
 from docloom.core.state import open_state
 from docloom.core.storage import open_store
+from docloom.core.usage import DEFAULT_USAGE_URI, open_usage_sink
 
 app = typer.Typer(add_completion=False, help="Generate synthetic documents with a golden dataset.")
 
 _STORAGE = typer.Option("./out/blobs", envvar="DOCLOOM_STORAGE", help="Blob store URI for documents + shards")
 _STATE = typer.Option("./out/runs.db", envvar="DOCLOOM_STATE", help="Run-state store URI")
+# On by default: a run records what its LLM calls cost unless told not to. A
+# procedural pack makes no calls, so this is free for invoices; `--llm-usage off`
+# disables it outright.
+_USAGE = typer.Option(
+    DEFAULT_USAGE_URI,
+    envvar="DOCLOOM_LLM_USAGE",
+    help="LLM usage telemetry URI: shard:// (default) | firestore://… | dynamodb://… | off",
+)
 
 
 @app.command()
@@ -51,6 +60,7 @@ def generate(
     resume: bool = typer.Option(False, help="Resume: re-queue failed units, then continue"),
     storage: str = _STORAGE,
     state: str = _STATE,
+    llm_usage: str = _USAGE,
 ) -> None:
     """Generate documents and golden shards for a run."""
     if pack not in available_packs():
@@ -59,6 +69,7 @@ def generate(
     doc_pack = get_pack(pack)
     blob = open_store(storage)
     store = open_state(state)
+    usage = open_usage_sink(llm_usage, blob=blob, run_id=run_id)
     source = doc_pack.default_source()
     renderer = PdfRenderer(doc_pack) if fmt == "pdf" else HtmlRenderer(doc_pack)
 
@@ -75,6 +86,9 @@ def generate(
     finally:
         if isinstance(renderer, PdfRenderer):
             renderer.close()
+        # Flush whatever the run's LLM calls recorded. A procedural pack records
+        # nothing, so this writes no shard rather than an empty one.
+        usage.close()
 
     typer.echo(
         f"done: {stats.units_completed} unit(s), {stats.documents_written} document(s)"

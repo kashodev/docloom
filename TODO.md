@@ -75,24 +75,25 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       - The receiver's hand should differ from the issuer's writer (a different
         face and jitter stream), because it is a different person.
 
-- [ ] **Optional LLM token-usage and cost telemetry per run.** Record what every
-      LLM call cost, granular enough to answer "what did this one PDF cost, and
-      on which model?", queryable for analytics, in its own table separate from
-      the golden data. Must be **optional** — the invoice pack is procedural and
-      makes no LLM calls at all, so it should carry none of the cost.
-      - Not part of the golden record: token counts are not reproducible, and the
-        golden data's whole value is that it is exactly recomputable. This is
-        observability, and belongs in its own table.
-      - Costs stay unquantised `Decimal` like the rest of the money in the
-        project — a single completion can cost a small fraction of a cent.
-      - Analysis written up in `feature_explorations/llm-cost-telemetry.md`
-        (gitignored): volume/rate estimates, whether an OLAP store is justified,
-        the queue question, and DynamoDB/Firestore alternatives at reduced
-        granularity. Headline: the natural fit is another sharded table on the
-        existing unit→shard→sink pipeline (Parquet/DuckDB local, BigQuery cloud),
-        which is already columnar, already idempotent on unit retry, and needs no
-        new infrastructure; a queue only becomes necessary for live in-run cost
-        visibility across a fleet.
+- [x] **LLM token-usage and cost telemetry per run.** `core/usage/` records every
+      LLM call — model, tokens, exact `Decimal` cost, and what it was generating —
+      as its own `llm_usage` table, **on by default** (`--llm-usage`, `off` to
+      disable). Pluggable by URI like the rest of the app: `shard://` (default,
+      gzipped-JSONL beside the golden data), `firestore://`, `dynamodb://`,
+      `null://`.
+      - Deliberately *not* golden data: token counts are not reproducible, and the
+        golden record's value is that it is exactly recomputable.
+      - A replayed unit **overwrites** its rows on every backend (shard key /
+        deterministic doc id / deterministic sort key), so retries cannot
+        double-count spend.
+      - Free when there is nothing to record: a procedural pack issues no calls,
+        so it writes no rows and no shard.
+      - `export_run` discovers tables by prefix, so it exports to
+        Parquet/DuckDB/BigQuery with no export change at all.
+      - Remaining: per-(run, model) rollup in the StateStore for live in-run
+        monitoring (and as the distributed budget counter); a streaming path if
+        live fleet-wide cost visibility is ever needed — see
+        `feature_explorations/llm-cost-telemetry.md`.
 
 - [ ] **Stroke-level handwriting synthesis (top realism tier, optional extra).**
       The font-based approach (bundled OFL handwriting faces + per-field jitter)
