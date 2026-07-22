@@ -101,6 +101,44 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         (~35 rows/s); only for latency, and it would reintroduce the duplicate
         problem the shard keys currently avoid.
 
+- [ ] **Let a run's composition be constrained (locale / company / template /
+      condition).** `deploy/gcp/run.example.yaml` lets an operator describe
+      slices — "10k from one company on one template", "2.5k in French", "2.5k
+      handwritten from a pool of 10 companies" — and the deploy script validates
+      and displays them, but nothing can execute them: `docloom generate` has no
+      such flags and the sampler draws from the full weighted roster with each
+      company's own locale and template.
+      - **The seam already exists.** `InvoiceSampler(goods_receipt=True)` filters
+        the roster and the product pool; this is the same idea generalised, not
+        new machinery.
+      - Shape: sampler selection options (locales, company ids or a count,
+        archetypes or a count, a condition mix) built as roster/product filters,
+        surfaced as `docloom generate --locale … --company … --archetype …
+        --condition …`, or as a `--selection-file` taking the same YAML block the
+        deploy config already uses rather than inventing a second format.
+      - Choosing *N of something* (10 companies, 3 templates) should be seeded
+        from the run id so the chosen subset is reproducible.
+      - Until then a slice is only a size and a run id; the composition fields
+        are documented intent. What was actually produced is queryable —
+        `locale`, `company_id`, `condition`, `is_handwritten` are on the golden
+        row — so a run can at least be audited after the fact.
+
+- [ ] **Expose the catalogue build on the CLI (`docloom catalogue`).** The
+      provider mix, budget guard and `build_catalogue` all exist in
+      `core/providers` and `core/content`, but nothing reaches them from the
+      command line — so "which LLMs, in what proportion, under what budget" is
+      configurable in `deploy/gcp/run.example.yaml`, validated by the deploy
+      script, and then not executable.
+      - Shape: `docloom catalogue --pack contract --providers <spec> --budget 50
+        --state … --usage …`, building the mix via the existing
+        `providers.factory.build_mix` and running `content.build_catalogue`.
+      - Needs a way to express the mix on the command line or from a config file;
+        the deploy script already parses it from YAML, so a `--providers-file`
+        taking the same block would avoid inventing a second format.
+      - Until it exists, an LLM-backed pack cannot be run end to end, and the
+        `catalogue:` block in the deploy config is documentation rather than
+        configuration.
+
 - [ ] **Investigate logging and metrics.** The project has `structlog` as a
       dependency but no deliberate logging or metrics story: what a run should
       emit, at what level, in what format, and where it goes on each platform.
@@ -203,6 +241,25 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       woff2 into `fonts/files/`, extend `BUNDLED`, note it in `OFL.txt`).
 
 ## Concurrency & multi-cloud portability
+- [ ] **Concurrent cold start races the run plan.** Every worker checks
+      `get_run(run_id) is None` and creates the run if so. When N tasks start
+      simultaneously — which is exactly what Cloud Run Jobs does — two can both
+      see "no run" and both call `create_run`, the second resetting units the
+      first had already claimed.
+      - **Bounded, not benign-by-luck:** generation is deterministic per
+        `(run_id, index)` and every blob write is an idempotent overwrite, so the
+        result is *duplicated work*, not corrupted output. Worth fixing for the
+        wasted compute, not for correctness.
+      - **Fix options:** a `docloom plan` command that creates the run and exits
+        (run once, then scale out); or gate creation on a worker-ordinal env var
+        (`CLOUD_RUN_TASK_INDEX` / `AWS_BATCH_JOB_ARRAY_INDEX`) so only ordinal 0
+        plans; or make `create_run` conditional — insert-if-absent — which SQLite
+        already gets from its primary key and DynamoDB could get from a
+        `ConditionExpression`, but Firestore's `batch.set` would need
+        `create()` semantics.
+      - Documented as a sharp edge in `docs/deploy-gcp.md` with a two-step
+        workaround.
+
 - [ ] **DynamoDB `add_spend` writes two rows non-atomically.** The spend rollup
       increments a `(run, model)` row and the `(run, "*")` total. SQLite does both
       in one `BEGIN IMMEDIATE` transaction and Firestore in one batch, but

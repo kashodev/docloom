@@ -1,0 +1,175 @@
+# docloom run configuration.
+#
+# Copy this, edit it, and pass it to the deploy script:
+#
+#     ./deploy.sh -c my-run.yaml plan       # show what would happen, change nothing
+#     ./deploy.sh -c my-run.yaml all        # provision, build, deploy, run
+#
+# Any value can be overridden per invocation without editing the file:
+#
+#     ./deploy.sh -c my-run.yaml --set run.total=1000 run
+#
+# The same file drives a 1,000-document smoke test and a 5,000,000-document
+# production run; only the numbers differ.
+
+# ── Infrastructure ──────────────────────────────────────────────────────────
+project: crawler-rag-data-2026
+region: us-central1
+bucket: crawler-rag-data-2026-docloom
+
+firestore:
+  # The free tier applies to the (default) database only; a named second
+  # database gets no free quota. Location is permanent once created.
+  database: "(default)"
+  location: nam5
+
+artifact_registry:
+  repo: docloom
+  image_tag: v1
+
+# ── The run ─────────────────────────────────────────────────────────────────
+run:
+  # Base identifier. With more than one document type below, each gets its own
+  # run (`<id>-invoice`, `<id>-contract`), because a run records exactly one
+  # pack in its plan.
+  id: test-25k
+
+  # Total documents across every type. Apportioned by the shares below.
+  total: 25000
+
+  # Documents per work unit = claim granularity = one golden shard = one export
+  # read. Aim for several units per task so a slow unit cannot leave a task idle
+  # at the tail: total / unit_size should comfortably exceed job.tasks.
+  unit_size: 500
+
+  format: pdf              # pdf | html
+  config_id: default       # recorded on the run, for your own bookkeeping
+  max_line_items: 8000     # hard cap per document; telecom bills are the reason
+
+  # LLM cost telemetry. On by default; `off` disables. A procedural pack makes
+  # no LLM calls and so writes nothing either way.
+  llm_usage: "shard://"
+
+# ── Document slices ─────────────────────────────────────────────────────────
+# Each entry is a *slice*: a batch of documents with its own size and its own
+# composition. Every slice becomes its own Cloud Run execution and its own run
+# id (`<run.id>-<name>`), so slices are separately resumable, exportable and
+# queryable — `run_id` is on every golden row.
+#
+# Size a slice with EITHER `count` (absolute) or `share` (percent of run.total).
+# Mixing the two styles is rejected. With `count`, `run.total` may be omitted and
+# is taken as the sum.
+#
+# Everything else is optional. Omit a field and the slice is unconstrained on
+# that axis — the sampler's normal behaviour: companies drawn from the weighted
+# roster, each company's own template and locale, condition `clean`.
+#
+#   name        slice id; defaults to slice-1, slice-2, …
+#   pack        document type; defaults to `invoice`
+#   count       absolute number of documents
+#   share       percent of run.total (use instead of count, not as well)
+#   locales     restrict to these locales   [en-US en-CA en-GB fr-CA fr-FR]
+#   companies   a list of company ids to pin to, or an integer "use N companies"
+#   archetypes  a list of template names, an integer "use N templates", or `all`
+#   condition   clean | light_scan | heavy_scan | handwritten
+#   format      pdf | html                    (defaults to run.format)
+#   goods_receipt  true → delivery note with a receiver's signature; forces
+#                  physical goods, so it implies handwritten
+#
+# ⚠ Read this before relying on the composition fields. `count`, `pack`,
+# `format` and `name` are honoured today. The *composition* fields — locales,
+# companies, archetypes, condition, goods_receipt — are validated and shown by
+# `plan`, but the generator cannot yet be told to obey them: `docloom generate`
+# has no such flags, and the sampler draws companies from the full weighted
+# roster with each company's own locale and template. A slice named `french`
+# will NOT be French until that lands. Tracked in TODO.md. Until then, treat
+# them as the declared intent for the run, and check what you actually got with
+# a query — locale, company_id, condition and is_handwritten are all on the
+# golden row.
+documents:
+  # 10,000 from a single vendor on a single template — the "same company, same
+  # look" slice, useful for testing whether an extractor overfits one layout.
+  - name: anchor-vendor
+    pack: invoice
+    count: 10000
+    companies: [anchor]
+    archetypes: [meta-sidebar-01]
+
+  # 10,000 spread across every template and the whole roster.
+  - name: mixed
+    count: 10000
+    archetypes: all
+
+  # 2,500 French, both variants — Québec's two tax buckets differ from France's
+  # TVA, so this is a genuinely different extraction problem, not a translation.
+  - name: french
+    count: 2500
+    locales: [fr-CA, fr-FR]
+
+  # 2,500 hand-filled pads, drawn from a deliberately small pool so the same
+  # hands and layouts recur the way one office's paperwork would.
+  - name: handwritten
+    count: 2500
+    condition: handwritten
+    locales: [en-US]
+    companies: 10
+    archetypes: 3
+
+# Minimal alternative — omit `documents` entirely and you get one unconstrained
+# invoice slice for the whole of run.total:
+#
+# documents:
+#   - {pack: invoice, share: 100}
+
+# ── LLM providers for the catalogue step ────────────────────────────────────
+# NOT used by document generation. Generation makes no LLM calls: a procedural
+# pack computes its content, and an LLM-backed pack reads a catalogue that was
+# built earlier. These settings describe that earlier, offline catalogue build.
+#
+# `weight` is the percentage of catalogue items routed to each provider —
+# blending voices so an extraction pipeline cannot learn one generator's style.
+# Weights must total 100. Routing is deterministic per item, so a rerun draws
+# the same model for the same item.
+#
+# ⚠ Not yet consumable: there is no `docloom catalogue` CLI command, so the
+# script validates this block and prints it, but cannot execute it. Tracked in
+# TODO.md. Remove the block entirely if you only generate procedural packs.
+catalogue:
+  budget_usd: 50.00        # hard ceiling for the catalogue build
+  providers:
+    - name: deepseek
+      model: deepseek-v4-flash
+      weight: 40
+    - name: dashscope
+      model: qwen3.5-flash
+      weight: 40
+    - name: anthropic
+      model: claude-haiku-4-5
+      weight: 20
+  # API keys are never written here. They live in Secret Manager and are
+  # injected at task start; see docs/deploy-gcp.md § "Where do the API keys go".
+  secrets:
+    DEEPSEEK_API_KEY: deepseek-api-key
+    DASHSCOPE_API_KEY: dashscope-api-key
+    ANTHROPIC_API_KEY: anthropic-api-key
+
+# ── Cloud Run job shape ─────────────────────────────────────────────────────
+job:
+  name: docloom-generate
+  service_account: docloom-run
+
+  tasks: 4                 # how many containers
+  parallelism: 4           # how many at once (<= tasks)
+
+  cpu: 2                   # Chromium rendering is the bottleneck
+  memory: 4Gi
+  task_timeout: 3600s      # a task killed mid-unit is recoverable but wasteful
+  max_retries: 3           # safe: generation is deterministic, writes overwrite
+
+# ── Export ──────────────────────────────────────────────────────────────────
+export:
+  # Empty disables the export step. BigQuery reads the staged Parquet as an
+  # external table, so decimal128 lands as NUMERIC and the cent-exact join
+  # survives the round trip.
+  sink: ""
+  # sink: "bigquery://crawler-rag-data-2026/docloom_golden?staging=gs://crawler-rag-data-2026-docloom/staging"
