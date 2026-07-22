@@ -125,16 +125,30 @@ class PdfRenderer:
         self._owns_browser = browser is None
 
     def _ensure_browser(self) -> Any:
-        if self._browser is None:
-            try:
-                from playwright.sync_api import sync_playwright
-            except ImportError as exc:
-                raise ImportError(
-                    "PDF rendering needs Playwright — pip install playwright && "
-                    "playwright install chromium"
-                ) from exc
-            self._playwright = sync_playwright().start()
-            self._browser = self._playwright.chromium.launch()
+        if self._browser is not None:
+            return self._browser
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError as exc:
+            raise ImportError(
+                "PDF rendering needs Playwright — pip install playwright && "
+                "playwright install chromium"
+            ) from exc
+        # Start Playwright and launch in one guarded step. If launch fails — a
+        # missing or mismatched browser is the usual cause — the started
+        # Playwright handle must be torn down, not left on the instance. Leaving
+        # it stranded meant the next unit re-entered here, called
+        # `sync_playwright().start()` a second time on a thread that already had
+        # one running, and failed with the misleading "Sync API inside the
+        # asyncio loop" instead of the real "browser not found". One dud unit
+        # poisoned every later unit in the worker with a different error.
+        playwright = sync_playwright().start()
+        try:
+            self._browser = playwright.chromium.launch()
+        except BaseException:
+            playwright.stop()
+            raise
+        self._playwright = playwright
         return self._browser
 
     def render(self, record: GoldenRecord) -> RenderedDocument:

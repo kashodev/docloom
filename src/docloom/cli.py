@@ -189,11 +189,16 @@ def generate(
     for unit_index, error in stats.failures:
         typer.echo(f"  unit {unit_index} failed: {error}")
     _print_status(store, run_id)
-    if stats.units_failed:
-        # A worker that leaves failed units behind has not done its job, and
-        # exiting 0 tells Cloud Run (and `deploy.sh --wait`, and a CI step) that
-        # the run succeeded. The units are recoverable with `--resume`; the
-        # silence was not.
+
+    # Exit on the *run's* failed count, not this worker's. A worker that failed
+    # every unit exits 1, then Cloud Run retries the task — but a fresh
+    # (non-resume) worker finds those units already FAILED and out of the
+    # claimable pool, so it claims nothing, records no failures of its own, and
+    # would exit 0. That is a green execution over a run that produced zero
+    # documents — exactly the false pass a whole smoke run hid behind. The run
+    # state still knows the truth, so read it: any FAILED unit means the run is
+    # not done, and every attempt should say so until `--resume` clears them.
+    if store.progress(run_id)[WorkUnitState.FAILED]:
         raise typer.Exit(1)
 
 

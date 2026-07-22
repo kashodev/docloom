@@ -402,6 +402,31 @@ provision() {
       --display-name="docloom Cloud Run job" --project="${PROJECT}"
   fi
 
+  say "Firestore composite index for the unit claim"
+  # The claim is `where(state == 'pending').order_by('unit_index').limit(1)`.
+  # An equality filter *plus* an order-by on a different field needs a composite
+  # index; Firestore rejects the query outright without one:
+  #
+  #   FailedPrecondition: 400 The query requires an index.
+  #
+  # This is the single most important query in the system — no claim, no run —
+  # and it is invisible in testing because the Firestore emulator creates
+  # indexes on demand instead of demanding them. Only a real database fails.
+  #
+  # Index builds are asynchronous and take a few minutes on an empty collection,
+  # so this runs at provision time rather than being discovered by the first
+  # worker. `create` fails when an equivalent index already exists, which is the
+  # idempotent case, so that failure is swallowed rather than treated as an error.
+  if gcloud firestore indexes composite create \
+      --collection-group=work_units --query-scope=COLLECTION \
+      --field-config=field-path=state,order=ascending \
+      --field-config=field-path=unit_index,order=ascending \
+      --database="${FIRESTORE_DB}" --project="${PROJECT}" 2>/dev/null; then
+    echo "  created (state ASC, unit_index ASC on work_units)"
+  else
+    echo "  already present"
+  fi
+
   say "IAM — least privilege"
   # Bucket-scoped: the job writes this run's output and has no business elsewhere.
   gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
