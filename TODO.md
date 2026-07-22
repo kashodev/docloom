@@ -241,24 +241,39 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       woff2 into `fonts/files/`, extend `BUNDLED`, note it in `OFL.txt`).
 
 ## Concurrency & multi-cloud portability
-- [ ] **Concurrent cold start races the run plan.** Every worker checks
-      `get_run(run_id) is None` and creates the run if so. When N tasks start
-      simultaneously — which is exactly what Cloud Run Jobs does — two can both
+- [x] **Concurrent cold start races the run plan.** Every worker checked
+      `get_run(run_id) is None` and created the run if so. When N tasks start
+      simultaneously — which is exactly what Cloud Run Jobs does — two could both
       see "no run" and both call `create_run`, the second resetting units the
-      first had already claimed.
-      - **Bounded, not benign-by-luck:** generation is deterministic per
-        `(run_id, index)` and every blob write is an idempotent overwrite, so the
-        result is *duplicated work*, not corrupted output. Worth fixing for the
-        wasted compute, not for correctness.
-      - **Fix options:** a `docloom plan` command that creates the run and exits
-        (run once, then scale out); or gate creation on a worker-ordinal env var
-        (`CLOUD_RUN_TASK_INDEX` / `AWS_BATCH_JOB_ARRAY_INDEX`) so only ordinal 0
-        plans; or make `create_run` conditional — insert-if-absent — which SQLite
-        already gets from its primary key and DynamoDB could get from a
-        `ConditionExpression`, but Firestore's `batch.set` would need
-        `create()` semantics.
-      - Documented as a sharp edge in `docs/deploy-gcp.md` with a two-step
-        workaround.
+      first had already claimed (and on SQLite, dying on a UNIQUE violation).
+      - **Fixed by making creation conditional**, the same primitive the unit
+        claim already uses: `ON CONFLICT DO NOTHING` (SQLite),
+        `document.create()` (Firestore), `attribute_not_exists(pk)` (DynamoDB).
+        `create_run` now returns whether *this* caller wrote the plan, so the
+        losers wait instead of trampling.
+      - **`Run.planned` closes the follow-on window.** Firestore and DynamoDB
+        cannot write the marker and the units atomically, so the marker goes down
+        first with `planned=False`; a run is claimable only once it flips true.
+        Without it a worker reads a marker with no units yet, claims nothing,
+        exits 0 and reports a finished run that generated *nothing* — a far
+        worse failure than the duplicate work. Absent on older rows ⇒ `True`
+        (they were only ever visible fully planned). A planner that dies mid-plan
+        is taken over after `PLANNING_TAKEOVER_SECONDS`.
+      - **`docloom plan` shipped alongside** — not required (`generate` plans
+        safely from every worker), but it lets a large run be planned and
+        inspected with `docloom status` before compute is committed to it.
+      - **Rejected: worker-ordinal gating** (`CLOUD_RUN_TASK_INDEX` /
+        `AWS_BATCH_JOB_ARRAY_INDEX`). It puts coordination in the platform, which
+        is backwards — `docs/concurrency.md` is explicit that coordination lives
+        in the StateStore — and it does nothing for the local multi-process case.
+      - **Found and fixed on the way:** `FirestoreStateStore.create_run` put the
+        run doc and *every* unit doc in a single `WriteBatch`, which Firestore
+        caps at **500 operations**, so a run of 500+ units failed to plan at all.
+        The README's "hundreds of thousands of documents" reaches that at the
+        default `unit_size=1000` — 500k documents is 500 unit writes plus the run
+        doc, one over. The 25k example config (20 units per slice) never came
+        close, which is why it survived. All batch paths (`_write_units`,
+        `reset_failed_units`, `reclaim_expired_units`) now chunk.
 
 - [ ] **DynamoDB `add_spend` writes two rows non-atomically.** The spend rollup
       increments a `(run, model)` row and the `(run, "*")` total. SQLite does both
@@ -295,9 +310,10 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       is index order). The atomic claim is a conditional write (update *only if*
       `state = 'pending'`); a lost race advances to the next candidate. Lease +
       reclaim, failed-unit reset, pause/cancel gating, and paging past a batch
-      all implemented; `create_run` writes units first and the run marker last,
-      so a crash never leaves a discoverable half-run. Registered in `open_state`
-      with `?region=` / `?endpoint_url=`. 14 tests — pure item/sort-key mapping
+      all implemented; `create_run` is a conditional put that makes exactly one
+      of N simultaneous workers the planner (see the cold-start item above).
+      Registered in `open_state`
+      with `?region=` / `?endpoint_url=`. 27 tests — pure item/sort-key mapping
       plus integration against real boto3 (moto in-process, or DynamoDB Local via
       `DYNAMODB_ENDPOINT`). Postgres/RDS via `SELECT … FOR UPDATE SKIP LOCKED`
       remains the alternative if wanted.

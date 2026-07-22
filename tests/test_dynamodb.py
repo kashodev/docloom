@@ -294,3 +294,109 @@ def test_rollup_rows_do_not_disturb_the_unit_claim(store) -> None:  # noqa: ANN0
     assert [u.unit_index for u in claimed[:3]] == [0, 1, 2]  # type: ignore[union-attr]
     assert claimed[3] is None
     assert len(list(store.units("run_1"))) == 3
+
+
+# ── Planning: exactly one planner ───────────────────────────────────────────
+def test_planned_survives_mapping() -> None:
+    assert item_to_run(run_to_item(a_run(planned=False))).planned is False
+    assert item_to_run(run_to_item(a_run())).planned is True
+
+
+def test_an_item_written_before_the_flag_reads_as_planned() -> None:
+    """Absent means planned: the old path only made a run visible once its units
+    were written, so defaulting the other way would strand every existing run."""
+    item = run_to_item(a_run())
+    del item["planned"]
+    assert item_to_run(item).planned is True
+
+
+@requires_dynamodb
+def test_the_first_planner_wins_and_the_second_is_told_it_lost(store) -> None:  # noqa: ANN001
+    """Every worker in an array job starts by trying to plan. The conditional put
+    is what makes that safe — the same primitive the unit claim uses."""
+    run = Run(run_id="run_1", pack="invoice", config_id="cfg", total_units=2,
+              state=RunState.RUNNING)
+    units = [WorkUnit(run_id="run_1", unit_index=i, start_index=i * 1000, count=1000)
+             for i in range(2)]
+    assert store.create_run(run, units) is True
+    assert store.create_run(run, units) is False
+
+
+@requires_dynamodb
+def test_a_late_planner_cannot_reset_a_claimed_unit(store) -> None:  # noqa: ANN001
+    """The damage the race caused: worker B replans, unit 0 returns to pending,
+    and two workers generate the same documents."""
+    seed(store, units=3)
+    claimed = store.claim_next_unit("run_1")
+    assert claimed is not None and claimed.unit_index == 0
+
+    run = Run(run_id="run_1", pack="invoice", config_id="cfg", total_units=3,
+              state=RunState.RUNNING)
+    units = [WorkUnit(run_id="run_1", unit_index=i, start_index=i * 1000, count=1000)
+             for i in range(3)]
+    assert store.create_run(run, units) is False
+
+    still = {u.unit_index: u for u in store.units("run_1")}[0]
+    assert still.state is WorkUnitState.RUNNING
+    assert still.attempts == 1
+
+
+@requires_dynamodb
+def test_a_finished_plan_is_marked_planned(store) -> None:  # noqa: ANN001
+    seed(store, units=2)
+    run = store.get_run("run_1")
+    assert run is not None and run.planned is True
+
+
+@requires_dynamodb
+def test_a_half_written_plan_yields_no_claims(store) -> None:  # noqa: ANN001
+    """The window between the marker and the last unit: the run exists but has
+    nothing to claim *yet*. A worker that claimed then would report a finished
+    run that generated nothing."""
+    seed(store, units=2)
+    store._table.update_item(
+        Key={"pk": "run_1", "sk": "RUN"},
+        UpdateExpression="SET planned = :f",
+        ExpressionAttributeValues={":f": False},
+    )
+    assert store.claim_next_unit("run_1") is None
+
+    store._table.update_item(
+        Key={"pk": "run_1", "sk": "RUN"},
+        UpdateExpression="SET planned = :t",
+        ExpressionAttributeValues={":t": True},
+    )
+    assert store.claim_next_unit("run_1") is not None
+
+
+@requires_dynamodb
+def test_an_abandoned_marker_is_taken_over(store) -> None:  # noqa: ANN001
+    """A planner that dies mid-plan must not wedge the run forever: once its
+    marker is older than the takeover window, the next worker replans it."""
+    from docloom.core.state.base import PLANNING_TAKEOVER_SECONDS
+
+    run = Run(run_id="run_1", pack="invoice", config_id="cfg", total_units=2,
+              state=RunState.RUNNING)
+    units = [WorkUnit(run_id="run_1", unit_index=i, start_index=i * 1000, count=1000)
+             for i in range(2)]
+    # A marker with no units behind it — the planner died right after writing it.
+    stale = datetime.now(UTC) - timedelta(seconds=PLANNING_TAKEOVER_SECONDS + 60)
+    store._table.put_item(Item=run_to_item(run) | {
+        "planned": False, "planning_started_at": stale.isoformat(),
+    })
+    assert store.create_run(run, units) is True          # taken over
+    assert len(list(store.units("run_1"))) == 2
+    assert store.get_run("run_1").planned is True        # type: ignore[union-attr]
+
+
+@requires_dynamodb
+def test_a_live_marker_is_left_alone(store) -> None:  # noqa: ANN001
+    """The mirror of the takeover: a planner still working must not be trampled."""
+    run = Run(run_id="run_1", pack="invoice", config_id="cfg", total_units=2,
+              state=RunState.RUNNING)
+    units = [WorkUnit(run_id="run_1", unit_index=i, start_index=i * 1000, count=1000)
+             for i in range(2)]
+    store._table.put_item(Item=run_to_item(run) | {
+        "planned": False, "planning_started_at": datetime.now(UTC).isoformat(),
+    })
+    assert store.create_run(run, units) is False

@@ -75,7 +75,8 @@ docloom generate --run-id run_2026_07 --total 50000 --unit-size 1000
 ```
 
 Concurrency comes from running the same command several times against the same
-`runs.db` — the SQLite claim keeps them off each other's units:
+`runs.db` — the SQLite claim keeps them off each other's units, and creation is
+conditional so starting them all at once plans the run exactly once:
 
 ```bash
 for i in $(seq 1 8); do
@@ -222,6 +223,7 @@ no pipeline change. See the `dynamodb://` store for the shape to copy.
 ## Operating a run
 
 ```bash
+docloom plan   --run-id run_2026_07 --total 50000 --state <uri>   # plan only, no compute
 docloom status --run-id run_2026_07 --state <uri>   # progress by unit state
 docloom pause  --run-id run_2026_07 --state <uri>   # workers drain and stop
 docloom cancel --run-id run_2026_07 --state <uri>

@@ -7,6 +7,13 @@ run and still never generate the same shard twice.
 
 Layout: one document per run in ``runs``, with a ``work_units`` subcollection.
 
+**On create_run.** A WriteBatch caps at 500 operations, so a run's plan cannot be
+one atomic write — a 1,000-unit run needs three. The run marker is therefore
+written first with a conditional ``create()``, which serialises planners (exactly
+one of N simultaneously-starting workers wins), and carries ``planned: False``
+until every unit has landed, so a half-written plan is distinguishable from a
+finished run rather than reading as "nothing left to do".
+
 **Testing note.** Distributed-transaction correctness is Firestore's guarantee,
 not something a dict-backed fake can prove, so this module does not pretend to
 unit-test it. The error-prone parts — the record↔document mapping and the
@@ -25,6 +32,7 @@ from typing import Any
 from docloom.core.enums import RunState, WorkUnitState
 from docloom.core.state.base import (
     DEFAULT_LEASE_SECONDS,
+    PLANNING_TAKEOVER_SECONDS,
     TOTAL_MODEL,
     Run,
     Spend,
@@ -34,6 +42,16 @@ from docloom.core.state.base import (
 )
 
 _CLAIMABLE = WorkUnitState.PENDING.value   # claim pending only; see StateStore
+
+#: Firestore caps a WriteBatch at 500 operations, so every batched write here has
+#: to chunk: a run of 1,000 units is 1,000 writes and a single batch would be
+#: rejected outright. At the default ``unit_size`` of 1,000 that ceiling is a
+#: 500k-document run — well inside what this store exists to serve.
+_BATCH_LIMIT = 500
+
+
+def _chunks(items: list[Any], size: int = _BATCH_LIMIT) -> list[list[Any]]:
+    return [items[i:i + size] for i in range(0, len(items), size)]
 
 
 # ── Pure mapping (unit-tested without the SDK) ──────────────────────────────
@@ -59,6 +77,9 @@ def doc_to_run(run_id: str, doc: dict[str, Any]) -> Run:
         created_at=datetime.fromisoformat(doc["created_at"]),
         updated_at=datetime.fromisoformat(doc["updated_at"]),
         metadata=doc.get("metadata", {}),
+        # Absent on documents written before the flag existed; those runs were
+        # always fully planned before they became visible.
+        planned=bool(doc.get("planned", True)),
     )
 
 
@@ -109,8 +130,18 @@ def doc_to_spend(run_id: str, doc: dict[str, Any]) -> Spend:
 
 
 def run_is_claimable(run: Run | None) -> bool:
-    """A run yields claims only while it is neither paused nor cancelled."""
-    return run is not None and run.state not in (RunState.PAUSED, RunState.CANCELLED)
+    """A run yields claims only while it exists, is fully planned, and is neither
+    paused nor cancelled.
+
+    The ``planned`` check matters as much as the state one: a run whose units are
+    still being written has nothing to claim *yet*, and treating that as "nothing
+    to claim ever" would send every worker home from a run that had not started.
+    """
+    return (
+        run is not None
+        and run.planned
+        and run.state not in (RunState.PAUSED, RunState.CANCELLED)
+    )
 
 
 def _where_state(col: Any, value: str) -> Any:
@@ -163,15 +194,50 @@ class FirestoreStateStore:
     def _units_col(self, run_id: str) -> Any:
         return self._run_ref(run_id).collection("work_units")
 
-    def create_run(self, run: Run, units: list[WorkUnit]) -> None:
-        # A batched write so the run and its units land together; a resumed run
-        # never finds a half-created plan.
-        batch = self._client.batch()
-        batch.set(self._run_ref(run.run_id), run_to_doc(run))
-        units_col = self._units_col(run.run_id)
-        for unit in units:
-            batch.set(units_col.document(str(unit.unit_index)), unit_to_doc(unit))
-        batch.commit()
+    def create_run(self, run: Run, units: list[WorkUnit]) -> bool:
+        """Claim the run id with a conditional create, then write the units.
+
+        `document.create()` fails if the document exists, which is what makes
+        exactly one of N simultaneously-starting workers the planner. The marker
+        goes down first with ``planned: False`` so the run is never briefly
+        visible-but-empty — a state every worker would read as "already
+        finished".
+        """
+        from google.api_core.exceptions import AlreadyExists
+
+        marker = run_to_doc(run) | {"planned": False, "planning_started_at": _now()}
+        try:
+            self._run_ref(run.run_id).create(marker)
+        except AlreadyExists:
+            if not self._should_take_over(run.run_id):
+                return False
+            # The previous planner died mid-plan. Unit writes are keyed by index
+            # and byte-identical, so finishing its work is safe.
+        self._write_units(run.run_id, units)
+        self._run_ref(run.run_id).update({"planned": True, "updated_at": _now()})
+        return True
+
+    def _should_take_over(self, run_id: str) -> bool:
+        """True when an unplanned marker has sat long enough to be abandoned."""
+        snap = self._run_ref(run_id).get()
+        if not snap.exists:
+            return True                      # vanished between create and read
+        doc = snap.to_dict()
+        if doc.get("planned", True):
+            return False                     # someone finished the plan
+        started = doc.get("planning_started_at")
+        if not started:
+            return True
+        age = (datetime.now(UTC) - datetime.fromisoformat(started)).total_seconds()
+        return age >= PLANNING_TAKEOVER_SECONDS
+
+    def _write_units(self, run_id: str, units: list[WorkUnit]) -> None:
+        units_col = self._units_col(run_id)
+        for chunk in _chunks(list(units)):
+            batch = self._client.batch()
+            for unit in chunk:
+                batch.set(units_col.document(str(unit.unit_index)), unit_to_doc(unit))
+            batch.commit()
 
     def get_run(self, run_id: str) -> Run | None:
         snap = self._run_ref(run_id).get()
@@ -203,18 +269,19 @@ class FirestoreStateStore:
 
     def reset_failed_units(self, run_id: str) -> int:
         query = _where_state(self._units_col(run_id), WorkUnitState.FAILED.value)
-        batch = self._client.batch()
-        count = 0
-        for snap in query.stream():
-            batch.update(
-                snap.reference,
-                {"state": WorkUnitState.PENDING.value, "error": None,
-                 "lease_expires_at": None, "updated_at": _now()},
-            )
-            count += 1
-        if count:
+        refs = [snap.reference for snap in query.stream()]
+        # Chunked: a run with more than 500 failed units would otherwise exceed
+        # Firestore's batch limit and the whole resume would fail.
+        for chunk in _chunks(refs):
+            batch = self._client.batch()
+            for ref in chunk:
+                batch.update(
+                    ref,
+                    {"state": WorkUnitState.PENDING.value, "error": None,
+                     "lease_expires_at": None, "updated_at": _now()},
+                )
             batch.commit()
-        return count
+        return len(refs)
 
     def reclaim_expired_units(self, run_id: str, *, now: datetime | None = None) -> int:
         # Query only running units (an equality filter needs no composite index),
@@ -222,19 +289,18 @@ class FirestoreStateStore:
         # the whole run, and this keeps the reclaim index-free.
         cutoff = now or datetime.now(UTC)
         query = _where_state(self._units_col(run_id), WorkUnitState.RUNNING.value)
-        batch = self._client.batch()
-        count = 0
-        for snap in query.stream():
-            if doc_lease_is_expired(snap.to_dict(), cutoff):
+        refs = [snap.reference for snap in query.stream()
+                if doc_lease_is_expired(snap.to_dict(), cutoff)]
+        for chunk in _chunks(refs):
+            batch = self._client.batch()
+            for ref in chunk:
                 batch.update(
-                    snap.reference,
+                    ref,
                     {"state": WorkUnitState.PENDING.value,
                      "lease_expires_at": None, "updated_at": _now()},
                 )
-                count += 1
-        if count:
             batch.commit()
-        return count
+        return len(refs)
 
     # ── Spend rollup ────────────────────────────────────────────────────────
     def _spend_col(self, run_id: str) -> Any:

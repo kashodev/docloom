@@ -55,8 +55,10 @@ while (unit := state.claim_next_unit(run_id)) is not None:
 
 `claim_next_unit` is atomic: it takes the lowest-index pending unit and marks it
 `running` in one indivisible step, so two workers racing on the same unit get
-different units, or one gets `None`. That is the *entire* coordination
-mechanism — there is no broker, no leader election, no work queue service.
+different units, or one gets `None`. That, plus the conditional *create* that
+[plans the run](#planning-a-run-from-many-workers-at-once), is the entire
+coordination mechanism — there is no broker, no leader election, no work queue
+service.
 
 The atomicity lives in the **StateStore**, not in the compute layer:
 
@@ -76,6 +78,67 @@ is swappable**: nothing about "who runs the workers" carries coordination state,
 so the workers can be laptop processes, Cloud Run Job tasks, AWS Batch array
 elements, or ECS tasks, and the correctness argument does not change. Point the
 `state://` URI at a store every worker can reach and you have a fleet.
+
+## Planning a run from many workers at once
+
+The claim protocol assumes the plan already exists. Getting there is its own
+race: N tasks start simultaneously — which is exactly what a Cloud Run Job or an
+AWS Batch array job does — and every one of them calls `create_run` for the same
+`run_id`. Nobody is "first" in any way the workers can observe.
+
+So **creation is conditional too**, using the same primitive as the claim:
+
+| Store | Conditional create |
+|---|---|
+| SQLite | `INSERT … ON CONFLICT(run_id) DO NOTHING` |
+| Firestore | `document.create()` — fails if the document exists |
+| DynamoDB | `put_item(ConditionExpression="attribute_not_exists(pk)")` |
+
+`create_run` returns **whether this caller wrote the plan**. Exactly one worker
+gets `True`; the rest get `False` and wait for that plan rather than writing over
+it. Before this, a late planner would reset units an earlier worker had already
+claimed, so the same documents were generated twice (and on SQLite the loser died
+on a `UNIQUE` violation).
+
+### `planned` — because the marker and the units are not one write
+
+SQLite writes the run row and every unit in one transaction, so it is never
+half-planned. Firestore and DynamoDB cannot do that at this size, which leaves a
+window where the run marker exists but its units do not.
+
+That window is worse than it sounds. A worker reading a marker with no units
+behind it sees "a run with nothing to claim" — indistinguishable from a finished
+run. It would claim nothing, exit **successfully**, and report a completed run
+that generated no documents. A duplicate-work bug is expensive; this one is
+silent.
+
+So the marker goes down first carrying `planned: False`, and only flips to `True`
+once every unit is written. `claim_next_unit` returns `None` for an unplanned
+run, and [`create_run`](../src/docloom/core/pipeline/run.py) polls until the flag
+flips — raising `TimeoutError` rather than proceeding quietly, for the same
+reason.
+
+Two details that matter:
+
+- **Absent means planned.** Rows written before the flag existed only ever became
+  visible fully planned, so `planned` defaults to `True`. Defaulting the other
+  way would strand every existing run.
+- **A dead planner does not wedge the run.** If a marker sits unplanned for
+  longer than `PLANNING_TAKEOVER_SECONDS` (120s), the next worker takes the plan
+  over. Unit writes are keyed by index and byte-identical, so finishing another
+  planner's work is safe.
+
+`docloom plan` creates the plan and exits. It is **not** required — `generate`
+plans safely from every worker — but it lets a large run be planned and inspected
+with `docloom status` before compute is committed to it.
+
+### Why not gate on the worker ordinal
+
+Cloud Run sets `CLOUD_RUN_TASK_INDEX`, AWS Batch sets
+`AWS_BATCH_JOB_ARRAY_INDEX`, and letting only ordinal 0 plan would be a two-line
+fix. It was rejected: it moves coordination into the compute layer, which is
+precisely what the rest of this document says never happens — and it does nothing
+for many processes on one laptop, where there is no ordinal at all.
 
 ## Two levels of concurrency
 
@@ -155,6 +218,7 @@ decision, not a worker or record change — is not lost. (Status: planned.)
 | Work division | contiguous index ranges = shard = export granularity |
 | Determinism | `stable_seed(run_id, index)`, SHA-256, process-stable |
 | Coordination | atomic `claim_next_unit`, pull-based, no broker/leader |
+| Cold start | conditional `create_run` — one planner, the rest wait on `planned` |
 | Where atomicity lives | the StateStore (SQLite lock / Firestore txn), not compute |
 | Scaling | inter-instance drain loops × intra-unit parallel render |
 | Pause / cancel | run-state gating — workers just stop being served |

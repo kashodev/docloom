@@ -76,10 +76,11 @@ def generate(
     if resume:
         requeued = resume_run(store, run_id)
         typer.echo(f"resume: re-queued {requeued} failed unit(s)")
-    elif store.get_run(run_id) is None:
+    else:
+        # Safe to call from every worker at once: creation is a conditional write
+        # in the store, so one plans and the rest wait for that plan to land.
         create_run(store, run_id=run_id, pack=pack, config_id=config_id,
                    total=total, unit_size=unit_size)
-        typer.echo(f"planned run {run_id}: {total} documents in units of {unit_size}")
 
     try:
         stats = work_run(store, run_id=run_id, source=source, renderer=renderer, blob=blob)
@@ -96,6 +97,36 @@ def generate(
     )
     for unit_index, error in stats.failures:
         typer.echo(f"  unit {unit_index} failed: {error}")
+    _print_status(store, run_id)
+
+
+@app.command()
+def plan(
+    run_id: str = typer.Option(..., help="Run identifier; seeds all documents"),
+    total: int = typer.Option(..., help="Number of documents to generate"),
+    pack: str = typer.Option("invoice", help="Document pack"),
+    unit_size: int = typer.Option(1000, help="Documents per work unit / shard"),
+    config_id: str = typer.Option("default", help="Run config id (recorded on the run)"),
+    state: str = _STATE,
+) -> None:
+    """Create a run's plan without generating anything.
+
+    Not required — `generate` plans the run itself, and does so safely from many
+    workers at once. This exists so a large run can be planned and inspected
+    (`docloom status`) before committing compute to it.
+    """
+    if pack not in available_packs():
+        raise typer.BadParameter(f"unknown pack {pack!r}; available: {', '.join(available_packs())}")
+    store = open_state(state)
+    existing = store.get_run(run_id)
+    if existing is not None and existing.planned:
+        typer.echo(f"run {run_id} already planned: {existing.total_units} unit(s)")
+        _print_status(store, run_id)
+        return
+    run = create_run(store, run_id=run_id, pack=pack, config_id=config_id,
+                     total=total, unit_size=unit_size)
+    typer.echo(f"planned run {run_id}: {total} document(s) in {run.total_units} unit(s) "
+               f"of {unit_size}")
     _print_status(store, run_id)
 
 

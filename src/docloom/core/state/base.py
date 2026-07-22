@@ -30,6 +30,11 @@ def _now() -> datetime:
 #: and a slow-but-alive worker's unit gets stolen, too long and recovery lags.
 DEFAULT_LEASE_SECONDS: float = 900.0  # 15 minutes
 
+#: How long to let an unplanned run marker sit before another worker takes over
+#: writing the plan. Generous next to the time to write a few thousand unit rows,
+#: but short enough that a planner killed on startup does not strand the run.
+PLANNING_TAKEOVER_SECONDS: float = 120.0
+
 
 @dataclass(frozen=True, slots=True)
 class Run:
@@ -43,6 +48,16 @@ class Run:
     created_at: datetime = field(default_factory=_now)
     updated_at: datetime = field(default_factory=_now)
     metadata: dict[str, str] = field(default_factory=dict)
+    #: False while the plan is being written, True once every unit exists.
+    #:
+    #: Creation is two steps — claim the run id, then write its units — and a
+    #: planner that dies between them would otherwise leave a run that *exists*
+    #: with nothing to claim, which every worker would read as "already
+    #: finished" and exit. This flag is what makes that state distinguishable
+    #: from a genuinely complete run. Legacy rows written before the flag
+    #: existed read as ``True``: the old path only ever wrote a run whose units
+    #: were already committed.
+    planned: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,12 +143,25 @@ class StateStore(Protocol):
     """Durable run + work-unit state with an atomic claim."""
 
     # ── Runs ────────────────────────────────────────────────────────────────
-    def create_run(self, run: Run, units: list[WorkUnit]) -> None:
-        """Persist a run and its units in one transaction.
+    def create_run(self, run: Run, units: list[WorkUnit]) -> bool:
+        """Create the run and its units if absent. Returns True if *this* call
+        wrote the plan.
 
-        Atomic so a run is never half-created: either the whole plan is
-        recorded or none of it is, and a resumed run always finds a complete
-        unit list.
+        **Exactly one concurrent caller plans a run.** Every worker starts by
+        checking whether its run exists, and N workers starting together — which
+        is precisely what a Cloud Run job or an AWS Batch array does — would
+        otherwise all see "no run" and all write the plan, the later ones
+        resetting units the earlier ones had already claimed. Creation is
+        therefore a conditional write on the run marker, the same primitive the
+        unit claim uses: the winner writes the plan, the losers get ``False``.
+
+        A caller that gets ``False`` must not assume the plan is ready — the
+        winner may still be writing units. Wait for :attr:`Run.planned`.
+
+        A planner that dies mid-plan is recovered: its marker stays unplanned,
+        and after :data:`PLANNING_TAKEOVER_SECONDS` another caller takes over and
+        finishes the plan. Unit writes are keyed by unit index and carry
+        identical content, so re-writing them is idempotent.
         """
         ...
 

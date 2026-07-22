@@ -94,3 +94,47 @@ def test_pause_and_cancel(tmp_path: Path) -> None:
 
     cancelled = runner.invoke(app, ["cancel", "--run-id", "cli3", "--state", p["state"]])
     assert cancelled.exit_code == 0 and "cancelled" in cancelled.output
+
+
+def test_plan_then_generate_works_the_planned_run(tmp_path: Path) -> None:
+    """`plan` exists so a large run can be inspected before compute is committed
+    to it; `generate` must then pick that plan up rather than making its own."""
+    p = _paths(tmp_path)
+
+    pl = runner.invoke(app, [
+        "plan", "--run-id", "cli_plan", "--total", "12", "--unit-size", "4",
+        "--state", p["state"],
+    ])
+    assert pl.exit_code == 0, pl.output
+    assert "planned run cli_plan: 12 document(s) in 3 unit(s)" in pl.output
+    assert "3 pending" in pl.output
+
+    gen = runner.invoke(app, [
+        "generate", "--run-id", "cli_plan", "--total", "12", "--unit-size", "4",
+        "--format", "html", "--storage", p["storage"], "--state", p["state"],
+    ])
+    assert gen.exit_code == 0, gen.output
+    assert "12 document(s)" in gen.output
+
+    st = runner.invoke(app, ["status", "--run-id", "cli_plan", "--state", p["state"]])
+    assert "3 done" in st.output          # the original plan, not a second one
+
+
+def test_planning_twice_is_harmless(tmp_path: Path) -> None:
+    p = _paths(tmp_path)
+    args = ["plan", "--run-id", "twice", "--total", "8", "--unit-size", "4",
+            "--state", p["state"]]
+    assert runner.invoke(app, args).exit_code == 0
+    again = runner.invoke(app, args)
+    assert again.exit_code == 0, again.output
+    assert "already planned: 2 unit(s)" in again.output
+
+
+def test_plan_rejects_an_unknown_pack(tmp_path: Path) -> None:
+    p = _paths(tmp_path)
+    bad = runner.invoke(app, [
+        "plan", "--run-id", "nope", "--total", "4", "--pack", "nonsense",
+        "--state", p["state"],
+    ])
+    assert bad.exit_code != 0
+    assert "unknown pack" in bad.output
