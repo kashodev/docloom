@@ -114,6 +114,29 @@ simply stop being handed units and drain to a stop. Resume flips the run back to
 Because completion is idempotent and reproducible, resuming after any
 interruption re-does only what did not finish.
 
+## Spend, and why a budget needs the store too
+
+`BudgetGuard` caps one process. Two hundred workers each honouring a $50 ceiling
+will spend $10,000 — every guard behaving correctly, the fleet still over budget.
+So spend uses the same trick as everything else here: put the shared fact in the
+**StateStore**, which by definition every worker can reach.
+
+`add_spend(run_id, model, cost)` atomically increments a `(run, model)` row and a
+`(run, "*")` total, returning the new total — the value a cap must be checked
+against, because summing per-model rows would race. It is an atomic upsert in
+SQLite, `Increment` in Firestore, `ADD` in DynamoDB.
+
+Spend accumulates as **integer nano-dollars**, not a float: Firestore's
+`Increment` is int-or-double, and money must never live in a double. The
+authoritative per-call ledger is still the `llm_usage` table; the rollup is the
+live aggregate and the enforcement point.
+
+`DistributedBudgetGuard` sits on top with two staleness dials — `flush_every`
+(how much of *our* spend to buffer) and `refresh_interval` (how long we may go
+without re-reading *others'* spend). Neither can be free: perfect enforcement is
+a shared read and write per call. Both bound the overshoot instead, one in calls
+and one in wall-clock.
+
 ## Large-document routing
 
 Most invoices are a handful of line items, but a few archetypes (the telecom

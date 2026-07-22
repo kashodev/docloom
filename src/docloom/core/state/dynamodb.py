@@ -38,12 +38,44 @@ from decimal import Decimal
 from typing import Any
 
 from docloom.core.enums import RunState, WorkUnitState
-from docloom.core.state.base import DEFAULT_LEASE_SECONDS, Run, WorkUnit
+from docloom.core.state.base import (
+    DEFAULT_LEASE_SECONDS,
+    TOTAL_MODEL,
+    Run,
+    Spend,
+    WorkUnit,
+    from_nano,
+    to_nano,
+)
 
 _RUN_SK = "RUN"
 _UNIT_PREFIX = "UNIT#"
+_SPEND_PREFIX = "SPEND#"
 #: Zero-padded so lexicographic sort-key order == numeric unit order.
 _UNIT_WIDTH = 8
+
+
+def spend_sort_key(model: str) -> str:
+    """Sort key for a rollup row.
+
+    A distinct prefix keeps rollup rows out of the unit range, so the claim's
+    ``begins_with("UNIT#")`` query never sees them and vice versa. (They happen
+    to sort *before* the unit rows — ``SPEND#`` < ``UNIT#`` — which is
+    immaterial, since both are read by prefix, never by scanning the partition.)
+    """
+    return f"{_SPEND_PREFIX}{model}"
+
+
+def item_to_spend(item: dict[str, Any]) -> Spend:
+    """DynamoDB item → rollup row. Pure, so the mapping is unit-tested."""
+    return Spend(
+        run_id=item["pk"],
+        model=item.get("model", TOTAL_MODEL),
+        cost_usd=from_nano(int(item.get("cost_nano", 0))),
+        calls=int(item.get("calls", 0)),
+        input_tokens=int(item.get("input_tokens", 0)),
+        output_tokens=int(item.get("output_tokens", 0)),
+    )
 
 
 def unit_sort_key(unit_index: int) -> str:
@@ -279,6 +311,78 @@ class DynamoDbStateStore:
                 return False
             raise
         return True
+
+    # ── Spend rollup ────────────────────────────────────────────────────────
+    def add_spend(
+        self,
+        run_id: str,
+        model: str,
+        *,
+        cost: Decimal,
+        calls: int = 1,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+    ) -> Decimal:
+        """Increment the model row and the run total with ``ADD``.
+
+        ``ADD`` on a DynamoDB number is a server-side atomic increment, and its
+        number type is arbitrary-precision decimal, so the counter is exact and
+        no read-modify-write race exists. The total row's ``UPDATED_NEW`` gives
+        the post-increment value a budget check needs.
+        """
+        nano = to_nano(cost)
+        # The total goes FIRST, deliberately. These are two UpdateItems — each
+        # atomic, but not atomic as a pair — so a crash between them leaves the
+        # two disagreeing, and the *direction* of that disagreement is a safety
+        # property. Total first means a failure over-counts the total relative to
+        # the per-model rows, so a budget stops slightly early. Model first would
+        # under-count the total, letting a run quietly overshoot its cap, which is
+        # the failure a budget exists to prevent. See TODO.md for the fix
+        # (TransactWriteItems) and why it was not taken yet.
+        total = self._add_spend_row(
+            run_id, TOTAL_MODEL, nano, calls, input_tokens, output_tokens
+        )
+        self._add_spend_row(run_id, model, nano, calls, input_tokens, output_tokens)
+        return from_nano(total)
+
+    def _add_spend_row(
+        self, run_id: str, model: str, nano: int,
+        calls: int, input_tokens: int, output_tokens: int,
+    ) -> int:
+        response = self._table.update_item(
+            Key={"pk": run_id, "sk": spend_sort_key(model)},
+            UpdateExpression=(
+                "ADD cost_nano :c, calls :n, input_tokens :i, output_tokens :o "
+                "SET #m = :model, updated_at = :u"
+            ),
+            ExpressionAttributeNames={"#m": "model"},
+            ExpressionAttributeValues={
+                ":c": Decimal(nano), ":n": Decimal(calls),
+                ":i": Decimal(input_tokens), ":o": Decimal(output_tokens),
+                ":model": model, ":u": _now(),
+            },
+            ReturnValues="UPDATED_NEW",
+        )
+        return int(response["Attributes"]["cost_nano"])
+
+    def spend(self, run_id: str) -> list[Spend]:
+        from boto3.dynamodb.conditions import Key
+
+        response = self._table.query(
+            KeyConditionExpression=(
+                Key("pk").eq(run_id) & Key("sk").begins_with(_SPEND_PREFIX)
+            )
+        )
+        return sorted(
+            (item_to_spend(item) for item in response.get("Items", [])),
+            key=lambda s: s.model,
+        )
+
+    def total_spend(self, run_id: str) -> Decimal:
+        item = self._table.get_item(
+            Key={"pk": run_id, "sk": spend_sort_key(TOTAL_MODEL)}
+        ).get("Item")
+        return from_nano(int(item["cost_nano"])) if item else Decimal(0)
 
     def units(self, run_id: str) -> Iterator[WorkUnit]:
         return iter([item_to_unit(item) for item in self._iter_units(run_id)])

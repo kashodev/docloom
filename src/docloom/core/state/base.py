@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Protocol, runtime_checkable
 
 from docloom.core.enums import RunState, WorkUnitState
@@ -73,6 +74,53 @@ class WorkUnit:
             and self.lease_expires_at is not None
             and self.lease_expires_at <= now
         )
+
+
+#: Spend is accumulated as an **integer count of nano-dollars** (1e-9 USD), not a
+#: float and not a decimal string, because every backend can increment an integer
+#: atomically and exactly — Firestore's ``Increment`` is int-or-double, and a
+#: double is precisely what money must not be. A nano-dollar is fine-grained
+#: enough that the cheapest realistic call (one token at $0.05/Mtok = 50 nano)
+#: still registers.
+NANO = Decimal("1e-9")
+
+#: The pseudo-model under which a run's total is accumulated. Enforcement reads
+#: this one row, so a cap is checked against a single atomically-incremented
+#: number rather than a sum that could race.
+TOTAL_MODEL = "*"
+
+
+def to_nano(cost: Decimal) -> int:
+    """USD → nano-dollars, half-up.
+
+    Rounding here is deliberate and bounded: the rollup is a *monitoring and
+    enforcement* aggregate, while the authoritative per-call ledger is the
+    ``llm_usage`` table, which stays exact. Worst-case drift over a million calls
+    is half a nano-dollar each — well under a thousandth of a cent in total.
+    """
+    return int((Decimal(cost) / NANO).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+
+
+def from_nano(nano: int) -> Decimal:
+    """Nano-dollars → USD, exact."""
+    return Decimal(nano) * NANO
+
+
+@dataclass(frozen=True, slots=True)
+class Spend:
+    """One row of a run's spend rollup: what a model has cost so far."""
+
+    run_id: str
+    model: str
+    cost_usd: Decimal
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+    @property
+    def is_total(self) -> bool:
+        """True for the run-wide aggregate row rather than a single model."""
+        return self.model == TOTAL_MODEL
 
 
 @runtime_checkable
@@ -144,6 +192,39 @@ class StateStore(Protocol):
 
     def progress(self, run_id: str) -> dict[WorkUnitState, int]:
         """Count units in each state — drives the run's completion check."""
+        ...
+
+    # ── Spend rollup ────────────────────────────────────────────────────────
+    def add_spend(
+        self,
+        run_id: str,
+        model: str,
+        *,
+        cost: Decimal,
+        calls: int = 1,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+    ) -> Decimal:
+        """Atomically add to a run's spend rollup. Returns the new **run total**.
+
+        Two rows move together: the ``(run, model)`` row for monitoring, and the
+        ``(run, "*")`` total that a budget is enforced against. The total is the
+        return value because a cap has to be checked against one atomically
+        incremented number — summing per-model rows would race, and two workers
+        could both read "under budget" and both proceed.
+
+        This is what makes a budget hold across a *fleet*. An in-process guard
+        caps one worker; two hundred workers each honouring a $50 cap will spend
+        $10,000. See :class:`~docloom.core.providers.budget.DistributedBudgetGuard`.
+        """
+        ...
+
+    def spend(self, run_id: str) -> list[Spend]:
+        """Every rollup row for a run, including the ``*`` total."""
+        ...
+
+    def total_spend(self, run_id: str) -> Decimal:
+        """A run's total spend so far — the ``*`` row, in USD."""
         ...
 
     def close(self) -> None:

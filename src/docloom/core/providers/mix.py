@@ -94,5 +94,7 @@ class ProviderMix:
                 latency_ms=int((time.perf_counter() - started) * 1000),
             ))
         if self._budget is not None:
-            self._budget.add(result.cost)
+            # Pass the model so a distributed guard can attribute spend
+            # per model in the rollup; the in-process guard ignores it.
+            self._budget.add(result.cost, model=result.model)
         return result
