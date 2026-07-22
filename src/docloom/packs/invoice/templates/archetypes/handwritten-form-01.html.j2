@@ -113,6 +113,23 @@ table.pad-items tr.blank td { }
          filter: url(#stamp-rough);
          pointer-events: none; }
 .stamp svg { width: 100%; height: auto; display: block; }
+
+/* ── Goods receipt: the customer's acknowledgement ───────────────────────── */
+.receipt-block { border-top: 0.8pt dashed var(--rule-strong);
+                 margin: 0 5mm 4mm; padding-top: 2.5mm; }
+.receipt-note { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em;
+                color: var(--ink-soft); margin-bottom: 1mm; }
+.receipt-lines { display: flex; gap: 6mm; align-items: flex-end; }
+.recv-slot { flex: 1; text-align: center; }
+.recv-slot.narrow { flex: 0 0 34mm; }
+/* A second person: their own face, ink and lean. */
+.signature.receiver { font-family: {{ hw.receiver_stack | default('inherit', true) | safe }};
+                      color: {{ hw.receiver_ink | default('inherit', true) }}; font-size: 22pt;
+                      transform: rotate({{ hw.receiver_rotate }}deg); }
+.receiver-hand { font-family: {{ hw.receiver_stack | default('inherit', true) | safe }};
+                 color: {{ hw.receiver_ink | default('inherit', true) }};
+                 position: absolute; left: 3mm; bottom: 0.8mm; white-space: nowrap;
+                 font-size: calc(11.5pt * {{ hw.size_scale }}); }
 body { position: relative; }
 </style>
 </head>
@@ -245,6 +262,37 @@ body { position: relative; }
       <div class="cap">{{ "authorised_signature" | label }}</div>
     </div>
   </div>
+
+  {# Goods receipt: the customer signs for the delivery. A different person, so a
+     different hand and ink — two identical hands on one page is what gives a
+     synthetic document away. #}
+  {% if invoice.goods_receipt %}
+  <div class="receipt-block">
+    <div class="receipt-note">{{ "goods_received_note" | label }}</div>
+    <div class="receipt-lines">
+      <div class="recv-slot">
+        <div class="sign-line">
+          <span class="signature receiver">{{ hw.receiver_signature }}</span>
+        </div>
+        <div class="cap">{{ "received_by" | label }}</div>
+      </div>
+      <div class="recv-slot">
+        <div class="sign-line">
+          <span class="hand receiver-hand">{{ hw.receiver_name }}</span>
+        </div>
+        <div class="cap">{{ "print_name" | label }}</div>
+      </div>
+      <div class="recv-slot narrow">
+        <div class="sign-line">
+          <span class="hand receiver-hand">
+            {{ (invoice.received_date or invoice.issue_date) | date }}
+          </span>
+        </div>
+        <div class="cap">{{ "date_received" | label }}</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 </div>
 </body>
 </html>

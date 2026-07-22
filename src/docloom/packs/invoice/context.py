@@ -118,6 +118,7 @@ def build_context(invoice: GoldenInvoice) -> dict[str, Any]:
             # One dial for how battered the artefact is; the scan
             # degradation afterwards reads the same value.
             wear=invoice.wear,
+            goods_receipt=invoice.goods_receipt,
             # The stamp carries the issuer's real identity, so an extractor can
             # cross-check the mark against the golden record.
             company=invoice.issuer.name,

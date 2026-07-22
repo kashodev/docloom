@@ -26,6 +26,7 @@ from docloom.core.enums import DocumentCondition, Jurisdiction
 from docloom.core.locale.enums import Currency, Language, Locale
 from docloom.core.record import TableRows
 from docloom.packs.invoice.enums import (
+    GOODS_KINDS,
     BillingModel,
     BusinessType,
     CodeSystem,
@@ -321,6 +322,22 @@ class GoldenInvoice(_Base):
             "clean lines: real ink and real scanners are not vector-exact."
         ),
     )
+    goods_receipt: bool = Field(
+        default=False,
+        description=(
+            "Render a receiver's signature block — the line a customer signs on "
+            "taking delivery. Only valid for physical goods: nobody signs a "
+            "delivery note for a month of consulting, so this is validated, not "
+            "merely documented."
+        ),
+    )
+    received_date: date | None = Field(
+        default=None,
+        description=(
+            "When the customer signed for the goods. Printed on a goods receipt, "
+            "so it is an extraction target and belongs in the golden data."
+        ),
+    )
     page_count: int | None = Field(default=None, description="Filled in after rendering")
 
     # ── Storage pointers ───────────────────────────────────────────────────
@@ -385,6 +402,32 @@ class GoldenInvoice(_Base):
             )
         return self
 
+    @model_validator(mode="after")
+    def _check_goods_receipt_is_physical_goods(self) -> GoldenInvoice:
+        """A goods receipt must actually be for goods.
+
+        The receiver's signature line means "I took delivery of these items", so
+        it only makes sense when every line is something deliverable. Enforced
+        rather than documented: an invoice for consulting hours carrying a
+        delivery signature would be a *wrong* training example, and the corpus is
+        only worth anything if its artefacts are internally consistent.
+        """
+        if not self.goods_receipt:
+            return self
+        if not self.line_items:
+            raise ValueError("a goods receipt needs at least one line item")
+        if self.received_date is not None and self.received_date < self.issue_date:
+            raise ValueError(
+                f"received_date {self.received_date} precedes issue_date {self.issue_date}"
+            )
+        non_goods = sorted({str(li.kind) for li in self.line_items if li.kind not in GOODS_KINDS})
+        if non_goods:
+            raise ValueError(
+                "goods_receipt requires every line to be physical goods "
+                f"({sorted(str(k) for k in GOODS_KINDS)}); found {non_goods}"
+            )
+        return self
+
     # ── Flattening for the Parquet / BigQuery golden tables ────────────────
 
     #: Tables this record contributes to, declared for sinks that create or
@@ -443,6 +486,8 @@ class GoldenInvoice(_Base):
             # should be able to answer directly.
             "wear": self.wear,
             "is_crisp": self.wear <= _CRISP_WEAR,
+            "goods_receipt": self.goods_receipt,
+            "received_date": self.received_date,
             "page_count": self.page_count,
             "meta_position": self.render_profile.meta_position,
             "totals_style": self.render_profile.totals_style,

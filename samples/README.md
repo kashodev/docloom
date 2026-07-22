@@ -41,5 +41,10 @@ What the set covers:
   invoice as `44`, much harder to read. `46` also shows the **wear** dial at its
   worn default; `47_handwritten_crisp.pdf` is the same kind of document at
   `wear = 0` — a well-preserved artefact, sharp and legible, though the seal
-  edges and pen strokes are still not vector-clean, because real ink never is. The figures are identical to the clean
+  edges and pen strokes are still not vector-clean, because real ink never is.
+  `48_handwritten_goods-receipt.pdf` is the delivery-note variant: under the
+  issuer's signature sits a **received by / print name / date received** block
+  that the customer signs on taking delivery, in a second, scrawlier hand. That
+  variant is always physical goods — nobody signs a delivery note for a month of
+  consulting — which the record validates. The figures are identical to the clean
   twin — handwriting changes the rendering, never the ground truth.

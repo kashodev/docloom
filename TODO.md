@@ -44,7 +44,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         documents per unit (`<run>/documents/unit-000123/…`), so the manifest
         just needs to describe that structure rather than invent one.
 
-- [ ] **A "crisp" (well-preserved) handwritten variant.** Today every handwritten
+- [x] **A "crisp" (well-preserved) handwritten variant.** Today every handwritten
       invoice looks like an old, worn document: the ink-roughening turbulence and
       the scan degradation both run at full strength. Add a variant where the
       physical artefact is *recent and in good condition* — the paper is not
@@ -58,7 +58,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         with, but is distinct from, the existing *legibility* dial (which is about
         the writer's hand, not the paper's condition).
 
-- [ ] **Goods-receipt variant with a receiver's signature line.** A second
+- [x] **Goods-receipt variant with a receiver's signature line.** A second
       handwritten layout for the case where a customer signs on receipt of goods:
       alongside the issuer's "authorised signature", a separate **received by**
       block — signature, printed name, and date received — that a different hand
