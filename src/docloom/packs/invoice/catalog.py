@@ -231,14 +231,26 @@ _GENERIC = (
 # company's archetype is drawn for visual variety, weighted toward the flat
 # skeleton, with the hierarchical telecom archetype reserved for telecom (the one
 # business type whose sampler produces grouped, sectioned line items).
-_TELECOM_ARCHETYPE = "telecom-itemized-37"
+#: Reserved for telecom, the one business type whose sampler produces grouped,
+#: sectioned line items the other layouts cannot express.
+TELECOM_ARCHETYPE = "telecom-itemized-37"
+#: The hand-filled pad. Not a layout choice — a handwritten invoice is a
+#: different document, so the condition routes to it regardless of the company's
+#: usual look (see ``InvoicePack.archetype_for``).
+HANDWRITTEN_ARCHETYPE = "handwritten-form-01"
+_TELECOM_ARCHETYPE = TELECOM_ARCHETYPE
 # Weighted toward the open flat skeleton, but with two colour-forward looks —
 # an accent header band and a full-bleed tinted sheet — that the corpus is full
 # of and the white archetypes could not express. The consumer receipt stays a
 # small share since it fits fewer business types.
-_GENERAL_ARCHETYPES = (
+GENERAL_ARCHETYPES = (
     "meta-sidebar-01", "banner-header-06", "boxed-form-01", "fullbleed-05", "receipt-compact-01",
 )
+#: Every template this pack ships. Kept as a constant rather than a directory
+#: listing so a selection can be validated without touching the filesystem; a
+#: test asserts it still matches ``templates/archetypes/``.
+ALL_ARCHETYPES = (*GENERAL_ARCHETYPES, TELECOM_ARCHETYPE, HANDWRITTEN_ARCHETYPE)
+_GENERAL_ARCHETYPES = GENERAL_ARCHETYPES
 _GENERAL_WEIGHTS = (0.40, 0.20, 0.17, 0.13, 0.10)
 
 _NAME_PARTS = (

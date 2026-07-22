@@ -278,3 +278,40 @@ def test_real_render_marks_page_spanning_sections_continued() -> None:
         assert all(m == "(cont'd)" for m in markers)
         # A short invoice has no .contd placeholders at all → nothing to fill.
         assert _contd_markers(r, invoice(simple_lines())) == []
+
+
+# ── Capture condition is realised on the rendered PDF ───────────────────────
+def test_a_clean_render_is_passed_through_untouched() -> None:
+    """CLEAN must cost nothing: no rasterise, no re-encode, text layer intact.
+    Every invoice in a default run takes this path."""
+    doc = PdfRenderer(get_pack("invoice"), browser=FakeBrowser()).render(
+        invoice(simple_lines())
+    )
+    assert doc.data == b"%PDF-1.7\nfake"
+
+
+def test_a_non_clean_render_is_degraded(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The wiring that made `condition` mean something. `degrade_pdf` existed and
+    was fully tested, but nothing in the render path ever called it — so a
+    handwritten or scanned slice produced pristine digital PDFs."""
+    from docloom.core.enums import DocumentCondition
+    from docloom.core.pipeline import pdf as pdf_module
+
+    seen: dict = {}
+
+    def fake_degrade(data: bytes, condition, *, seed: int, dpi: int, wear: float) -> bytes:  # noqa: ANN001
+        seen.update(condition=condition, seed=seed, dpi=dpi, wear=wear)
+        return b"%PDF-degraded"
+
+    monkeypatch.setattr(pdf_module, "degrade_pdf", fake_degrade)
+    record = invoice(simple_lines()).model_copy(
+        update={"condition": DocumentCondition.HEAVY_SCAN, "wear": 0.6, "seed": 4242}
+    )
+    doc = PdfRenderer(get_pack("invoice"), browser=FakeBrowser()).render(record)
+
+    assert doc.data == b"%PDF-degraded"
+    assert seen["condition"] is DocumentCondition.HEAVY_SCAN
+    # The record's own seed and wear, so a degraded document is as reproducible
+    # as the clean one, and the capture agrees with the ink already rendered.
+    assert seen["seed"] == 4242
+    assert seen["wear"] == 0.6

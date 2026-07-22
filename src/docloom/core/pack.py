@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from docloom.core.content import ContentCapability
 from docloom.core.locale.labels import LabelRegistry
 from docloom.core.record import GoldenRecord
+from docloom.core.selection import Selection
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,8 +111,21 @@ class DocumentPack(Protocol):
         """
         ...
 
-    def default_source(self) -> DocumentSource:
+    def default_source(
+        self,
+        *,
+        selection: Selection | None = None,
+        max_line_items: int | None = None,
+    ) -> DocumentSource:
         """The pack's default document source for a run.
+
+        ``selection`` constrains the *population* the source draws from — which
+        locales, companies, templates and capture conditions this slice of the
+        run is allowed to produce. The kernel does not interpret it: it carries
+        the declaration here and the pack decides what it can honour, raising
+        :class:`~docloom.core.selection.UnsupportedConstraint` for what it
+        cannot. Silently ignoring a constraint is not an option — a slice named
+        ``french`` that emits English documents is a wasted run nobody notices.
 
         Whether this is key-free is a *pack* property, not a kernel guarantee.
         The invoice pack returns the sampler over its procedural seed catalogue,

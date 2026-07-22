@@ -17,7 +17,7 @@ import time
 from docloom.core.enums import RunState, WorkUnitState
 from docloom.core.pipeline.planner import plan_units
 from docloom.core.pipeline.renderer import DocumentRenderer
-from docloom.core.pipeline.source import DocumentSource
+from docloom.core.pipeline.source import DocumentSource, prepare_source
 from docloom.core.pipeline.worker import GenerationWorker, WorkerStats
 from docloom.core.state.base import Run, StateStore
 from docloom.core.storage.base import BlobStore
@@ -95,6 +95,9 @@ def work_run(
     worker drains, the run is marked COMPLETED only if every unit is done;
     otherwise it is left RUNNING with failed units awaiting a resume.
     """
+    # Before anything is claimed: a source that cannot satisfy its run-scoped
+    # configuration must stop the run here, not fail unit after unit.
+    prepare_source(source, run_id)
     worker = GenerationWorker(
         run_id=run_id, source=source, renderer=renderer, blob=blob, state=state
     )

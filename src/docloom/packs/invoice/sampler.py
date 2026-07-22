@@ -18,16 +18,17 @@ The catalogue supplies content; this module supplies correctness.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from random import Random
 
 from docloom.core.money import ZERO, money, pct, sum_money
 from docloom.core.pipeline.source import stable_seed
-from docloom.core.enums import DocumentCondition
-from docloom.packs.invoice.catalog import Catalogue, Company, ProductTemplate, SeedCatalogue
+from docloom.core.selection import Selection
+from docloom.packs.invoice.catalog import Catalogue, ProductTemplate, SeedCatalogue
+from docloom.packs.invoice.composition import Composition, resolve
 from docloom.packs.invoice.enums import (
-    GOODS_BUSINESS_TYPES,
     GOODS_KINDS,
     BillingModel,
     BusinessType,
@@ -237,32 +238,42 @@ class InvoiceSampler:
         *,
         max_line_items: int = 8_000,
         goods_receipt: bool = False,
+        selection: Selection | None = None,
     ) -> None:
         self._catalogue = catalogue or SeedCatalogue()
         self._max_line_items = max_line_items
-        self._goods_receipt = goods_receipt
+        # `goods_receipt=` predates selections and is kept as the shorthand it
+        # became in tests; it is the same constraint, so it folds in rather than
+        # living alongside as a second way to say one thing.
+        base = selection or Selection()
+        self._selection = replace(base, goods_receipt=base.goods_receipt or goods_receipt)
+        self._goods_receipt = self._selection.goods_receipt
+        self._composition: tuple[str, Composition] | None = None
 
-    def _choose_company(self, rng: Random) -> Company:
-        """Pick an issuer, restricted to goods sellers for a goods receipt.
+    @property
+    def selection(self) -> Selection:
+        return self._selection
 
-        Rejection sampling against the weighted roster rather than a filtered
-        re-weighting: it preserves the roster's relative weights among the goods
-        companies, and the goods share is large enough that it terminates
-        quickly. Falls back to a plain draw if the roster somehow has none.
+    def composition(self, run_id: str) -> Composition:
+        """The resolved pools for this run, computed once and reused.
+
+        Cached on the run id rather than at construction because a sampler is
+        built before the run it will serve, and the reproducible "use N of them"
+        subset is a function of that id.
         """
-        if not self._goods_receipt:
-            return self._catalogue.roster().choose(rng)
-        roster = self._catalogue.roster()
-        for _ in range(200):
-            company = roster.choose(rng)
-            if company.business_type in GOODS_BUSINESS_TYPES:
-                return company
-        goods = [c for c in roster.companies if c.business_type in GOODS_BUSINESS_TYPES]
-        return rng.choice(goods) if goods else roster.choose(rng)
+        if self._composition is None or self._composition[0] != run_id:
+            self._composition = (run_id, resolve(self._selection, self._catalogue, run_id))
+        return self._composition[1]
+
+    def prepare(self, run_id: str) -> None:
+        """Resolve this run's selection up front, so an impossible constraint
+        stops the run instead of failing every unit in turn."""
+        self.composition(run_id)
 
     def generate(self, run_id: str, index: int) -> GoldenInvoice:
         rng = Random(stable_seed(run_id, index))
-        company = self._choose_company(rng)
+        composition = self.composition(run_id)
+        company = composition.roster.choose(rng)
         spec = self._catalogue.business_spec(company.business_type)
         products = spec.products
         if self._goods_receipt:
@@ -319,12 +330,18 @@ class InvoiceSampler:
             discount_scheme=scheme,
             discount_timing=timing,
             company_id=company.company_id,
-            render_profile=company.render_profile,
+            # A constrained slice overrides the company's usual look; otherwise
+            # the company keeps it, which is what makes its invoices recognisably
+            # its own.
+            render_profile=company.render_profile.model_copy(
+                update={"archetype": composition.archetype_for(
+                    rng, company.render_profile.archetype)}
+            ),
             # A goods receipt is a handwritten delivery note the customer signs,
             # so the variant carries both flags together rather than leaving a
             # receipt block that no archetype would render.
-            condition=(DocumentCondition.HANDWRITTEN if self._goods_receipt
-                       else DocumentCondition.CLEAN),
+            condition=composition.condition_for(rng),
+            wear=composition.wear_for(rng),
             goods_receipt=self._goods_receipt,
             received_date=(issue + timedelta(days=rng.randint(0, 6))
                            if self._goods_receipt else None),

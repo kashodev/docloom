@@ -17,6 +17,8 @@ colliding. ``--resume`` re-queues failed units first.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 
 import docloom.packs  # noqa: F401  — registers the built-in packs
@@ -29,6 +31,7 @@ from docloom.core.pipeline import (
     resume_run,
     work_run,
 )
+from docloom.core.selection import Selection
 from docloom.core.sinks import open_sink
 from docloom.core.state import open_state
 from docloom.core.storage import open_store
@@ -48,6 +51,77 @@ _USAGE = typer.Option(
 )
 
 
+# ── Composition flags ───────────────────────────────────────────────────────
+# One flag per axis of `Selection`, plus `--selection-file` taking the same YAML
+# block `deploy/gcp/run.example.yaml` already uses for a slice. Two surfaces for
+# one thing is a deliberate trade: flags are what a deploy script can compose
+# programmatically, a file is what a human can read and diff. They share a parser
+# so they cannot drift.
+_LOCALE = typer.Option([], "--locale", help="Restrict issuers to this locale (repeatable)")
+_COMPANY = typer.Option([], "--company", help="Pin to this company id (repeatable)")
+_COMPANY_COUNT = typer.Option(0, "--company-count", help="Use N companies, chosen from the run id")
+_ARCHETYPE = typer.Option([], "--archetype", help="Restrict to this template (repeatable)")
+_ARCHETYPE_COUNT = typer.Option(0, "--archetype-count", help="Use N templates")
+_BUSINESS_TYPE = typer.Option([], "--business-type", help="Restrict issuers to this business type")
+_CONDITION = typer.Option([], "--condition", help="Capture condition to draw from (repeatable)")
+_WEAR = typer.Option("", "--wear", help="crisp | varied | worn | 0.4 | 0.2:0.8")
+_GOODS_RECEIPT = typer.Option(False, "--goods-receipt", help="Delivery notes with a receiver's signature")
+_SELECTION_FILE = typer.Option("", "--selection-file", help="YAML file holding one slice's composition")
+
+
+def _parse_wear(raw: str) -> object:
+    """``0.2:0.8`` is a range; anything else falls through to the parser, which
+    already understands a bare number and the named presets."""
+    if ":" in raw:
+        low, high = raw.split(":", 1)
+        return [float(low), float(high)]
+    return raw
+
+
+def _selection_from(selection_file: str, **flags: object) -> Selection:
+    """A selection from a file, a set of flags, or both — flags win.
+
+    Layering rather than either/or: a deploy script can keep the shared slice
+    file under version control and still override one axis for a smoke test,
+    which is the same reason `deploy.sh` has `--set`.
+    """
+    import yaml
+
+    base: dict[str, object] = {}
+    if selection_file:
+        path = Path(selection_file)
+        if not path.is_file():
+            raise typer.BadParameter(f"no such selection file: {selection_file}")
+        base = yaml.safe_load(path.read_text()) or {}
+        if not isinstance(base, dict):
+            raise typer.BadParameter(f"{selection_file} must hold a mapping, not {type(base).__name__}")
+
+    overrides: dict[str, object] = {}
+    if flags["locale"]:
+        overrides["locales"] = flags["locale"]
+    if flags["company"]:
+        overrides["companies"] = flags["company"]
+    if flags["company_count"]:
+        overrides["companies"] = flags["company_count"]
+    if flags["archetype"]:
+        overrides["archetypes"] = flags["archetype"]
+    if flags["archetype_count"]:
+        overrides["archetypes"] = flags["archetype_count"]
+    if flags["business_type"]:
+        overrides["business_types"] = flags["business_type"]
+    if flags["condition"]:
+        overrides["conditions"] = flags["condition"]
+    if flags["wear"]:
+        overrides["wear"] = _parse_wear(str(flags["wear"]))
+    if flags["goods_receipt"]:
+        overrides["goods_receipt"] = True
+
+    try:
+        return Selection.from_mapping({**base, **overrides})
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+
 @app.command()
 def generate(
     run_id: str = typer.Option(..., help="Run identifier; seeds all documents"),
@@ -61,16 +135,33 @@ def generate(
     storage: str = _STORAGE,
     state: str = _STATE,
     llm_usage: str = _USAGE,
+    locale: list[str] = _LOCALE,
+    company: list[str] = _COMPANY,
+    company_count: int = _COMPANY_COUNT,
+    archetype: list[str] = _ARCHETYPE,
+    archetype_count: int = _ARCHETYPE_COUNT,
+    business_type: list[str] = _BUSINESS_TYPE,
+    condition: list[str] = _CONDITION,
+    wear: str = _WEAR,
+    goods_receipt: bool = _GOODS_RECEIPT,
+    selection_file: str = _SELECTION_FILE,
 ) -> None:
     """Generate documents and golden shards for a run."""
     if pack not in available_packs():
         raise typer.BadParameter(f"unknown pack {pack!r}; available: {', '.join(available_packs())}")
 
+    selection = _selection_from(
+        selection_file, locale=locale, company=company, company_count=company_count,
+        archetype=archetype, archetype_count=archetype_count, business_type=business_type,
+        condition=condition, wear=wear, goods_receipt=goods_receipt,
+    )
     doc_pack = get_pack(pack)
     blob = open_store(storage)
     store = open_state(state)
     usage = open_usage_sink(llm_usage, blob=blob, run_id=run_id)
-    source = doc_pack.default_source()
+    source = doc_pack.default_source(selection=selection, max_line_items=max_line_items)
+    if not selection.is_empty:
+        typer.echo(f"composition: {selection.describe()}")
     renderer = PdfRenderer(doc_pack) if fmt == "pdf" else HtmlRenderer(doc_pack)
 
     if resume:
@@ -98,6 +189,12 @@ def generate(
     for unit_index, error in stats.failures:
         typer.echo(f"  unit {unit_index} failed: {error}")
     _print_status(store, run_id)
+    if stats.units_failed:
+        # A worker that leaves failed units behind has not done its job, and
+        # exiting 0 tells Cloud Run (and `deploy.sh --wait`, and a CI step) that
+        # the run succeeded. The units are recoverable with `--resume`; the
+        # silence was not.
+        raise typer.Exit(1)
 
 
 @app.command()

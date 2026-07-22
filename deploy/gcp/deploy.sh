@@ -142,6 +142,14 @@ emit("SINK_URI", get("export.sink", ""))
 # and packs/invoice/templates/archetypes/.
 LOCALES = {"en-US", "en-CA", "en-GB", "fr-CA", "fr-FR"}
 CONDITIONS = {"clean", "light_scan", "heavy_scan", "handwritten"}
+# packs/invoice/enums.py BusinessType. Telecom is the one type whose invoices
+# carry hundreds of line items, so it is how a slice asks for long documents.
+BUSINESS_TYPES = {
+    "retail", "ecommerce", "grocery", "wholesale", "auto_repair", "construction",
+    "manufacturing", "b2b_saas", "ai_platform", "telecom", "accounting", "legal",
+    "consulting", "healthcare", "logistics", "utilities",
+}
+NAMED_WEAR = {"crisp", "varied", "worn"}
 ARCHETYPES = {
     "banner-header-06", "boxed-form-01", "fullbleed-05", "handwritten-form-01",
     "meta-sidebar-01", "receipt-compact-01", "telecom-itemized-37",
@@ -209,17 +217,44 @@ for i, (s, count) in enumerate(zip(slices, counts), start=1):
     locales, _ = as_list(s.get("locales"), "locales", LOCALES)
     companies, company_n = as_list(s.get("companies"), "companies")
     archetypes, archetype_n = as_list(s.get("archetypes"), "archetypes", ARCHETYPES)
-    condition = s.get("condition") or ""
-    if condition and condition not in CONDITIONS:
-        sys.exit(f"unknown condition {condition!r} (known: {', '.join(sorted(CONDITIONS))})")
+    conditions, _ = as_list(s.get("conditions", s.get("condition")), "condition", CONDITIONS)
+    business, _ = as_list(s.get("business_types"), "business_types", BUSINESS_TYPES)
     goods = "yes" if s.get("goods_receipt") else ""
-    if goods and condition and condition != "handwritten":
+    if goods and conditions and conditions != "handwritten":
         sys.exit(f"slice {name!r}: goods_receipt is a handwritten delivery note, "
-                 f"so condition cannot be {condition!r}")
+                 f"so condition cannot be {conditions!r}")
+    wear = s.get("wear")
+    if isinstance(wear, list):
+        wear = ":".join(str(w) for w in wear)
+    elif wear is not None:
+        wear = str(wear)
+        if wear not in NAMED_WEAR and not wear.replace(".", "", 1).isdigit():
+            sys.exit(f"unknown wear {wear!r} (known: {', '.join(sorted(NAMED_WEAR))}, "
+                     "a number, or a [low, high] range)")
+
+    # The composition is emitted as ready-made `docloom generate` flags rather
+    # than as more positional fields. One source of truth for the vocabulary
+    # (here), and bash never has to thread a dozen optional columns through a
+    # `read` loop where one omission shifts everything left.
+    flags = []
+    flags += [f"--locale={v}" for v in locales.split(",") if v]
+    flags += [f"--company={v}" for v in companies.split(",") if v]
+    if company_n:
+        flags.append(f"--company-count={company_n}")
+    flags += [f"--archetype={v}" for v in archetypes.split(",") if v and v != "all"]
+    if archetype_n:
+        flags.append(f"--archetype-count={archetype_n}")
+    flags += [f"--business-type={v}" for v in business.split(",") if v]
+    flags += [f"--condition={v}" for v in conditions.split(",") if v]
+    if wear:
+        flags.append(f"--wear={wear}")
+    if goods:
+        flags.append("--goods-receipt")
+
+    description = " ".join(flags).replace("--", "") or "unconstrained"
     # \x1f (ASCII Unit Separator), NOT tab: `read` collapses runs of *whitespace*
     # delimiters, so an omitted field would silently shift every later field left.
-    rows.append("\x1f".join([name, pack, str(count), fmt, locales, companies,
-                           company_n, archetypes, archetype_n, condition, goods]))
+    rows.append("\x1f".join([name, pack, str(count), fmt, "|".join(flags), description]))
 emit("SLICES", "\n".join(rows))
 emit("SLICE_COUNT", len(rows))
 
@@ -266,31 +301,19 @@ run_id_for() {
 # empty composition field would shift every later field left.
 each_slice() { printf '%s\n' "${SLICES}"; }
 
-gen_args() {  # name, pack, count, format, [extra flag]
-  local name="$1" pack="$2" count="$3" fmt="$4" extra="${5:-}"
+gen_args() {  # name, pack, count, format, composition flags, [extra flag]
+  local name="$1" pack="$2" count="$3" fmt="$4" comp="${5:-}" extra="${6:-}"
   local args="^|^generate|--run-id=$(run_id_for "${name}")|--total=${count}"
   args+="|--pack=${pack}|--unit-size=${UNIT_SIZE}|--format=${fmt}"
   # config_id records which slice produced a run. It is on the Run, not on the
   # golden rows — filter documents by run_id, not by this.
   args+="|--config-id=${name}|--max-line-items=${MAX_LINE_ITEMS}"
   args+="|--storage=${STORAGE_URI}|--state=${STATE_URI}|--llm-usage=${LLM_USAGE}"
+  # The slice's composition, already formatted by the config parser. An
+  # unconstrained slice contributes nothing, so it runs exactly as before.
+  [[ -n "${comp}" ]] && args+="|${comp}"
   [[ -n "${extra}" ]] && args+="|${extra}"
   echo "${args}"
-}
-
-# One line describing a slice's composition, or a note that it has none.
-constraints_of() {  # locales, companies, company_n, archetypes, archetype_n, condition, goods
-  local out=""
-  [[ -n "$1" ]] && out+="locales=$1 "
-  [[ -n "$2" ]] && out+="companies=[$2] "
-  [[ -n "$3" ]] && out+="companies=${3}× "
-  [[ "$4" == "all" ]] && out+="templates=all "
-  [[ -n "$4" && "$4" != "all" ]] && out+="templates=[$4] "
-  [[ -n "$5" ]] && out+="templates=${5}× "
-  [[ -n "$6" ]] && out+="condition=$6 "
-  [[ -n "$7" ]] && out+="goods-receipt "
-  [[ -z "${out}" ]] && out="unconstrained"
-  echo "${out}"
 }
 
 # ── Commands ────────────────────────────────────────────────────────────────
@@ -307,13 +330,13 @@ plan() {
   documents       ${TOTAL} total, unit size ${UNIT_SIZE}
 EOF
   local units_total=0
-  while IFS=$'\x1f' read -r name pack count fmt loc comp comp_n arch arch_n cond goods; do
+  while IFS=$'\x1f' read -r name pack count fmt _ desc; do
     [[ -n "${name}" ]] || continue
     local units=$(( (count + UNIT_SIZE - 1) / UNIT_SIZE ))
     units_total=$(( units_total + units ))
     printf '    %-16s %8s %-8s %4s units  run id: %s\n' \
       "${name}" "${count}" "${pack}/${fmt}" "${units}" "$(run_id_for "${name}")"
-    printf '                     %s\n' "$(constraints_of "${loc}" "${comp}" "${comp_n}" "${arch}" "${arch_n}" "${cond}" "${goods}")"
+    printf '                     %s\n' "${desc}"
   done < <(each_slice)
   cat <<EOF
   job             ${JOB}: ${TASKS} task(s), parallelism ${PARALLELISM}
@@ -420,36 +443,36 @@ deploy_job() {
   say "Deploying job ${JOB} (${TASKS} tasks, parallelism ${PARALLELISM})"
   # Args are set per execution, so the job definition carries the first type's
   # only as a sane default.
-  IFS=$'\x1f' read -r f_name f_pack f_count f_fmt _ < <(each_slice)
+  IFS=$'\x1f' read -r f_name f_pack f_count f_fmt f_comp _ < <(each_slice)
   gcloud run jobs deploy "${JOB}" \
     --image="${IMAGE}" --region="${REGION}" --project="${PROJECT}" \
     --service-account="${SA}" \
     --tasks="${TASKS}" --parallelism="${PARALLELISM}" \
     --task-timeout="${TASK_TIMEOUT}" --max-retries="${MAX_RETRIES}" \
     --cpu="${CPU}" --memory="${MEMORY}" \
-    --args="$(gen_args "${f_name}" "${f_pack}" "${f_count}" "${f_fmt}")"
+    --args="$(gen_args "${f_name}" "${f_pack}" "${f_count}" "${f_fmt}" "${f_comp}")"
 }
 
 run_job() {
-  while IFS=$'\x1f' read -r name pack count fmt _ _ _ _ _ _ _; do
+  while IFS=$'\x1f' read -r name pack count fmt comp _; do
     [[ -n "${name}" ]] || continue
     say "Executing ${JOB} — slice '${name}': ${count} ${pack} document(s)"
     gcloud run jobs execute "${JOB}" --region="${REGION}" --project="${PROJECT}" \
-      --wait --args="$(gen_args "${name}" "${pack}" "${count}" "${fmt}")"
+      --wait --args="$(gen_args "${name}" "${pack}" "${count}" "${fmt}" "${comp}")"
   done < <(each_slice)
 }
 
 resume() {
-  while IFS=$'\x1f' read -r name pack count fmt _ _ _ _ _ _ _; do
+  while IFS=$'\x1f' read -r name pack count fmt comp _; do
     [[ -n "${name}" ]] || continue
     say "Resuming '$(run_id_for "${name}")' — re-queue failed, reclaim crashed"
     gcloud run jobs execute "${JOB}" --region="${REGION}" --project="${PROJECT}" \
-      --wait --args="$(gen_args "${name}" "${pack}" "${count}" "${fmt}" "--resume")"
+      --wait --args="$(gen_args "${name}" "${pack}" "${count}" "${fmt}" "${comp}" "--resume")"
   done < <(each_slice)
 }
 
 status() {
-  while IFS=$'\x1f' read -r name _ _ _ _ _ _ _ _ _ _; do
+  while IFS=$'\x1f' read -r name _; do
     [[ -n "${name}" ]] || continue
     say "Status — $(run_id_for "${name}")"
     gcloud run jobs execute "${JOB}" --region="${REGION}" --project="${PROJECT}" \
@@ -468,7 +491,7 @@ logs() {
 
 export_golden() {
   [[ -n "${SINK_URI}" ]] || { echo "set export.sink in ${CONFIG} first"; exit 1; }
-  while IFS=$'\x1f' read -r name _ _ _ _ _ _ _ _ _ _; do
+  while IFS=$'\x1f' read -r name _; do
     [[ -n "${name}" ]] || continue
     say "Exporting $(run_id_for "${name}") → ${SINK_URI}"
     # One task: export is a single sequential read of the shards.
@@ -481,13 +504,13 @@ export_golden() {
 teardown() {
   say "Teardown — deletes this run's output. Not reversible."
   echo "  job    : ${JOB}"
-  while IFS=$'\x1f' read -r name _ _ _ _ _ _ _ _ _ _; do
+  while IFS=$'\x1f' read -r name _; do
     [[ -n "${name}" ]] && echo "  output : gs://${BUCKET}/runs/$(run_id_for "${name}")"
   done < <(each_slice)
   read -r -p "  proceed? [y/N] " reply
   [[ "${reply}" == "y" ]] || { echo "  aborted"; exit 0; }
   gcloud run jobs delete "${JOB}" --region="${REGION}" --project="${PROJECT}" --quiet || true
-  while IFS=$'\x1f' read -r name _ _ _ _ _ _ _ _ _ _; do
+  while IFS=$'\x1f' read -r name _; do
     [[ -n "${name}" ]] && gcloud storage rm -r "gs://${BUCKET}/runs/$(run_id_for "${name}")" \
       --project="${PROJECT}" || true
   done < <(each_slice)

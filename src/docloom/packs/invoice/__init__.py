@@ -19,6 +19,7 @@ from docloom.core.enums import DocumentCondition
 from docloom.core.locale.labels import LabelRegistry
 from docloom.core.pack import RunningHeader
 from docloom.core.record import GoldenRecord
+from docloom.core.selection import Selection
 from docloom.packs.invoice.catalog import (
     BusinessSpec,
     Catalogue,
@@ -66,7 +67,8 @@ TEMPLATE_ROOT = Path(__file__).resolve().parent / "templates"
 
 #: The archetype a HANDWRITTEN document is always rendered with — a pre-printed
 #: pad filled in by hand, rather than any of the typeset layouts.
-HANDWRITTEN_ARCHETYPE = "handwritten-form-01"
+# Defined in catalog.py, beside the other archetype constants.
+from docloom.packs.invoice.catalog import HANDWRITTEN_ARCHETYPE  # noqa: E402
 
 
 class InvoicePack:
@@ -134,9 +136,23 @@ class InvoicePack:
         primary = f"{issuer} — {number_label} {number}" if issuer else f"{number_label} {number}"
         return RunningHeader(primary=primary, page_label=page_label)
 
-    def default_source(self) -> InvoiceSampler:
-        """The sampler over the procedural seed catalogue — no API keys."""
-        return InvoiceSampler()
+    def default_source(
+        self,
+        *,
+        selection: Selection | None = None,
+        max_line_items: int | None = None,
+    ) -> InvoiceSampler:
+        """The sampler over the procedural seed catalogue — no API keys.
+
+        The selection is resolved lazily, on the first document of a run, because
+        "use 10 companies" is a function of the run id the sampler does not have
+        yet. An impossible constraint therefore surfaces on the first unit rather
+        than at construction — still before any document is written.
+        """
+        return InvoiceSampler(
+            selection=selection,
+            **({"max_line_items": max_line_items} if max_line_items is not None else {}),
+        )
 
 
 __all__ = [
