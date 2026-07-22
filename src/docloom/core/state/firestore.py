@@ -19,10 +19,19 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 from docloom.core.enums import RunState, WorkUnitState
-from docloom.core.state.base import DEFAULT_LEASE_SECONDS, Run, WorkUnit
+from docloom.core.state.base import (
+    DEFAULT_LEASE_SECONDS,
+    TOTAL_MODEL,
+    Run,
+    Spend,
+    WorkUnit,
+    from_nano,
+    to_nano,
+)
 
 _CLAIMABLE = WorkUnitState.PENDING.value   # claim pending only; see StateStore
 
@@ -78,6 +87,24 @@ def doc_to_unit(run_id: str, doc: dict[str, Any]) -> WorkUnit:
         error=doc.get("error"),
         updated_at=datetime.fromisoformat(doc["updated_at"]),
         lease_expires_at=datetime.fromisoformat(lease) if lease else None,
+    )
+
+
+def _doc_id(model: str) -> str:
+    """Model name as a document id. ``*`` (the run total) is not a legal id, and
+    ``/`` would nest a path, so both are escaped."""
+    return "__total__" if model == TOTAL_MODEL else model.replace("/", "_")
+
+
+def doc_to_spend(run_id: str, doc: dict[str, Any]) -> Spend:
+    """Firestore document → rollup row. Pure, so the mapping is unit-tested."""
+    return Spend(
+        run_id=run_id,
+        model=doc.get("model", TOTAL_MODEL),
+        cost_usd=from_nano(int(doc.get("cost_nano", 0))),
+        calls=int(doc.get("calls", 0)),
+        input_tokens=int(doc.get("input_tokens", 0)),
+        output_tokens=int(doc.get("output_tokens", 0)),
     )
 
 
@@ -208,6 +235,54 @@ class FirestoreStateStore:
         if count:
             batch.commit()
         return count
+
+    # ── Spend rollup ────────────────────────────────────────────────────────
+    def _spend_col(self, run_id: str) -> Any:
+        return self._run_ref(run_id).collection("spend")
+
+    def add_spend(
+        self,
+        run_id: str,
+        model: str,
+        *,
+        cost: Decimal,
+        calls: int = 1,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+    ) -> Decimal:
+        """Increment the model row and the run total via ``firestore.Increment``.
+
+        Increment is a server-side atomic operation, so concurrent workers do not
+        need a transaction and cannot lose an update. It is **integer** increment
+        here: Firestore's Increment is int-or-double, and accumulating money in a
+        double is exactly what this project avoids everywhere else — hence
+        nano-dollars as an int rather than USD as a float.
+        """
+        from google.cloud import firestore
+
+        nano = to_nano(cost)
+        col = self._spend_col(run_id)
+        delta = {
+            "cost_nano": firestore.Increment(nano),
+            "calls": firestore.Increment(calls),
+            "input_tokens": firestore.Increment(input_tokens),
+            "output_tokens": firestore.Increment(output_tokens),
+            "updated_at": _now(),
+        }
+        batch = self._client.batch()
+        batch.set(col.document(_doc_id(model)), {**delta, "model": model}, merge=True)
+        batch.set(col.document(_doc_id(TOTAL_MODEL)), {**delta, "model": TOTAL_MODEL},
+                  merge=True)
+        batch.commit()
+        return self.total_spend(run_id)
+
+    def spend(self, run_id: str) -> list[Spend]:
+        rows = [doc_to_spend(run_id, s.to_dict()) for s in self._spend_col(run_id).stream()]
+        return sorted(rows, key=lambda s: s.model)
+
+    def total_spend(self, run_id: str) -> Decimal:
+        snap = self._spend_col(run_id).document(_doc_id(TOTAL_MODEL)).get()
+        return from_nano(int(snap.to_dict().get("cost_nano", 0))) if snap.exists else Decimal(0)
 
     def units(self, run_id: str) -> Iterator[WorkUnit]:
         snaps = self._units_col(run_id).order_by("unit_index").stream()

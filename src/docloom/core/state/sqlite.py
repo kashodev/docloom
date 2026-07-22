@@ -23,10 +23,19 @@ import json
 import sqlite3
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 from docloom.core.enums import RunState, WorkUnitState
-from docloom.core.state.base import DEFAULT_LEASE_SECONDS, Run, WorkUnit
+from docloom.core.state.base import (
+    DEFAULT_LEASE_SECONDS,
+    TOTAL_MODEL,
+    Run,
+    Spend,
+    WorkUnit,
+    from_nano,
+    to_nano,
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -53,6 +62,18 @@ CREATE TABLE IF NOT EXISTS work_units (
 );
 CREATE INDEX IF NOT EXISTS idx_units_claimable
     ON work_units(run_id, state, unit_index);
+-- Spend rollup. Nano-dollars as INTEGER so the increment is atomic and exact;
+-- see docloom.core.state.base for why not a float or a decimal string.
+CREATE TABLE IF NOT EXISTS run_spend (
+    run_id        TEXT NOT NULL,
+    model         TEXT NOT NULL,
+    cost_nano     INTEGER NOT NULL DEFAULT 0,
+    calls         INTEGER NOT NULL DEFAULT 0,
+    input_tokens  INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    updated_at    TEXT NOT NULL,
+    PRIMARY KEY (run_id, model)
+);
 """
 
 _CLAIMABLE = (WorkUnitState.PENDING.value,)
@@ -193,6 +214,66 @@ class SqliteStateStore:
             sql += " AND run_id=?"
             params.append(run_id)
         return self._conn.execute(sql, params).rowcount
+
+    # ── Spend rollup ────────────────────────────────────────────────────────
+    def add_spend(
+        self,
+        run_id: str,
+        model: str,
+        *,
+        cost: Decimal,
+        calls: int = 1,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+    ) -> Decimal:
+        """Increment the model row and the run total in one transaction.
+
+        ``BEGIN IMMEDIATE`` takes the write lock before either upsert, so
+        concurrent workers serialise and the returned total is the value *after*
+        this contribution — which is what a budget check needs.
+        """
+        nano = to_nano(cost)
+        now = _now()
+        with self._conn:
+            self._conn.execute("BEGIN IMMEDIATE")
+            for key in (model, TOTAL_MODEL):
+                self._conn.execute(
+                    "INSERT INTO run_spend "
+                    "(run_id, model, cost_nano, calls, input_tokens, output_tokens, updated_at) "
+                    "VALUES (?,?,?,?,?,?,?) "
+                    "ON CONFLICT(run_id, model) DO UPDATE SET "
+                    "  cost_nano = cost_nano + excluded.cost_nano,"
+                    "  calls = calls + excluded.calls,"
+                    "  input_tokens = input_tokens + excluded.input_tokens,"
+                    "  output_tokens = output_tokens + excluded.output_tokens,"
+                    "  updated_at = excluded.updated_at",
+                    (run_id, key, nano, calls, input_tokens, output_tokens, now),
+                )
+            row = self._conn.execute(
+                "SELECT cost_nano FROM run_spend WHERE run_id=? AND model=?",
+                (run_id, TOTAL_MODEL),
+            ).fetchone()
+        return from_nano(int(row["cost_nano"]))
+
+    def spend(self, run_id: str) -> list[Spend]:
+        rows = self._conn.execute(
+            "SELECT * FROM run_spend WHERE run_id=? ORDER BY model", (run_id,)
+        ).fetchall()
+        return [
+            Spend(
+                run_id=r["run_id"], model=r["model"],
+                cost_usd=from_nano(int(r["cost_nano"])), calls=int(r["calls"]),
+                input_tokens=int(r["input_tokens"]), output_tokens=int(r["output_tokens"]),
+            )
+            for r in rows
+        ]
+
+    def total_spend(self, run_id: str) -> Decimal:
+        row = self._conn.execute(
+            "SELECT cost_nano FROM run_spend WHERE run_id=? AND model=?",
+            (run_id, TOTAL_MODEL),
+        ).fetchone()
+        return from_nano(int(row["cost_nano"])) if row else Decimal(0)
 
     def units(self, run_id: str) -> Iterator[WorkUnit]:
         rows = self._conn.execute(

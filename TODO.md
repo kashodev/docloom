@@ -90,10 +90,16 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         so it writes no rows and no shard.
       - `export_run` discovers tables by prefix, so it exports to
         Parquet/DuckDB/BigQuery with no export change at all.
-      - Remaining: per-(run, model) rollup in the StateStore for live in-run
-        monitoring (and as the distributed budget counter); a streaming path if
-        live fleet-wide cost visibility is ever needed — see
-        `feature_explorations/llm-cost-telemetry.md`.
+      - **Done:** per-(run, model) spend rollup in the StateStore
+        (`add_spend` / `spend` / `total_spend`, atomic on all three backends,
+        integer nano-dollars so the counter is exact), plus
+        `DistributedBudgetGuard`, which makes a budget hold across a fleet rather
+        than per process.
+      - Remaining: a streaming path, if live fleet-wide cost visibility at finer
+        granularity than the rollup is ever needed — see
+        `feature_explorations/llm-cost-telemetry.md`. Not needed for throughput
+        (~35 rows/s); only for latency, and it would reintroduce the duplicate
+        problem the shard keys currently avoid.
 
 - [ ] **Investigate logging and metrics.** The project has `structlog` as a
       dependency but no deliberate logging or metrics story: what a run should

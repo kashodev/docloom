@@ -29,10 +29,14 @@ import pytest
 
 from docloom.core.enums import RunState, WorkUnitState
 from docloom.core.state.base import Run, WorkUnit
+from decimal import Decimal as D
+
 from docloom.core.state.dynamodb import (
     item_to_run,
+    item_to_spend,
     item_to_unit,
     run_to_item,
+    spend_sort_key,
     unit_sort_key,
     unit_to_item,
 )
@@ -245,3 +249,48 @@ def test_paging_past_a_hundred_units(store) -> None:  # noqa: ANN001
     seed(store, units=120)
     assert len(list(store.units("run_1"))) == 120
     assert store.progress("run_1")[WorkUnitState.PENDING] == 120
+
+
+# ── Spend rollup ────────────────────────────────────────────────────────────
+def test_spend_sort_key_is_distinct_from_the_unit_range() -> None:
+    """Rollup rows must not appear in the claim's begins_with('UNIT#') query."""
+    assert not spend_sort_key("*").startswith("UNIT#")
+    assert spend_sort_key("m") != unit_sort_key(0)
+
+
+def test_spend_item_mapping_round_trips_the_cost() -> None:
+    row = item_to_spend({"pk": "r", "model": "m", "cost_nano": 3_000_000, "calls": 2})
+    assert row.cost_usd == D("0.003")
+    assert row.calls == 2 and row.model == "m"
+
+
+@requires_dynamodb
+def test_add_spend_is_atomic_and_exact(store) -> None:  # noqa: ANN001
+    """ADD is a server-side increment on DynamoDB's decimal number type, so the
+    counter neither races nor loses precision."""
+    seed(store, units=1)
+    for _ in range(50):
+        store.add_spend("run_1", "claude-haiku-4-5", cost=D("0.0000004"))
+    assert store.total_spend("run_1") == D("0.00002")     # 50 x 4e-7
+
+    by_model = {r.model: r for r in store.spend("run_1")}
+    assert by_model["claude-haiku-4-5"].calls == 50
+    assert by_model["*"].cost_usd == D("0.00002")
+
+
+@requires_dynamodb
+def test_add_spend_returns_the_running_total(store) -> None:  # noqa: ANN001
+    seed(store, units=1)
+    assert store.add_spend("run_1", "m", cost=D("0.01")) == D("0.01")
+    assert store.add_spend("run_1", "m", cost=D("0.02")) == D("0.03")
+
+
+@requires_dynamodb
+def test_rollup_rows_do_not_disturb_the_unit_claim(store) -> None:  # noqa: ANN001
+    """Both live in one partition, so prove the claim still walks units only."""
+    seed(store, units=3)
+    store.add_spend("run_1", "m", cost=D("0.01"))
+    claimed = [store.claim_next_unit("run_1") for _ in range(4)]
+    assert [u.unit_index for u in claimed[:3]] == [0, 1, 2]  # type: ignore[union-attr]
+    assert claimed[3] is None
+    assert len(list(store.units("run_1"))) == 3

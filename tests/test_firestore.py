@@ -17,8 +17,12 @@ import pytest
 
 from docloom.core.enums import RunState, WorkUnitState
 from docloom.core.state.base import Run, WorkUnit
+from decimal import Decimal as D
+
 from docloom.core.state.firestore import (
+    _doc_id,
     doc_lease_is_expired,
+    doc_to_spend,
     doc_to_run,
     doc_to_unit,
     run_is_claimable,
@@ -178,3 +182,35 @@ def test_reclaim_leaves_live_leases_alone_against_emulator() -> None:  # pragma:
     store.claim_next_unit(run_id)
     assert store.reclaim_expired_units(run_id) == 0      # lease still valid
     assert store.progress(run_id)[WorkUnitState.RUNNING] == 1
+
+
+# ── Spend rollup ────────────────────────────────────────────────────────────
+def test_total_row_gets_a_legal_document_id() -> None:
+    """'*' is not a valid Firestore document id, and '/' would nest a path."""
+    assert _doc_id("*") == "__total__"
+    assert "/" not in _doc_id("vendor/model-1")
+
+
+def test_spend_document_mapping_round_trips_the_cost() -> None:
+    row = doc_to_spend("r", {"model": "m", "cost_nano": 3_000_000, "calls": 2})
+    assert row.cost_usd == D("0.003")
+    assert row.calls == 2
+
+
+def test_spend_is_stored_as_integer_nano_not_a_double() -> None:
+    """Firestore's Increment is int-or-double, and money must never accumulate in
+    a double — so the counter is an integer nano-dollar count."""
+    row = doc_to_spend("r", {"model": "m", "cost_nano": 400})
+    assert row.cost_usd == D("0.0000004")
+
+
+@requires_emulator
+def test_add_spend_accumulates_atomically_against_the_emulator() -> None:  # pragma: no cover
+    store = _emu_store()
+    run_id = _emu_run(store, 1)
+    for _ in range(30):
+        store.add_spend(run_id, "claude-haiku-4-5", cost=D("0.0000004"))
+    assert store.total_spend(run_id) == D("0.000012")     # 30 x 4e-7
+    by_model = {r.model: r for r in store.spend(run_id)}
+    assert by_model["claude-haiku-4-5"].calls == 30
+    assert by_model["*"].cost_usd == D("0.000012")
