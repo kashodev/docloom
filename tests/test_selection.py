@@ -242,3 +242,20 @@ def test_the_archetype_constant_still_matches_the_templates_on_disk() -> None:
                for p in InvoicePack().template_root.glob("archetypes/*.html.j2")}
     assert set(ALL_ARCHETYPES) == on_disk
     assert set(GENERAL_ARCHETYPES) < set(ALL_ARCHETYPES)
+
+
+def test_a_handwritten_slice_never_draws_a_telecom_issuer() -> None:
+    """A pad has ~9-14 ruled lines and the telecom sampler emits 60-400, so a
+    telecom issuer here renders a fifty-page 'handwritten' invoice. Found by
+    sampling a real run config, not by reading the code."""
+    invoices = docs(Selection(conditions=(DocumentCondition.HANDWRITTEN,)), n=40)
+    assert "telecom" not in {str(i.business_type) for i in invoices}
+    assert all(len(i.line_items) <= 20 for i in invoices)
+
+
+def test_handwritten_telecom_asked_for_explicitly_is_an_error() -> None:
+    """Filtering is right when the operator did not ask for telecom; when they
+    did, the two constraints genuinely contradict and silence would be wrong."""
+    with pytest.raises(UnsupportedConstraint, match="cannot be an itemised telecom bill"):
+        docs(Selection(conditions=(DocumentCondition.HANDWRITTEN,),
+                       business_types=("telecom",)), n=1)

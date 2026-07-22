@@ -140,6 +140,26 @@ def resolve(selection: Selection, catalogue: Catalogue, run_id: str) -> Composit
                 "none in this slice does"
             )
 
+    conditions = selection.effective_conditions
+    if DocumentCondition.HANDWRITTEN in conditions:
+        # Nobody hand-writes a 400-line itemised telecom bill onto a pad. The
+        # telecom sampler emits 60–400 call-detail lines, and the hand-filled
+        # archetype draws one ruled row per line, so a telecom issuer here would
+        # produce a fifty-page "handwritten" invoice — expensive to render and
+        # absurd on its face.
+        #
+        # Filtered rather than rejected, matching the goods-receipt rule above:
+        # this is a fact about the physical document, not a mistake the operator
+        # made. Pin `business_types: [telecom]` *and* handwritten and you get the
+        # error below, because then it really is contradictory.
+        without_telecom = [c for c in companies if c.business_type is not BusinessType.TELECOM]
+        if not without_telecom:
+            raise UnsupportedConstraint(
+                "a handwritten document is filled in by hand on a ruled pad, so it "
+                "cannot be an itemised telecom bill — this slice has no other issuer"
+            )
+        companies = without_telecom
+
     if selection.company_count is not None:
         companies = _subset(companies, selection.company_count, run_id, "companies")
 
@@ -147,7 +167,6 @@ def resolve(selection: Selection, catalogue: Catalogue, run_id: str) -> Composit
         raise UnsupportedConstraint("no company matches this slice's constraints")
 
     archetypes = _resolve_archetypes(selection, run_id)
-    conditions = selection.effective_conditions
     if DocumentCondition.HANDWRITTEN in conditions and archetypes:
         # The pad is the document, so a handwritten slice cannot also be pinned
         # to a typeset layout. Saying so beats rendering one and ignoring the
