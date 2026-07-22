@@ -75,15 +75,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
+# `packages` ships every file under the tree, not just .py — so the archetype
+# templates and the bundled OFL fonts (woff2 + licences) are included already.
+# A `force-include` table for them adds a *second* copy at the same path and
+# makes the wheel build fail outright; the build is the check that catches it.
 packages = ["src/docloom"]
-
-# Archetype templates and bundled OFL fonts ship inside their pack so it is
-# self-contained (non-.py assets are not picked up by `packages` alone).
-[tool.hatch.build.targets.wheel.force-include]
-"src/docloom/packs/invoice/templates" = "docloom/packs/invoice/templates"
-"src/docloom/packs/invoice/fonts/files" = "docloom/packs/invoice/fonts/files"
-"src/docloom/packs/invoice/fonts/OFL.txt" = "docloom/packs/invoice/fonts/OFL.txt"
-"src/docloom/packs/invoice/fonts/ATTRIBUTION.md" = "docloom/packs/invoice/fonts/ATTRIBUTION.md"
 
 [tool.ruff]
 line-length = 100

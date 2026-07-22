@@ -71,7 +71,7 @@ def test_font_stack_is_not_html_escaped() -> None:
 
 
 def test_typefaces_resolve_to_distinct_stacks() -> None:
-    from docloom.packs.invoice.fonts import font_stack
+    from docloom.core.fonts import font_stack
     serif = render_record(PACK, invoice(simple_lines(),
                                         render_profile=profile(typeface="serif-classic")))
     mono = render_record(PACK, invoice(simple_lines(),

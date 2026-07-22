@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from random import Random
 from typing import Any
 
-from docloom.packs.invoice.fonts import (
+from docloom.core.fonts import (
     HANDWRITING_KEYS,
     SIGNATURE_KEY,
     STAMP_KEY,

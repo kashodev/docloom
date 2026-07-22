@@ -112,7 +112,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       JetBrains Mono) now embed a bundled OFL woff2 (weights 400/700) as base64
       `@font-face` via `fonts.font_face_css`, and `font_stack` leads with the
       embedded family — byte-identical rendering for those typefaces on any host.
-      Files + licence in `src/docloom/packs/invoice/fonts/`. Remaining keys still
+      Files + licence in `src/docloom/core/fonts/`. Remaining keys still
       resolve from their semantic fallback stack; add more the same way (drop
       woff2 into `fonts/files/`, extend `BUNDLED`, note it in `OFL.txt`).
 

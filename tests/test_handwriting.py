@@ -13,8 +13,8 @@ import docloom.packs  # noqa: F401 - registers the invoice pack
 from docloom.core import get_pack
 from docloom.core.enums import DocumentCondition
 from docloom.core.render import render_record
+from docloom.core.fonts import HANDWRITING_KEYS
 from docloom.packs.invoice import HANDWRITTEN_ARCHETYPE
-from docloom.packs.invoice.fonts import HANDWRITING_KEYS
 from docloom.packs.invoice.handwriting import handwriting_for
 from tests.factories import invoice, simple_lines
 
