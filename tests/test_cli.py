@@ -211,3 +211,34 @@ def test_a_malformed_wear_is_rejected_before_anything_runs(tmp_path: Path) -> No
     ])
     assert bad.exit_code != 0
     assert "unknown wear" in bad.output
+
+
+def test_a_worker_retrying_into_an_all_failed_run_still_exits_nonzero(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """The false green a whole smoke run hid behind.
+
+    First attempt: rendering fails, every unit goes FAILED, exit 1 → Cloud Run
+    retries the task. Second attempt (not --resume): a fresh worker finds those
+    units already FAILED and out of the claimable pool, so it claims nothing and
+    records no failures of its own. Exiting on *its* stats would report success
+    over a run that produced zero documents. It must read the run's state."""
+    from docloom.core.pipeline import HtmlRenderer
+
+    def boom(self, record):  # noqa: ANN001, ANN202
+        raise RuntimeError("render exploded")
+
+    monkeypatch.setattr(HtmlRenderer, "render", boom)
+    p = _paths(tmp_path)
+    args = [
+        "generate", "--run-id", "fg", "--total", "6", "--unit-size", "3",
+        "--format", "html", "--storage", p["storage"], "--state", p["state"],
+    ]
+    first = runner.invoke(app, args)
+    assert first.exit_code == 1, first.output               # this worker failed units
+
+    second = runner.invoke(app, args)                        # retry, no --resume
+    assert second.exit_code == 1, (
+        "a retry that claimed nothing reported success over an all-failed run"
+    )
+    assert "0 done" not in second.output or "2 failed" in second.output
