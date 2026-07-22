@@ -225,24 +225,3 @@ class DiscountTiming(StrEnum):
 
     PRE_TAX = "pre_tax"
     POST_TAX = "post_tax"
-
-
-#: Line-item kinds that are **physical goods** — something a person can take
-#: delivery of and sign for. Services, subscriptions, usage and fees are not:
-#: nobody signs a delivery note for a month of consulting.
-GOODS_KINDS: frozenset[LineItemKind] = frozenset({
-    LineItemKind.PRODUCT,
-    LineItemKind.PART,
-})
-
-#: Business types that ship physical goods. The goods-receipt variant draws only
-#: from these, so the document it produces is one that would plausibly be signed
-#: for on delivery.
-GOODS_BUSINESS_TYPES: frozenset[BusinessType] = frozenset({
-    BusinessType.RETAIL,
-    BusinessType.ECOMMERCE,
-    BusinessType.GROCERY,
-    BusinessType.WHOLESALE,
-    BusinessType.MANUFACTURING,
-    BusinessType.PHARMACY,
-})
