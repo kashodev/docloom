@@ -34,7 +34,9 @@ import html
 import math
 from typing import Any
 
+from docloom.core.enums import DocumentCondition
 from docloom.core.pack import DocumentPack
+from docloom.core.pipeline.degrade import degrade_pdf
 from docloom.core.pipeline.renderer import RenderedDocument
 from docloom.core.record import GoldenRecord
 from docloom.core.render import render_record
@@ -109,11 +111,16 @@ class PdfRenderer:
         page_size: str = "A4",
         browser: Any | None = None,
         fit_pages: bool = True,
+        degrade_dpi: int = 150,
     ) -> None:
         self._pack = pack
         self._page_size = page_size
         self._browser = browser
         self._fit_pages = fit_pages
+        # Rasterisation resolution for a degraded capture. 150 dpi is what a
+        # cheap office scanner produces; raising it makes bigger files that look
+        # *less* like a scan, not more.
+        self._degrade_dpi = degrade_dpi
         self._playwright: Any | None = None
         self._owns_browser = browser is None
 
@@ -146,7 +153,37 @@ class PdfRenderer:
         finally:
             page.close()
         return RenderedDocument(
-            data=pdf_bytes, content_type="application/pdf", extension=".pdf"
+            data=self._realise_condition(record, pdf_bytes),
+            content_type="application/pdf",
+            extension=".pdf",
+        )
+
+    def _realise_condition(self, record: GoldenRecord, pdf_bytes: bytes) -> bytes:
+        """Apply the record's capture condition to the freshly rendered PDF.
+
+        This is the step that makes ``condition`` mean something. Chromium always
+        emits a pristine, text-layered PDF; a scan is that PDF rasterised,
+        skewed, blurred, speckled and re-wrapped with no text layer. Doing it
+        here rather than in the worker keeps it in the one place that knows the
+        document is a PDF at all — the HTML renderer has nothing to degrade.
+
+        ``CLEAN`` returns the bytes untouched, so a clean run pays nothing: no
+        rasterise, no re-encode, and the text layer survives.
+        """
+        condition = getattr(record, "condition", DocumentCondition.CLEAN)
+        if condition is DocumentCondition.CLEAN:
+            return pdf_bytes
+        return degrade_pdf(
+            pdf_bytes,
+            condition,
+            # The record's own seed, so a degraded document is as reproducible as
+            # the clean one it came from — a re-render after a retry produces the
+            # same speckles in the same places.
+            seed=getattr(record, "seed", 0),
+            dpi=self._degrade_dpi,
+            # The same dial the renderer already used to roughen the ink, so the
+            # page and the capture agree about how battered this artefact is.
+            wear=getattr(record, "wear", 1.0),
         )
 
     def _prepared_page(self, html_str: str) -> Any:

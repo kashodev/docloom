@@ -138,3 +138,76 @@ def test_plan_rejects_an_unknown_pack(tmp_path: Path) -> None:
     ])
     assert bad.exit_code != 0
     assert "unknown pack" in bad.output
+
+
+def test_composition_flags_constrain_the_run(tmp_path: Path) -> None:
+    """`--locale` has to reach the sampler, not just be accepted."""
+    p = _paths(tmp_path)
+    gen = runner.invoke(app, [
+        "generate", "--run-id", "fr", "--total", "4", "--unit-size", "4",
+        "--format", "html", "--locale", "fr-FR", "--max-line-items", "3",
+        "--storage", p["storage"], "--state", p["state"],
+    ])
+    assert gen.exit_code == 0, gen.output
+    assert "composition: locales=fr-FR" in gen.output
+
+    exp = runner.invoke(app, [
+        "export", "--run-id", "fr",
+        "--storage", p["storage"], "--sink", f"duckdb:///{p['sink']}",
+    ])
+    assert exp.exit_code == 0, exp.output
+
+    import duckdb
+    rows = duckdb.connect(p["sink"]).execute(
+        "select distinct locale, currency from invoices"
+    ).fetchall()
+    assert rows == [("fr-FR", "EUR")], rows
+
+
+def test_a_selection_file_drives_the_same_composition(tmp_path: Path) -> None:
+    """One parser behind both surfaces, so a file and flags cannot drift."""
+    p = _paths(tmp_path)
+    sel = tmp_path / "slice.yaml"
+    sel.write_text("locales: [en-GB]\ncondition: handwritten\nwear: crisp\n")
+    gen = runner.invoke(app, [
+        "generate", "--run-id", "uk", "--total", "2", "--unit-size", "2",
+        "--format", "html", "--max-line-items", "3", "--selection-file", str(sel),
+        "--storage", p["storage"], "--state", p["state"],
+    ])
+    assert gen.exit_code == 0, gen.output
+    assert "locales=en-GB" in gen.output and "wear=0-0.25" in gen.output
+
+
+def test_a_flag_overrides_the_selection_file(tmp_path: Path) -> None:
+    p = _paths(tmp_path)
+    sel = tmp_path / "slice.yaml"
+    sel.write_text("locales: [en-GB]\n")
+    gen = runner.invoke(app, [
+        "generate", "--run-id", "ov", "--total", "2", "--unit-size", "2",
+        "--format", "html", "--max-line-items", "3", "--selection-file", str(sel),
+        "--locale", "fr-FR", "--storage", p["storage"], "--state", p["state"],
+    ])
+    assert gen.exit_code == 0, gen.output
+    assert "locales=fr-FR" in gen.output
+
+
+def test_an_impossible_composition_fails_the_run_loudly(tmp_path: Path) -> None:
+    """Not a silent fallback to an unconstrained draw — that is the whole point."""
+    p = _paths(tmp_path)
+    gen = runner.invoke(app, [
+        "generate", "--run-id", "bad", "--total", "2", "--unit-size", "2",
+        "--format", "html", "--locale", "de-DE",
+        "--storage", p["storage"], "--state", p["state"],
+    ])
+    assert gen.exit_code != 0
+    assert "de-DE" in gen.output or "de-DE" in str(gen.exception)
+
+
+def test_a_malformed_wear_is_rejected_before_anything_runs(tmp_path: Path) -> None:
+    p = _paths(tmp_path)
+    bad = runner.invoke(app, [
+        "generate", "--run-id", "w", "--total", "2", "--wear", "pristine",
+        "--format", "html", "--storage", p["storage"], "--state", p["state"],
+    ])
+    assert bad.exit_code != 0
+    assert "unknown wear" in bad.output

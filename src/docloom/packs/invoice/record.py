@@ -356,6 +356,12 @@ class GoldenInvoice(_Base):
         return self.invoice_id
 
     @property
+    def is_crisp(self) -> bool:
+        """Well preserved rather than old or heavily copied. Exported on the
+        golden row so an evaluation can split accuracy by artefact quality."""
+        return self.wear <= _CRISP_WEAR
+
+    @property
     def language(self) -> Language:
         """Label vocabulary, derived from the locale."""
         return self.locale.language
@@ -485,7 +491,7 @@ class GoldenInvoice(_Base):
             # "how much worse is OCR on a worn copy?" is a question the corpus
             # should be able to answer directly.
             "wear": self.wear,
-            "is_crisp": self.wear <= _CRISP_WEAR,
+            "is_crisp": self.is_crisp,
             "goods_receipt": self.goods_receipt,
             "received_date": self.received_date,
             "page_count": self.page_count,

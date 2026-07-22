@@ -239,3 +239,36 @@ def test_two_workers_split_the_units_without_overlap(tmp_path: Path) -> None:
     assert s1.units_completed + s2.units_completed == 5
     assert state.progress("r")[WorkUnitState.DONE] == 5
     assert len(list(blob.iter_keys("r/documents/"))) == 10   # each index exactly once
+
+
+def test_a_source_that_cannot_prepare_stops_the_run_before_any_unit(tmp_path) -> None:  # noqa: ANN001
+    """An impossible run-scoped configuration must fail once, up front — not
+    once per unit while the job reports success."""
+    from docloom.core.pipeline.source import prepare_source
+
+    class Refuses:
+        def __init__(self) -> None:
+            self.generated = 0
+
+        def prepare(self, run_id: str) -> None:
+            raise ValueError("no company issues in de-DE")
+
+        def generate(self, run_id: str, index: int):  # noqa: ANN202
+            self.generated += 1
+            raise AssertionError("must not be reached")
+
+    source = Refuses()
+    with pytest.raises(ValueError, match="de-DE"):
+        prepare_source(source, "r")
+    assert source.generated == 0
+
+
+def test_a_source_without_prepare_is_fine() -> None:
+    """Optional by design: most sources need nothing resolved up front."""
+    from docloom.core.pipeline.source import prepare_source
+
+    class Plain:
+        def generate(self, run_id: str, index: int):  # noqa: ANN202
+            raise AssertionError
+
+    prepare_source(Plain(), "r")   # must not raise

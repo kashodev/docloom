@@ -101,27 +101,49 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         (~35 rows/s); only for latency, and it would reintroduce the duplicate
         problem the shard keys currently avoid.
 
-- [ ] **Let a run's composition be constrained (locale / company / template /
-      condition).** `deploy/gcp/run.example.yaml` lets an operator describe
-      slices — "10k from one company on one template", "2.5k in French", "2.5k
-      handwritten from a pool of 10 companies" — and the deploy script validates
-      and displays them, but nothing can execute them: `docloom generate` has no
-      such flags and the sampler draws from the full weighted roster with each
-      company's own locale and template.
-      - **The seam already exists.** `InvoiceSampler(goods_receipt=True)` filters
-        the roster and the product pool; this is the same idea generalised, not
-        new machinery.
-      - Shape: sampler selection options (locales, company ids or a count,
-        archetypes or a count, a condition mix) built as roster/product filters,
-        surfaced as `docloom generate --locale … --company … --archetype …
-        --condition …`, or as a `--selection-file` taking the same YAML block the
-        deploy config already uses rather than inventing a second format.
-      - Choosing *N of something* (10 companies, 3 templates) should be seeded
-        from the run id so the chosen subset is reproducible.
-      - Until then a slice is only a size and a run id; the composition fields
-        are documented intent. What was actually produced is queryable —
-        `locale`, `company_id`, `condition`, `is_handwritten` are on the golden
-        row — so a run can at least be audited after the fact.
+- [x] **Let a run's composition be constrained (locale / company / template /
+      condition).** `deploy/gcp/run.example.yaml` let an operator describe slices
+      — "10k from one company on one template", "2.5k in French", "2.5k
+      handwritten" — and the deploy script validated and displayed them, but
+      nothing executed them: the sampler drew from the full weighted roster with
+      each company's own locale and template. A slice named `french` produced
+      English invoices, correctly computed and useless, with nothing to catch it
+      but a query nobody thought to run.
+      - **`core/selection.py`** holds the declaration: locales, companies (list
+        or "use N"), archetypes (list, "use N", or `all`), business types, a
+        condition mix, a wear range, goods receipts. Its vocabulary is exactly
+        the YAML block the deploy config already used — inventing a second format
+        to execute the first would have been the wrong repair.
+      - **`packs/invoice/composition.py`** resolves it against the roster, once
+        per run, and *raises* rather than falling back. Constraints compose:
+        `locales: [fr-FR]` + `business_types: [telecom]` is French telecom
+        issuers, and no match is an error.
+      - **"Use N of them" is seeded from the run id**, so a resumed unit draws
+        the same pool rather than quietly changing the corpus mid-run.
+      - **Surfaced twice**: `docloom generate --locale/--company/--archetype/
+        --business-type/--condition/--wear/--goods-receipt`, and
+        `--selection-file` taking the same YAML block. One parser behind both.
+        `deploy.sh` emits the flags per slice, so a config finally executes.
+      - **Currency, tax model and address were never separate knobs** — they
+        follow the issuer's jurisdiction, so `locales: [en-GB]` is how a slice
+        asks for GBP and UK addresses.
+      - Fixed on the way: `default_source()` took no arguments, so the existing
+        `--max-line-items` flag was accepted and silently dropped.
+
+- [x] **Wire scan degradation into the run pipeline.** `degrade_pdf` was written,
+      tested and never called — so `condition` was recorded on the golden row and
+      had no effect on the artefact, and the sampler hardcoded every document to
+      `CLEAN` regardless. `PdfRenderer` now realises the condition after
+      Chromium: CLEAN passes through untouched (text layer intact, no cost),
+      anything else rasterises at 150 dpi, degrades with the record's own seed
+      and `wear`, and re-wraps with no text layer, exactly like a real scan.
+      Verified end to end — a handwritten run's PDFs extract 0 text characters, a
+      clean run's extract 753.
+
+- [x] **A run that leaves failed units no longer exits 0.** It reported the
+      failures on stdout and returned success, so a Cloud Run execution, a
+      `deploy.sh --wait`, and a CI step all read a broken run as a good one. The
+      units were always recoverable with `--resume`; the silence was the problem.
 
 - [ ] **Expose the catalogue build on the CLI (`docloom catalogue`).** The
       provider mix, budget guard and `build_catalogue` all exist in

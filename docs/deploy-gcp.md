@@ -92,7 +92,9 @@ taken as the sum; if you give both they must agree.
 | `locales` | restrict to `en-US en-CA en-GB fr-CA fr-FR` |
 | `companies` | list of company ids to pin to, **or** an integer "use N companies" |
 | `archetypes` | list of template names, an integer "use N", or `all` |
-| `condition` | `clean` · `light_scan` · `heavy_scan` · `handwritten` |
+| `business_types` | restrict issuers to these industries. `telecom` is the one type that bills hundreds of line items, so it is how you ask for long documents |
+| `condition` | `clean` · `light_scan` · `heavy_scan` · `handwritten`. Use `conditions` with a list to draw from a mix |
+| `wear` | `crisp` (0–0.25, well preserved) · `varied` (0.35–1, random degradation) · `worn` (1.0) · a number · a `[low, high]` range. Omitted means 1.0. Drives ink roughening *and* scan degradation together |
 | `format` | `pdf` · `html`; defaults to `run.format` |
 | `goods_receipt` | delivery note with a receiver's signature (implies handwritten) |
 
@@ -112,21 +114,30 @@ unknown locales: fr_FR (known: en-CA, en-GB, en-US, fr-CA, fr-FR)
 resumable, exportable and queryable — `run_id` is on every golden row. That also
 follows from the model: a run records exactly one pack in its plan.
 
-> **⚠ Composition is declared, not yet enforced.** `count`, `pack`, `format` and
-> `name` are honoured today. `locales`, `companies`, `archetypes`, `condition`
-> and `goods_receipt` are validated and shown by `plan`, but **the generator
-> cannot be told to obey them**: `docloom generate` has no such flags, and the
-> sampler draws companies from the full weighted roster, taking each company's
-> own locale and template. **A slice named `french` will not be French until
-> that lands.**
->
-> The seam exists — `InvoiceSampler` already takes `goods_receipt=True` and
-> filters its roster on it — so this is roster/product filtering exposed as CLI
-> flags, not new machinery. Tracked in `TODO.md`.
->
-> Meanwhile the intent is recorded as `--config-id` on each run, and what you
-> *actually* got is queryable: `locale`, `company_id`, `condition` and
-> `is_handwritten` are all columns on the golden row.
+**Composition is enforced.** Each slice's constraints become
+`docloom generate` flags (`--locale`, `--company`, `--archetype`,
+`--business-type`, `--condition`, `--wear`, `--goods-receipt`), which the
+sampler resolves against the company roster before it claims a unit. `plan`
+shows exactly the flags that will be passed.
+
+A constraint nothing can satisfy **fails the run at once** rather than falling
+back to an unconstrained draw:
+
+```
+no company issues in de-DE (known locales: en-CA, en-GB, en-US, fr-CA, fr-FR)
+```
+
+That is deliberate. The alternative — quietly generating an unconstrained corpus
+— costs a full run and produces documents that look perfectly correct, with
+nothing to catch it but a query nobody thought to run.
+
+Currency, tax model and address are **not** separate knobs: they follow the
+issuer's jurisdiction. `locales: [en-GB]` gets GBP and UK addresses; `[fr-FR]`
+gets EUR and TVA; `[fr-CA]` gets CAD and Québec's TPS/TVQ pair.
+
+What each slice actually produced stays queryable: `locale`, `company_id`,
+`business_type`, `condition`, `wear`, `is_crisp` and `is_handwritten` are all
+columns on the golden row.
 
 ### Which LLMs, and their split
 

@@ -44,3 +44,21 @@ class DocumentSource(Protocol):
         else — no wall clock, no shared mutable state.
         """
         ...
+
+
+def prepare_source(source: DocumentSource, run_id: str) -> None:
+    """Let a source resolve run-scoped state before the first unit is claimed.
+
+    Optional: a source that needs nothing simply does not define ``prepare``.
+    The invoice sampler uses it to resolve its selection — which locales,
+    companies and templates this run may draw from — because that is a function
+    of the run id and can *fail*.
+
+    Calling it here, once, rather than letting the first ``generate`` raise is
+    the difference between a run that stops immediately saying "no company
+    issues in de-DE" and one where all fifty units fail one at a time while the
+    job reports success.
+    """
+    prepare = getattr(source, "prepare", None)
+    if prepare is not None:
+        prepare(run_id)
