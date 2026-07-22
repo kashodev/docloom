@@ -115,6 +115,9 @@ def build_context(invoice: GoldenInvoice) -> dict[str, Any]:
         handwriting_for(
             invoice.seed,
             line_count=len(invoice.line_items),
+            # One dial for how battered the artefact is; the scan
+            # degradation afterwards reads the same value.
+            wear=invoice.wear,
             # The stamp carries the issuer's real identity, so an extractor can
             # cross-check the mark against the golden record.
             company=invoice.issuer.name,

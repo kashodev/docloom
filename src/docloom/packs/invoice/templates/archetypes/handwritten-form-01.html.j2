@@ -126,13 +126,13 @@ body { position: relative; }
     <filter id="ink-rough" x="-12%" y="-12%" width="124%" height="124%">
       <feTurbulence type="fractalNoise" baseFrequency="0.055 0.09"
                     numOctaves="3" seed="{{ invoice.seed % 9973 }}" result="n"/>
-      <feDisplacementMap in="SourceGraphic" in2="n" scale="1.7"
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="{{ hw.ink_displacement }}"
                          xChannelSelector="R" yChannelSelector="G"/>
     </filter>
     <filter id="stamp-rough" x="-15%" y="-15%" width="130%" height="130%">
       <feTurbulence type="fractalNoise" baseFrequency="0.11"
                     numOctaves="4" seed="{{ (invoice.seed // 7) % 9973 }}" result="sn"/>
-      <feDisplacementMap in="SourceGraphic" in2="sn" scale="3.1"
+      <feDisplacementMap in="SourceGraphic" in2="sn" scale="{{ hw.stamp_displacement }}"
                          xChannelSelector="R" yChannelSelector="G"/>
     </filter>
   </defs>

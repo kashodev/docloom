@@ -134,3 +134,49 @@ def test_degrade_pdf_is_deterministic_at_the_pixel_level() -> None:
     a = rasterize(degrade_pdf(clean, DocumentCondition.HEAVY_SCAN, seed=9, dpi=100), dpi=100)[0]
     b = rasterize(degrade_pdf(clean, DocumentCondition.HEAVY_SCAN, seed=9, dpi=100), dpi=100)[0]
     assert np.array_equal(_arr(a), _arr(b))
+
+
+# ── The wear dial ───────────────────────────────────────────────────────────
+def test_wear_1_leaves_the_profile_untouched() -> None:
+    """The default is the existing well-used look — no silent change to samples."""
+    from docloom.core.pipeline.degrade import _PROFILES, scale_profile
+
+    base = _PROFILES[DocumentCondition.HANDWRITTEN]
+    assert scale_profile(base, 1.0) == base
+
+
+def test_lower_wear_eases_every_degradation_and_raises_jpeg_quality() -> None:
+    from docloom.core.pipeline.degrade import _PROFILES, scale_profile
+
+    base = _PROFILES[DocumentCondition.HANDWRITTEN]
+    crisp = scale_profile(base, 0.0)
+    for key in ("rot", "blur", "noise", "speckle"):
+        assert 0 < crisp[key] < base[key], key      # eased, never switched off
+    assert crisp["jpeg"] > base["jpeg"]             # sharper capture
+
+
+def test_wear_is_monotonic() -> None:
+    from docloom.core.pipeline.degrade import _PROFILES, scale_profile
+
+    base = _PROFILES[DocumentCondition.HEAVY_SCAN]
+    noises = [scale_profile(base, w / 10)["noise"] for w in range(11)]
+    assert noises == sorted(noises)
+
+
+def test_wear_is_clamped_to_the_unit_range() -> None:
+    from docloom.core.pipeline.degrade import _PROFILES, scale_profile
+
+    base = _PROFILES[DocumentCondition.LIGHT_SCAN]
+    assert scale_profile(base, -5.0) == scale_profile(base, 0.0)
+    assert scale_profile(base, 99.0) == scale_profile(base, 1.0)
+
+
+def test_a_crisp_page_is_measurably_cleaner_than_a_worn_one() -> None:
+    page = a_page()
+    worn = _arr(degrade_image(page, DocumentCondition.HANDWRITTEN, Random(5), wear=1.0))
+    crisp = _arr(degrade_image(page, DocumentCondition.HANDWRITTEN, Random(5), wear=0.0))
+    clean = _arr(page)
+    # Both are captures of the same page; the crisp one is closer to the original.
+    assert np.abs(crisp - clean).mean() < np.abs(worn - clean).mean()
+    # ...but still a capture, not a pristine copy.
+    assert np.abs(crisp - clean).mean() > 0.0

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import io
 from random import Random
+from typing import Any
 
 import numpy as np
 import pypdfium2 as pdfium
@@ -98,7 +99,37 @@ _PROFILES = {
 }
 
 
-def degrade_image(img: Image.Image, condition: DocumentCondition, rng: Random) -> Image.Image:
+#: JPEG quality a pristine capture is saved at. A crisp document is still a
+#: *photocopy or scan*, not a lossless original, so this is high but not 100.
+_CRISP_JPEG = 94
+#: Floor on the degradation multiplier at ``wear`` 0 — a well-kept document still
+#: went through a scanner, so it keeps a trace of skew and grain.
+_MIN_WEAR_FACTOR = 0.15
+
+
+def scale_profile(profile: dict[str, Any], wear: float) -> dict[str, Any]:
+    """A degradation profile scaled by how worn the artefact is.
+
+    ``wear`` 1.0 leaves the profile alone (the well-used default). Lower values
+    ease off the skew, blur, noise and speckle together and raise the JPEG
+    quality toward :data:`_CRISP_JPEG`, so a crisp document is sharp without ever
+    becoming a pristine digital render — it is still a captured piece of paper.
+
+    Pure, so the dial's behaviour is unit-tested without rasterising anything.
+    """
+    wear = min(max(wear, 0.0), 1.0)
+    factor = _MIN_WEAR_FACTOR + (1.0 - _MIN_WEAR_FACTOR) * wear
+    scaled = dict(profile)
+    for key in ("rot", "blur", "noise", "speckle"):
+        scaled[key] = profile[key] * factor
+    base_jpeg = profile["jpeg"]
+    scaled["jpeg"] = round(base_jpeg + (_CRISP_JPEG - base_jpeg) * (1.0 - wear))
+    return scaled
+
+
+def degrade_image(
+    img: Image.Image, condition: DocumentCondition, rng: Random, *, wear: float = 1.0
+) -> Image.Image:
     """Apply one condition's degradation to a single page image.
 
     One capture, in order: skew, then blur, noise, speckle and a JPEG crush —
@@ -107,6 +138,7 @@ def degrade_image(img: Image.Image, condition: DocumentCondition, rng: Random) -
     profile = _PROFILES.get(condition)
     if profile is None:
         return img.convert("RGB")   # CLEAN or unknown → unchanged
+    profile = scale_profile(profile, wear)
     out = img.convert("RGB")
     out = _rotate(out, rng, profile["rot"])
     if profile["blur"]:
@@ -123,16 +155,26 @@ def degrade_image(img: Image.Image, condition: DocumentCondition, rng: Random) -
 
 
 def degrade_pdf(
-    pdf_bytes: bytes, condition: DocumentCondition, *, seed: int, dpi: int = 150
+    pdf_bytes: bytes,
+    condition: DocumentCondition,
+    *,
+    seed: int,
+    dpi: int = 150,
+    wear: float = 1.0,
 ) -> bytes:
     """Realise ``condition`` on a clean PDF, returning a degraded image-only PDF.
 
     ``CLEAN`` returns the input untouched (text layer intact). Every other
     condition rasterises, degrades each page from the same seeded RNG, and
     re-wraps — so the result has no text layer, exactly like a real scan.
+
+    ``wear`` (0..1) scales how battered the result looks; pass the record's own
+    value so the post-process agrees with the ink roughening already rendered
+    into the page. See :func:`scale_profile`.
     """
     if condition is DocumentCondition.CLEAN:
         return pdf_bytes
     rng = Random(seed)
-    pages = [degrade_image(p, condition, rng) for p in rasterize(pdf_bytes, dpi=dpi)]
+    pages = [degrade_image(p, condition, rng, wear=wear)
+             for p in rasterize(pdf_bytes, dpi=dpi)]
     return images_to_pdf(pages, dpi=dpi)

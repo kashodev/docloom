@@ -118,6 +118,9 @@ class Handwriting:
     stamp_width: float
     face_css: str
     ruled_rows: int
+    wear: float
+    ink_displacement: float
+    stamp_displacement: float
     _jitters: tuple[Jitter, ...] = field(default=(), repr=False)
 
     def jitter(self, index: int) -> Jitter:
@@ -144,6 +147,9 @@ class Handwriting:
             "stamp_width": self.stamp_width,
             "face_css": self.face_css,
             "ruled_rows": self.ruled_rows,
+            "wear": self.wear,
+            "ink_displacement": self.ink_displacement,
+            "stamp_displacement": self.stamp_displacement,
             "jitter": self.jitter,
         }
 
@@ -151,6 +157,18 @@ class Handwriting:
 #: How many jitter values to pre-draw. Enough that a page of written values never
 #: shows an obvious repeat, small enough to stay cheap.
 _JITTER_POOL = 37
+
+#: Displacement applied to pen ink and stamp ink, at ``wear`` 0 and 1. The low end
+#: is deliberately **not zero**: a biro on paper and a rubber die on a pad are
+#: never vector-clean even on a pristine document, so a "crisp" artefact keeps a
+#: trace of roughness — it just stops looking old.
+_INK_DISPLACEMENT = (0.35, 1.7)
+_STAMP_DISPLACEMENT = (0.8, 3.1)
+
+
+def _lerp(low_high: tuple[float, float], t: float) -> float:
+    low, high = low_high
+    return low + (high - low) * t
 
 
 def _stamp(rng: Random, *, company: str, town: str, registration: str) -> dict[str, Any]:
@@ -200,6 +218,7 @@ def handwriting_for(
     *,
     line_count: int = 0,
     legibility: float | None = None,
+    wear: float = 1.0,
     company: str = "",
     town: str = "",
     registration: str = "",
@@ -210,6 +229,13 @@ def handwriting_for(
     neatest hand, 0.0 the messiest. Left ``None`` it is drawn from the seed, so a
     corpus spans the range. ``line_count`` sizes the pad so there are always a
     few blank ruled lines after the last item, the way a real pad looks.
+
+    ``wear`` in [0, 1] is how *old and used* the artefact is, which is a separate
+    axis from legibility: legibility is about the writer's hand, wear is about the
+    paper and the copy. It sets how far the ink outlines are displaced — at 0 the
+    document is crisp, though never vector-clean, because real ink never is. The
+    same value drives the scan degradation afterwards, so render and post-process
+    agree on how battered the document is.
 
     ``company`` / ``town`` / ``registration`` are stamped into the seal, so the
     mark carries the issuer's real identity rather than a generic word. The stamp
@@ -249,5 +275,8 @@ def handwriting_for(
         # Enough rules to reach the foot of the pad, so the blank remainder
         # reads as unused pad rather than a document that stopped early.
         ruled_rows=max(line_count + rng.randint(2, 5), 14),
+        wear=wear,
+        ink_displacement=round(_lerp(_INK_DISPLACEMENT, wear), 3),
+        stamp_displacement=round(_lerp(_STAMP_DISPLACEMENT, wear), 3),
         _jitters=jitters,
     )

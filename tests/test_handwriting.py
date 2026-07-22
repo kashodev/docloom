@@ -181,3 +181,45 @@ def test_clean_render_pays_for_none_of_it() -> None:
     html = render_record(PACK, invoice(simple_lines()))
     assert 'class="hand"' not in html
     assert "feTurbulence" not in html
+
+
+# ── The wear dial (artefact condition, not the writer's hand) ────────────────
+def test_wear_scales_the_ink_roughening() -> None:
+    crisp = handwriting_for(3, wear=0.0)
+    worn = handwriting_for(3, wear=1.0)
+    assert crisp.ink_displacement < worn.ink_displacement
+    assert crisp.stamp_displacement < worn.stamp_displacement
+
+
+def test_crisp_ink_is_eased_but_never_vector_clean() -> None:
+    """A biro and a rubber die are never perfectly sharp, even on a new document —
+    scaling the bleed to zero would look computer-generated again."""
+    crisp = handwriting_for(3, wear=0.0)
+    assert crisp.ink_displacement > 0
+    assert crisp.stamp_displacement > 0
+
+
+def test_wear_defaults_to_the_worn_look() -> None:
+    assert handwriting_for(3).wear == 1.0
+    assert handwriting_for(3).ink_displacement == handwriting_for(3, wear=1.0).ink_displacement
+
+
+def test_wear_and_legibility_are_independent_axes() -> None:
+    """Condition of the paper vs. neatness of the hand — changing one must not
+    move the other."""
+    a = handwriting_for(8, wear=0.0, legibility=0.2)
+    b = handwriting_for(8, wear=1.0, legibility=0.2)
+    assert a.writer_key == b.writer_key            # same hand
+    assert a.ink_displacement != b.ink_displacement  # different condition
+
+    c = handwriting_for(8, wear=0.0, legibility=0.9)
+    assert c.ink_displacement == a.ink_displacement  # same condition
+    assert c.writer_key != a.writer_key              # different hand
+
+
+def test_crisp_record_renders_with_reduced_displacement() -> None:
+    inv = handwritten().model_copy(update={"wear": 0.0})
+    html = render_record(PACK, inv)
+    worn_html = render_record(PACK, handwritten().model_copy(update={"wear": 1.0}))
+    assert 'scale="0.35"' in html                  # eased ink
+    assert 'scale="1.7"' in worn_html              # the worn default
