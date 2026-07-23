@@ -155,8 +155,16 @@ catalogue:
   version: v1
   companies: 1000
   products_per_company: 300
-  concurrency: 8
-  budget_usd: 20.00        # hard ceiling for the catalogue build
+  concurrency: 8            # concurrent LLM calls in flight, per task
+  budget_usd: 20.00        # hard ceiling for the catalogue build (fleet-wide)
+  # A build over more than one task is *sharded*: it becomes a run over company
+  # ranges, worked concurrently against the run state and resumable — the same
+  # coordination as generation, and the budget above is shared across all tasks.
+  # Leave tasks at 1 for the single-process in-memory build (fine to ~300k).
+  tasks: 1                 # e.g. 16 to build a large catalogue in parallel
+  unit_size: 200          # companies per shard (sharded build only)
+  # build_id: catalogue-v1  # state run id; defaults to `version`. Keep it stable
+  #                         # to resume a build across executions.
   providers:
     - name: deepseek
       model: deepseek-v4-flash

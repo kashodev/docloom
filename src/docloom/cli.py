@@ -319,6 +319,60 @@ def _dec(value: float):  # noqa: ANN202
     return Decimal(str(value))
 
 
+def _sharded_catalogue(*, out: str, version: str, companies: int, products_per_company: int,
+                       seed: int, unit_size: int, build_id: str, state_uri: str,
+                       providers: str, budget_usd: float, concurrency: int) -> None:
+    """A sharded, resumable build coordinated through a StateStore. Safe to run
+    from many tasks at once — the atomic claim splits the company units between
+    them, and whoever finishes last writes the root manifest."""
+    from docloom.core.providers.factory import build_mix
+    from docloom.core.state import open_state
+    from docloom.packs.invoice.build_run import build_catalogue_run
+
+    mix = None
+    provenance: dict = {"generator": "procedural"}
+    if providers:
+        mix, prov = _resolve_mix(providers)
+        provenance = {"generator": "llm", **prov}
+
+    store = open_state(state_uri)
+    typer.echo(f"sharded build {build_id} → {out}: {companies:,} companies, "
+               f"{unit_size}/shard, {'LLM' if mix else 'procedural'}")
+    stats = build_catalogue_run(
+        store, out=out, build_id=build_id, catalogue_version=version,
+        companies=companies, products_per_company=products_per_company,
+        unit_size=unit_size, seed=seed, mix=mix, budget_usd=budget_usd or None,
+        concurrency=concurrency, provenance=provenance,
+    )
+    typer.echo(f"  this worker: {stats.units_completed} unit(s), {stats.products:,} products"
+               + (f", {stats.units_failed} failed" if stats.units_failed else "")
+               + (f", cost ${stats.total_cost}" if stats.total_cost else ""))
+    if stats.units_failed:
+        raise typer.Exit(1)
+
+
+def _resolve_mix(providers: str):  # noqa: ANN202
+    """Build a ProviderMix from a file or inline YAML, returning (mix, provenance
+    hint). Shared by the single-file and sharded LLM paths."""
+    import yaml
+
+    from docloom.core.providers.factory import build_mix
+
+    path = Path(providers)
+    try:
+        is_file = path.is_file()
+    except OSError:
+        is_file = False
+    config = yaml.safe_load(path.read_text() if is_file else providers) or {}
+    if "catalogue" in config:
+        config = config["catalogue"]
+    specs = config.get("text") or config.get("providers")
+    if not specs:
+        raise typer.BadParameter("providers needs a `providers:` (or `text:`) list")
+    return build_mix({"text": specs}), {
+        "models": [f"{s['name']}:{s.get('model')}" for s in specs]}
+
+
 @app.command()
 def catalogue(
     out: str = typer.Option(..., "--out", help="Where to write the artifact (file:// | gs:// | s3://)"),
@@ -340,6 +394,14 @@ def catalogue(
         "to completion). Default off: concurrent synchronous calls, predictable "
         "for a bounded job."
     ),
+    state: str = typer.Option(
+        "", "--state", envvar="DOCLOOM_STATE",
+        help="Coordination store URI (sqlite:// | firestore:// | dynamodb://) → a "
+        "SHARDED, resumable build that many tasks work concurrently. Omit for a "
+        "single-process in-memory build."
+    ),
+    unit_size: int = typer.Option(200, help="Companies per shard (sharded build)"),
+    build_id: str = typer.Option("", help="Build run id (sharded build; defaults to the version)"),
     max_rejection_rate: float = typer.Option(
         0.02, help="Fail the build if more than this fraction of items is rejected"
     ),
@@ -360,6 +422,15 @@ def catalogue(
     """
     if pack != "invoice":
         raise typer.BadParameter(f"no catalogue builder for pack {pack!r}")
+
+    if state:
+        _sharded_catalogue(
+            out=out, version=version, companies=companies,
+            products_per_company=products_per_company, seed=seed, unit_size=unit_size,
+            build_id=build_id or version, state_uri=state, providers=providers,
+            budget_usd=budget_usd, concurrency=concurrency,
+        )
+        return
 
     from docloom.packs.invoice.artifact import write_catalogue
     from docloom.packs.invoice.procedural import generate_catalogue
