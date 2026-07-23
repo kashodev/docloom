@@ -31,13 +31,23 @@ from docloom.core.pipeline import (
     resume_run,
     work_run,
 )
+from docloom.core.logging import get_logger
 from docloom.core.selection import Selection
 from docloom.core.sinks import open_sink
 from docloom.core.state import open_state
 from docloom.core.storage import open_store
 from docloom.core.usage import DEFAULT_USAGE_URI, open_usage_sink
 
+_log = get_logger(__name__)
 app = typer.Typer(add_completion=False, help="Generate synthetic documents with a golden dataset.")
+
+
+@app.callback()
+def _init() -> None:
+    """Configure logging before any command runs. Console at a terminal, JSON to
+    a pipe/Cloud Run; DOCLOOM_LOG_LEVEL / DOCLOOM_LOG_FORMAT override."""
+    from docloom.core.logging import configure
+    configure()
 
 _STORAGE = typer.Option("./out/blobs", envvar="DOCLOOM_STORAGE", help="Blob store URI for documents + shards")
 _STATE = typer.Option("./out/runs.db", envvar="DOCLOOM_STATE", help="Run-state store URI")
@@ -173,6 +183,9 @@ def generate(
         typer.echo(f"catalogue: {catalogue} ({version})")
     if not selection.is_empty:
         typer.echo(f"composition: {selection.describe()}")
+    _log.info("generate", run_id=run_id, pack=pack, total=total, unit_size=unit_size,
+              fmt=fmt, storage=storage, state=state, catalogue=catalogue or "seed",
+              selection=selection.describe())
     renderer = PdfRenderer(doc_pack) if fmt == "pdf" else HtmlRenderer(doc_pack)
 
     if resume:

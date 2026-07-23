@@ -12,9 +12,11 @@ or cancel a run.
 
 from __future__ import annotations
 
+import os
 import time
 
 from docloom.core.enums import RunState, WorkUnitState
+from docloom.core.logging import bind, get_logger
 from docloom.core.pipeline.planner import plan_units
 from docloom.core.pipeline.renderer import DocumentRenderer
 from docloom.core.pipeline.manifest import write_run_manifest
@@ -22,6 +24,8 @@ from docloom.core.pipeline.source import DocumentSource, prepare_source
 from docloom.core.pipeline.worker import GenerationWorker, WorkerStats
 from docloom.core.state.base import Run, StateStore
 from docloom.core.storage.base import BlobStore
+
+_log = get_logger(__name__)
 
 
 def create_run(
@@ -43,10 +47,14 @@ def create_run(
     units = plan_units(run_id, total, unit_size)
     run = Run(run_id=run_id, pack=pack, config_id=config_id, total_units=len(units),
               state=RunState.RUNNING)
-    if not state.create_run(run, units):
+    if state.create_run(run, units):
+        _log.info("run planned", pack=pack, config_id=config_id,
+                  total=total, units=len(units), unit_size=unit_size)
+    else:
         # Another worker won the race to plan this run. It may still be writing
         # units, and claiming from a half-written plan would look like an empty
         # run, so wait for it to finish rather than racing ahead.
+        _log.info("another worker is planning this run; waiting")
         _await_plan(state, run_id, timeout=wait_timeout)
     return run
 
@@ -76,9 +84,11 @@ def resume_run(state: StateStore, run_id: str) -> int:
     pool, and reclaim units abandoned by crashed workers (expired leases).
     Returns how many units were re-queued (failed + reclaimed)."""
     state.set_run_state(run_id, RunState.RUNNING)
-    requeued = state.reset_failed_units(run_id)
-    requeued += state.reclaim_expired_units(run_id)
-    return requeued
+    failed = state.reset_failed_units(run_id)
+    reclaimed = state.reclaim_expired_units(run_id)
+    if failed or reclaimed:
+        _log.info("run resumed", requeued_failed=failed, reclaimed_leases=reclaimed)
+    return failed + reclaimed
 
 
 def work_run(
@@ -96,13 +106,22 @@ def work_run(
     worker drains, the run is marked COMPLETED only if every unit is done;
     otherwise it is left RUNNING with failed units awaiting a resume.
     """
+    bind(run_id=run_id)
+    task_index = os.environ.get("CLOUD_RUN_TASK_INDEX") or os.environ.get(
+        "AWS_BATCH_JOB_ARRAY_INDEX")
+    if task_index is not None:
+        bind(task=task_index)
+
     # Before anything is claimed: a source that cannot satisfy its run-scoped
     # configuration must stop the run here, not fail unit after unit.
     prepare_source(source, run_id)
+    _log.info("worker draining")
     worker = GenerationWorker(
         run_id=run_id, source=source, renderer=renderer, blob=blob, state=state
     )
     stats = worker.run()
+    _log.info("worker drained", completed=stats.units_completed,
+              failed=stats.units_failed, documents=stats.documents_written)
 
     progress = state.progress(run_id)
     outstanding = progress[WorkUnitState.PENDING] + progress[WorkUnitState.RUNNING]
@@ -115,6 +134,11 @@ def work_run(
         if run is not None and run.state is not RunState.COMPLETED:
             state.set_run_state(run_id, RunState.COMPLETED)
             _write_run_manifest(run, blob, source)
+            _log.info("run completed", units=run.total_units,
+                      documents=progress[WorkUnitState.DONE])
+    elif progress[WorkUnitState.FAILED]:
+        _log.warning("run left incomplete", failed=progress[WorkUnitState.FAILED],
+                     pending=outstanding)
     return stats
 
 

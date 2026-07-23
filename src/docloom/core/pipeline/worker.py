@@ -20,10 +20,12 @@ persistence or accounting.
 
 from __future__ import annotations
 
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
+from docloom.core.logging import bound, get_logger
 from docloom.core.pipeline.golden import encode_shard
 from docloom.core.pipeline.manifest import (
     DocumentEntry,
@@ -36,6 +38,8 @@ from docloom.core.pipeline.renderer import DocumentRenderer
 from docloom.core.pipeline.source import DocumentSource
 from docloom.core.state.base import StateStore, WorkUnit
 from docloom.core.storage.base import BlobStore
+
+_log = get_logger(__name__)
 
 
 @dataclass(slots=True)
@@ -74,19 +78,27 @@ class GenerationWorker:
         return stats
 
     def _process(self, unit: WorkUnit, stats: WorkerStats) -> None:
-        try:
-            written = self._generate_unit(unit)
-        except Exception as exc:
-            # A failed unit is recorded and left out of the pool; the worker
-            # continues with the next. Resume retries it. Re-raising here would
-            # abort the whole run over one bad document.
-            self._state.fail_unit(self._run_id, unit.unit_index, repr(exc))
-            stats.units_failed += 1
-            stats.failures.append((unit.unit_index, repr(exc)))
-            return
-        self._state.complete_unit(self._run_id, unit.unit_index)
-        stats.units_completed += 1
-        stats.documents_written += written
+        with bound(unit=unit.unit_index, start_index=unit.start_index, count=unit.count):
+            start = time.monotonic()
+            try:
+                written = self._generate_unit(unit)
+            except Exception as exc:
+                # A failed unit is recorded and left out of the pool; the worker
+                # continues with the next. Resume retries it. Re-raising here
+                # would abort the whole run over one bad document. It is logged —
+                # a swallowed failure that only lived in a StateStore row is the
+                # kind of silent loss this project has been bitten by.
+                self._state.fail_unit(self._run_id, unit.unit_index, repr(exc))
+                stats.units_failed += 1
+                stats.failures.append((unit.unit_index, repr(exc)))
+                _log.warning("unit failed", attempts=unit.attempts + 1, error=repr(exc),
+                             exc_info=exc)
+                return
+            self._state.complete_unit(self._run_id, unit.unit_index)
+            stats.units_completed += 1
+            stats.documents_written += written
+            _log.info("unit completed", documents=written,
+                      elapsed_s=round(time.monotonic() - start, 2))
 
     def _generate_unit(self, unit: WorkUnit) -> int:
         """Generate, render, persist, and shard one unit. Returns doc count.
