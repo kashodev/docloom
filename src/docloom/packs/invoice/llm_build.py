@@ -37,6 +37,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 
@@ -245,8 +246,14 @@ async def build_llm_catalogue(
     max_rounds: int = 3,
     concurrency: int = 8,
     use_batch: bool = True,
+    progress: Callable[[str], None] | None = None,
 ) -> tuple[list[CompanyRow], dict[str, list[ProductTemplate]], BuildReport]:
     """Build a catalogue whose descriptions come from ``mix``.
+
+    ``progress`` is called with a human line at each round boundary, so a
+    long build (thousands of calls, minutes) is not silent. It is a callback
+    rather than a print so the caller decides where it goes — the CLI sends it to
+    the terminal; a future structured logger could take it instead.
 
     Returns the same ``(rows, products)`` shape as
     :func:`~docloom.packs.invoice.procedural.generate_catalogue`, so it drops
@@ -283,15 +290,21 @@ async def build_llm_catalogue(
     pending: list[tuple[str, int]] = [
         (cid, i) for cid, items in products.items() for i in range(len(items))
     ]
+    report.procedural_fallback = len(pending)   # updated as slots fill
 
     runner = CatalogueRunner(mix, budget=budget, concurrency=concurrency,
                              use_batch=use_batch)
+    emit = progress or (lambda _msg: None)
+    emit(f"skeleton ready: {report.companies:,} companies, {report.products:,} products; "
+         f"requesting descriptions in chunks of {CHUNK}")
 
     for round_no in range(max_rounds):
         if not pending:
             break
         report.rounds = round_no + 1
         items, slot_map = _chunk_items(pending, by_id, examples, round_no)
+        emit(f"round {round_no + 1}: {len(items):,} chunk(s) for {len(pending):,} "
+             f"pending slot(s)…")
         outcome = await runner.run(items)
         report.total_cost += outcome.total_cost
         for provider, n in outcome.by_provider.items():
@@ -308,6 +321,10 @@ async def build_llm_catalogue(
             parsed = parse_products(result.text) if result else []
             still_pending.extend(_apply_chunk(parsed, slots, by_id, products, report))
         pending = still_pending
+        filled = report.products - len(pending)
+        emit(f"round {round_no + 1} done: {filled:,}/{report.products:,} filled "
+             f"({filled / report.products:.1%}), {len(pending):,} still pending, "
+             f"cost ${report.total_cost:.4f}")
 
     report.procedural_fallback = len(pending)
     report.llm_filled = report.products - report.procedural_fallback

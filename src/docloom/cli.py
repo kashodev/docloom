@@ -297,6 +297,7 @@ def _llm_build(providers: str, *, companies: int, products_per_company: int,
     return build_llm_catalogue_sync(
         mix, companies=companies, products_per_company=products_per_company,
         seed=seed, budget=budget, concurrency=concurrency, use_batch=use_batch,
+        progress=lambda msg: typer.echo(f"  {msg}"),
     )
 
 
