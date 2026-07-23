@@ -28,6 +28,7 @@ from typing import Protocol, runtime_checkable
 
 from docloom.core.fonts import TYPEFACE_KEYS
 from docloom.core.locale.enums import Currency, Locale
+from docloom.core.pipeline.source import stable_seed
 from docloom.packs.invoice.enums import (
     BillingModel,
     BusinessType,
@@ -128,7 +129,28 @@ class CompanyRoster:
 
 @runtime_checkable
 class Catalogue(Protocol):
+    @property
+    def version(self) -> str:
+        """Identifies the content pool, recorded on the run and every golden row.
+
+        Documents are a function of ``(run_id, index, generator version)``, and
+        content is half of that third term — so a corpus is only reproducible if
+        you know which catalogue produced it. See docs/concurrency.md.
+        """
+        ...
+
     def roster(self) -> CompanyRoster: ...
+
+    def spec_for(self, company: Company) -> BusinessSpec:
+        """What *this company* sells.
+
+        Per company rather than per business type, because that is what realism
+        means: a vendor sells its own SKUs repeatedly, and global uniqueness is
+        the wrong target. The seed catalogue answers from a business-type pool;
+        an artifact catalogue answers from that company's own rows.
+        """
+        ...
+
     def business_spec(self, business_type: BusinessType) -> BusinessSpec: ...
 
 
@@ -292,6 +314,102 @@ _CITY = {
 }
 
 
+#: Version reported by the built-in pool. Recorded on every run and golden row
+#: so a corpus says which content produced it.
+SEED_CATALOGUE_VERSION = "seed-1"
+
+#: Index the identity RNG is seeded at. Constant and distinct from any document
+#: index, so a company's derived identity is independent of every run.
+_IDENTITY_INDEX = 0
+
+
+def _party_and_profile(
+    rng: Random, cid: str, name: str, business_type: BusinessType,
+    juris: Jurisdiction, locale: Locale,
+) -> tuple[Party, RenderProfile]:
+    """Build a company's contact identity and visual profile from ``rng``.
+
+    Draw order is load-bearing and must not be reordered: the seed roster is
+    generated from one sequential RNG, so inserting, removing or reordering a
+    draw here changes every company and therefore every document. See
+    docs/concurrency.md on reproducibility being per code version.
+    """
+    slug = name.lower().replace(" ", "").replace(".", "")[:20]
+    party = Party(
+        party_id=cid,
+        name=name,
+        address_lines=(f"{rng.randint(10, 9999)} {rng.choice(_NAME_PARTS)} Street",),
+        city=rng.choice(_CITY[juris]),
+        phone=f"+1 {rng.randint(200, 989)}-555-{rng.randint(1000, 9999):04d}",
+        email=f"billing@{slug}.example",
+        website=f"www.{slug}.example",
+        registrations=_registrations_for(rng, juris),
+    )
+    archetype = (_TELECOM_ARCHETYPE if business_type is BusinessType.TELECOM
+                 else rng.choices(_GENERAL_ARCHETYPES, weights=_GENERAL_WEIGHTS)[0])
+    profile = RenderProfile(
+        archetype=archetype,
+        meta_position=rng.choice(_META_POSITIONS),
+        totals_style=rng.choice(_TOTALS_STYLES),
+        table_style=rng.choice(_TABLE_STYLES),
+        column_vocabulary=rng.choice(_VOCAB[locale]),
+        typeface=rng.choice(_TYPEFACES),
+        accent_color=rng.choice(_ACCENTS),
+        logo_lockup=rng.choice(_LOGO_LOCKUPS),
+        has_logo=rng.random() > 0.2,   # ~20% text-only, like real invoices
+        # ~55% of logo'd companies carry a procedural mark beside the
+        # wordmark; the rest are wordmark-only, as real invoices vary.
+        logo_style="mark" if rng.random() < 0.55 else "wordmark",
+        has_watermark=rng.random() < 0.18,   # a faint brand watermark on some
+        font_scale=round(rng.uniform(0.92, 1.12), 3),
+    )
+    return party, profile
+
+
+def derive_identity(
+    company_id: str, name: str, business_type: BusinessType,
+    juris: Jurisdiction, locale: Locale,
+) -> tuple[Party, RenderProfile]:
+    """A company's identity, derived from its id alone.
+
+    **Identity is never stored in a catalogue artifact.** Addresses, phone
+    numbers, emails and tax registrations are the highest-PII-risk fields and the
+    ones that need the least creativity, so they are regenerated here rather than
+    written to a file that gets published. The artifact therefore contains no
+    PII-shaped field to leak, and the audit surface shrinks to names and product
+    descriptions.
+
+    Deterministic: the same ``company_id`` always yields the same address, so a
+    company looks like itself across every run and every catalogue version.
+    """
+    return _party_and_profile(
+        Random(stable_seed(company_id, _IDENTITY_INDEX)),
+        company_id, name, business_type, juris, locale,
+    )
+
+
+def _registrations_for(rng: Random, juris: Jurisdiction) -> tuple[TaxRegistration, ...]:
+    """Format-valid but fictional issuer tax registrations."""
+    if juris is Jurisdiction.FR:
+        siret = "".join(str(rng.randint(0, 9)) for _ in range(14))
+        tva = f"FR{rng.randint(10, 99)}{siret[:9]}"
+        return (TaxRegistration(kind="SIRET", value=siret),
+                TaxRegistration(kind="TVA_INTRA", value=tva))
+    if juris is Jurisdiction.GB:
+        return (TaxRegistration(kind="VAT", value=f"GB {rng.randint(100, 999)} "
+                                                  f"{rng.randint(1000, 9999)} "
+                                                  f"{rng.randint(10, 99)}"),)
+    if str(juris).startswith("CA"):
+        gst = f"{rng.randint(100000000, 999999999)}RT0001"
+        regs = [TaxRegistration(kind="GST", value=gst)]
+        if juris is Jurisdiction.CA_QC:
+            regs.append(TaxRegistration(kind="QST",
+                                        value=f"{rng.randint(1000000000, 9999999999)}TQ0001"))
+        return tuple(regs)
+    return (TaxRegistration(kind="EIN", value=f"{rng.randint(10, 99)}-"
+                                              f"{rng.randint(1000000, 9999999)}"),)
+
+
 class SeedCatalogue:
     """Procedural, key-free catalogue. Deterministic from a build seed."""
 
@@ -328,8 +446,20 @@ class SeedCatalogue:
 
         self._roster = CompanyRoster(companies)
 
+    @property
+    def version(self) -> str:
+        """Constant: this pool is compiled into the code, so it changes only when
+        docloom does. An artifact catalogue returns its own published version."""
+        return SEED_CATALOGUE_VERSION
+
     def roster(self) -> CompanyRoster:
         return self._roster
+
+    def spec_for(self, company: Company) -> BusinessSpec:
+        """The seed catalogue pools by business type, so every company of a type
+        shares one product list — which is exactly the limitation the artifact
+        catalogue exists to lift."""
+        return self.business_spec(company.business_type)
 
     def business_spec(self, business_type: BusinessType) -> BusinessSpec:
         products = _PRODUCTS.get(business_type, _GENERIC)
@@ -343,57 +473,11 @@ class SeedCatalogue:
         currency = {Jurisdiction.GB: Currency.GBP, Jurisdiction.FR: Currency.EUR}.get(
             juris, Currency.CAD if str(juris).startswith("CA") else Currency.USD)
         name = f"{rng.choice(_NAME_PARTS)} {rng.choice(_NAME_PARTS)} {rng.choice(_NAME_TAIL[juris])}"
-        slug = name.lower().replace(" ", "").replace(".", "")[:20]
-
-        party = Party(
-            party_id=cid,
-            name=name,
-            address_lines=(f"{rng.randint(10, 9999)} {rng.choice(_NAME_PARTS)} Street",),
-            city=rng.choice(_CITY[juris]),
-            phone=f"+1 {rng.randint(200, 989)}-555-{rng.randint(1000, 9999):04d}",
-            email=f"billing@{slug}.example",
-            website=f"www.{slug}.example",
-            registrations=self._registrations(rng, juris),
-        )
-        archetype = (_TELECOM_ARCHETYPE if business_type is BusinessType.TELECOM
-                     else rng.choices(_GENERAL_ARCHETYPES, weights=_GENERAL_WEIGHTS)[0])
-        profile = RenderProfile(
-            archetype=archetype,
-            meta_position=rng.choice(_META_POSITIONS),
-            totals_style=rng.choice(_TOTALS_STYLES),
-            table_style=rng.choice(_TABLE_STYLES),
-            column_vocabulary=rng.choice(_VOCAB[locale]),
-            typeface=rng.choice(_TYPEFACES),
-            accent_color=rng.choice(_ACCENTS),
-            logo_lockup=rng.choice(_LOGO_LOCKUPS),
-            has_logo=rng.random() > 0.2,   # ~20% text-only, like real invoices
-            # ~55% of logo'd companies carry a procedural mark beside the
-            # wordmark; the rest are wordmark-only, as real invoices vary.
-            logo_style="mark" if rng.random() < 0.55 else "wordmark",
-            has_watermark=rng.random() < 0.18,   # a faint brand watermark on some
-            font_scale=round(rng.uniform(0.92, 1.12), 3),
-        )
+        party, profile = _party_and_profile(rng, cid, name, business_type, juris, locale)
         return Company(company_id=cid, name=name, business_type=business_type,
                        jurisdiction=juris, locale=locale, currency=currency,
                        party=party, render_profile=profile, weight=weight)
 
     def _registrations(self, rng: Random, juris: Jurisdiction) -> tuple[TaxRegistration, ...]:
-        """Format-valid but fictional issuer tax registrations."""
-        if juris is Jurisdiction.FR:
-            siret = "".join(str(rng.randint(0, 9)) for _ in range(14))
-            tva = f"FR{rng.randint(10, 99)}{siret[:9]}"
-            return (TaxRegistration(kind="SIRET", value=siret),
-                    TaxRegistration(kind="TVA_INTRA", value=tva))
-        if juris is Jurisdiction.GB:
-            return (TaxRegistration(kind="VAT", value=f"GB {rng.randint(100, 999)} "
-                                                      f"{rng.randint(1000, 9999)} "
-                                                      f"{rng.randint(10, 99)}"),)
-        if str(juris).startswith("CA"):
-            gst = f"{rng.randint(100000000, 999999999)}RT0001"
-            regs = [TaxRegistration(kind="GST", value=gst)]
-            if juris is Jurisdiction.CA_QC:
-                regs.append(TaxRegistration(kind="QST",
-                                            value=f"{rng.randint(1000000000, 9999999999)}TQ0001"))
-            return tuple(regs)
-        return (TaxRegistration(kind="EIN", value=f"{rng.randint(10, 99)}-"
-                                                  f"{rng.randint(1000000, 9999999)}"),)
+        return _registrations_for(rng, juris)
+

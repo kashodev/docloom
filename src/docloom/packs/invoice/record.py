@@ -308,6 +308,11 @@ class GoldenInvoice(_Base):
 
     # ── Rendering ──────────────────────────────────────────────────────────
     company_id: str
+    #: Which content pool produced this document. A corpus is only reproducible
+    #: if you know the catalogue as well as the run id and code version, so it is
+    #: recorded per row rather than only on the run — that way extraction
+    #: accuracy can be sliced by catalogue version directly.
+    catalogue_version: str = ""
     render_profile: RenderProfile
     condition: DocumentCondition = DocumentCondition.CLEAN
     wear: float = Field(
@@ -490,6 +495,7 @@ class GoldenInvoice(_Base):
             # Recorded so an evaluation can slice accuracy by artefact quality —
             # "how much worse is OCR on a worn copy?" is a question the corpus
             # should be able to answer directly.
+            "catalogue_version": self.catalogue_version,
             "wear": self.wear,
             "is_crisp": self.is_crisp,
             "goods_receipt": self.goods_receipt,

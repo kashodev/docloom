@@ -302,7 +302,7 @@ class InvoiceSampler:
         rng = Random(stable_seed(run_id, index))
         composition = self.composition(run_id)
         company = composition.roster.choose(rng)
-        spec = self._catalogue.business_spec(company.business_type)
+        spec = self._catalogue.spec_for(company)
         products = spec.products
         if self._goods_receipt:
             # A receiver signs for things that were delivered, so every line has
@@ -359,6 +359,8 @@ class InvoiceSampler:
             discount_scheme=scheme,
             discount_timing=timing,
             company_id=company.company_id,
+            # Which content pool produced this document — see Catalogue.version.
+            catalogue_version=getattr(self._catalogue, "version", ""),
             # A constrained slice overrides the company's usual look; otherwise
             # the company keeps it, which is what makes its invoices recognisably
             # its own.

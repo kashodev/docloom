@@ -116,8 +116,14 @@ class DocumentPack(Protocol):
         *,
         selection: Selection | None = None,
         max_line_items: int | None = None,
+        catalogue: str | None = None,
     ) -> DocumentSource:
         """The pack's default document source for a run.
+
+        ``catalogue`` optionally names a published content artifact
+        (``file://`` / ``gs://`` / ``s3://``) to draw from instead of whatever the
+        pack builds in. Reading it needs no credential, so a pack with a rich
+        catalogue is as local-first as one without.
 
         ``selection`` constrains the *population* the source draws from — which
         locales, companies, templates and capture conditions this slice of the

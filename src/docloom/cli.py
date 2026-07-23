@@ -67,6 +67,11 @@ _CONDITION = typer.Option([], "--condition", help="Capture condition to draw fro
 _WEAR = typer.Option("", "--wear", help="crisp | varied | worn | 0.4 | 0.2:0.8")
 _GOODS_RECEIPT = typer.Option(False, "--goods-receipt", help="Delivery notes with a receiver's signature")
 _SELECTION_FILE = typer.Option("", "--selection-file", help="YAML file holding one slice's composition")
+# A published content artifact. Not required — a pack's built-in pool keeps the
+# default path key-free and offline — but it is how a run gets the large, varied
+# corpus without shipping hundreds of megabytes in the wheel.
+_CATALOGUE = typer.Option("", "--catalogue", envvar="DOCLOOM_CATALOGUE",
+                          help="Content catalogue artifact URI (file:// | gs:// | s3://)")
 
 
 def _parse_wear(raw: str) -> object:
@@ -145,6 +150,7 @@ def generate(
     wear: str = _WEAR,
     goods_receipt: bool = _GOODS_RECEIPT,
     selection_file: str = _SELECTION_FILE,
+    catalogue: str = _CATALOGUE,
 ) -> None:
     """Generate documents and golden shards for a run."""
     if pack not in available_packs():
@@ -159,7 +165,12 @@ def generate(
     blob = open_store(storage)
     store = open_state(state)
     usage = open_usage_sink(llm_usage, blob=blob, run_id=run_id)
-    source = doc_pack.default_source(selection=selection, max_line_items=max_line_items)
+    source = doc_pack.default_source(selection=selection, max_line_items=max_line_items,
+                                     catalogue=catalogue or None)
+    version = getattr(source, "catalogue_version", None) or getattr(
+        getattr(source, "_catalogue", None), "version", "")
+    if catalogue:
+        typer.echo(f"catalogue: {catalogue} ({version})")
     if not selection.is_empty:
         typer.echo(f"composition: {selection.describe()}")
     renderer = PdfRenderer(doc_pack) if fmt == "pdf" else HtmlRenderer(doc_pack)

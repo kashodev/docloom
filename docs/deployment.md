@@ -223,6 +223,8 @@ no pipeline change. See the `dynamodb://` store for the shape to copy.
 ## Operating a run
 
 ```bash
+docloom generate --run-id r --total 50000 --catalogue gs://…/catalogues/invoice/v1
+                                                    # draw content from a published artifact
 docloom plan   --run-id run_2026_07 --total 50000 --state <uri>   # plan only, no compute
 docloom status --run-id run_2026_07 --state <uri>   # progress by unit state
 docloom pause  --run-id run_2026_07 --state <uri>   # workers drain and stop
