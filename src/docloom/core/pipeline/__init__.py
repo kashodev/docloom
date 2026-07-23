@@ -10,6 +10,14 @@ codec are the kernel's.
 
 from docloom.core.pipeline.export import ExportStats, export_run
 from docloom.core.pipeline.golden import decode_shard, encode_shard
+from docloom.core.pipeline.manifest import (
+    RunManifest,
+    UnitManifest,
+    enumerate_document_keys,
+    is_complete,
+    read_run_manifest,
+    verify_run,
+)
 from docloom.core.pipeline.pdf import PdfRenderer
 from docloom.core.pipeline.planner import plan_units
 from docloom.core.pipeline.renderer import DocumentRenderer, HtmlRenderer, RenderedDocument
@@ -18,6 +26,12 @@ from docloom.core.pipeline.source import DocumentSource, stable_seed
 from docloom.core.pipeline.worker import GenerationWorker, WorkerStats
 
 __all__ = [
+    "RunManifest",
+    "UnitManifest",
+    "enumerate_document_keys",
+    "is_complete",
+    "read_run_manifest",
+    "verify_run",
     "DocumentRenderer",
     "DocumentSource",
     "ExportStats",

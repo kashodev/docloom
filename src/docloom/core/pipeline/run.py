@@ -17,6 +17,7 @@ import time
 from docloom.core.enums import RunState, WorkUnitState
 from docloom.core.pipeline.planner import plan_units
 from docloom.core.pipeline.renderer import DocumentRenderer
+from docloom.core.pipeline.manifest import write_run_manifest
 from docloom.core.pipeline.source import DocumentSource, prepare_source
 from docloom.core.pipeline.worker import GenerationWorker, WorkerStats
 from docloom.core.state.base import Run, StateStore
@@ -106,5 +107,34 @@ def work_run(
     progress = state.progress(run_id)
     outstanding = progress[WorkUnitState.PENDING] + progress[WorkUnitState.RUNNING]
     if outstanding == 0 and progress[WorkUnitState.FAILED] == 0:
-        state.set_run_state(run_id, RunState.COMPLETED)
+        run = state.get_run(run_id)
+        # Only on the transition to COMPLETED, not on every drain of an
+        # already-finished run. That keeps the root manifest written exactly
+        # once — so it is stable — and avoids a redundant state write each time a
+        # worker drains a complete run.
+        if run is not None and run.state is not RunState.COMPLETED:
+            state.set_run_state(run_id, RunState.COMPLETED)
+            _write_run_manifest(run, blob, source)
     return stats
+
+
+def _write_run_manifest(run: Run, blob: BlobStore, source: DocumentSource) -> None:
+    """Write the root manifest now the run is complete.
+
+    Every unit part exists by here — a unit's part lands before it is marked
+    done, and this runs only once no unit is outstanding. Gated on the
+    COMPLETED transition by the caller, so it is written once per run; a
+    simultaneous second completer would only re-assemble byte-identical
+    substantive content from the same parts.
+    """
+    write_run_manifest(
+        blob,
+        run_id=run.run_id,
+        pack=run.pack,
+        config_id=run.config_id,
+        total_units=run.total_units,
+        # Which content pool produced the corpus — the same value that is on
+        # every golden row, surfaced once at the run level for a consumer.
+        catalogue_version=getattr(getattr(source, "_catalogue", None), "version", ""),
+        created_at=run.created_at.isoformat(),
+    )

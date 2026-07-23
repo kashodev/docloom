@@ -21,28 +21,42 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
 
 ## Features (larger, self-contained work)
 
-- [ ] **Per-run manifest (and a split manifest for large runs).** Every
-      generation run should emit a manifest describing what it produced, so a
-      consumer can discover and validate a run without walking the bucket. It
-      belongs next to the artefacts under the run prefix.
-      - **Contents:** run id, pack, config id, created/completed timestamps,
-        totals (documents, units, per-table golden rows), the unit -> index-range
-        map, storage layout (document and shard key patterns), per-unit counts
-        and checksums, the pack/schema version, and the condition/archetype mix
-        actually generated.
-      - **Splitting:** a run of hundreds of thousands of documents produces a
-        manifest too large to be one useful file. Shard it the way the golden
-        data is already sharded — a manifest part per unit-range, written into a
-        subfolder — with a **main manifest** at the run root that indexes the
-        parts (part key, unit range, document count, byte size, checksum) plus
-        the run-level totals. One small file to fetch first; the parts only when
-        needed.
-      - **Why:** it makes a run self-describing for evaluation and transfer,
-        gives export something authoritative to reconcile against, and is the
-        natural place to record that a run finished cleanly vs. was resumed.
-      - Note the storage layout already gives each run its own prefix and buckets
-        documents per unit (`<run>/documents/unit-000123/…`), so the manifest
-        just needs to describe that structure rather than invent one.
+- [x] **Per-run manifest (and a split manifest for large runs).** Shipped in
+      `core/pipeline/manifest.py`. A run is self-describing from the bucket alone,
+      which is how a separate consumer (a Cloud Run app that reads the corpus and
+      processes it) discovers and verifies it without a StateStore and without
+      walking the bucket.
+      - **Split as designed.** A part per unit (`<run>/manifest/unit-000123.json`)
+        lists that unit's documents and shards with a sha256 each, written by the
+        worker *before* the unit is marked done. A root (`<run>/manifest.json`)
+        indexes the parts plus run totals, written only on the COMPLETED
+        transition — so its presence is the completion signal, and a partial or
+        failed run has parts but no root.
+      - **Verified against the real `GcsBlobStore` adapter** (fake-gcs-server):
+        a consumer reconstructs the full document list from the manifest alone
+        (matches the bucket exactly), deep checksum verify passes, and a tampered
+        blob is caught. Refuses to write a root over a missing part. Idempotent —
+        gated on the state transition, so written once.
+      - **Consumer API:** `read_run_manifest`, `is_complete`, `verify_run`
+        (shallow / deep), `enumerate_document_keys`.
+      - Export is untouched — it walks `<run>/golden/`; the manifest lives under
+        `<run>/manifest/` and `<run>/manifest.json`.
+
+- [ ] **Incremental (pull-while-generating) manifest consumption.** Today the
+      contract is pull-on-complete: the root manifest appears only when the run
+      finishes, so a consumer cannot start processing a large run's early units
+      while later ones are still generating. The per-unit parts already exist and
+      are written as each unit completes, so the building block is there — what is
+      missing is a *documented in-progress contract*: a way for a consumer to
+      enumerate the parts that exist so far, know which are final vs still coming,
+      and resume as more appear, without ever mistaking a still-generating run for
+      a complete one. Deferred at the requester's call — cannot be tested against
+      the real consumer apps for some time, and pull-on-complete is correct in the
+      meantime.
+      - Likely shape: a consumer lists `<run>/manifest/` for parts and treats the
+        root's absence as "more may come"; a lightweight run-state read (or a
+        progress marker in the bucket) tells it the expected unit count so it can
+        tell "not done yet" from "done, here is everything".
 
 - [x] **A "crisp" (well-preserved) handwritten variant.** Shipped as the `wear`
       dial (0..1) on the record: one value scales the SVG ink displacement at
