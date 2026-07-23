@@ -415,3 +415,46 @@ def test_catalogue_llm_build_rejects_a_bad_providers_file(tmp_path: Path) -> Non
     ])
     assert bad.exit_code != 0
     assert "providers" in bad.output.lower()
+
+
+def test_catalogue_llm_build_from_inline_env_var(tmp_path: Path, monkeypatch) -> None:
+    """The Cloud Run path: the mix arrives inline via DOCLOOM_PROVIDERS, not a
+    file. On Linux (the container) `Path(inline_json).is_file()` raises
+    ENAMETOOLONG on the long JSON — the real job died on it. macOS returns False
+    for the same string, so the OSError is simulated here to reproduce the Linux
+    behaviour on any platform; the point is that the code must treat an
+    unstattable value as inline content, not crash."""
+    import httpx
+
+    from docloom.core.providers import factory
+
+    real_is_file = Path.is_file
+
+    def stat_explodes(self):  # noqa: ANN001, ANN202
+        if str(self).startswith('{"providers"'):
+            raise OSError(36, "File name too long")   # what Linux does
+        return real_is_file(self)
+
+    monkeypatch.setattr(Path, "is_file", stat_explodes)
+
+    client = httpx.AsyncClient(transport=_mock_openai_transport())
+    real = factory.build_provider
+
+    def with_mock(spec, client=None):  # noqa: ANN001
+        return real(spec, client=globals().get("_mock_client"))
+
+    globals()["_mock_client"] = client
+    inline = ('{"providers": [{"name": "dashscope", "model": "qwen3.5-flash", '
+              '"weight": 100, "extra_body": {"enable_thinking": false}}]}')
+    monkeypatch.setenv("DOCLOOM_PROVIDERS", inline)
+    out = tmp_path / "cat"
+
+    import unittest.mock as mock
+    with mock.patch.object(factory, "build_provider", with_mock):
+        built = runner.invoke(app, [
+            "catalogue", "--out", str(out), "--version", "v1",
+            "--companies", "4", "--products-per-company", "20",
+        ])
+    assert built.exit_code == 0, built.output
+    assert "with an LLM" in built.output
+    assert "LLM filled" in built.output

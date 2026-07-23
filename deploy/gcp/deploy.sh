@@ -15,6 +15,7 @@
 #   ./deploy.sh -c run.yaml status      run progress, from Firestore
 #   ./deploy.sh -c run.yaml logs        recent job logs
 #   ./deploy.sh -c run.yaml export      export golden shards to the configured sink
+#   ./deploy.sh -c run.yaml catalogue   build the LLM content catalogue (one-off)
 #   ./deploy.sh -c run.yaml all         provision + build + deploy + run
 #   ./deploy.sh -c run.yaml teardown    delete the job and this run's output
 #
@@ -273,6 +274,21 @@ emit("BUDGET_USD", get("catalogue.budget_usd", ""))
 emit("SECRET_MAP", " ".join(
     f"{k}={v}" for k, v in (get("catalogue.secrets", {}) or {}).items()
 ))
+
+# Catalogue build parameters + the full provider mix as YAML. The mix (with each
+# provider's extra_body, e.g. enable_thinking) travels to the container in the
+# DOCLOOM_PROVIDERS env var — it is configuration, not secret; the API keys go
+# through Secret Manager separately.
+emit("CAT_OUT", get("catalogue.out", ""))
+emit("CAT_VERSION", get("catalogue.version", "v1"))
+emit("CAT_COMPANIES", int(get("catalogue.companies", 1000)))
+emit("CAT_PRODUCTS", int(get("catalogue.products_per_company", 300)))
+emit("CAT_CONCURRENCY", int(get("catalogue.concurrency", 8)))
+# Compact single-line JSON (valid YAML, so the CLI parses it unchanged) rather
+# than multi-line YAML: an env var value must survive gcloud's flag parsing, and
+# a newline or a stray comma in a YAML block does not travel cleanly.
+import json as _json
+emit("CAT_PROVIDERS_JSON", _json.dumps({"providers": providers}) if providers else "")
 PYEOF
 }
 
@@ -568,6 +584,53 @@ teardown() {
   echo "  bucket, Firestore database and service account left in place"
 }
 
+build_catalogue() {
+  [[ -n "${CAT_PROVIDERS_JSON}" ]] || {
+    echo "no catalogue.providers in ${CONFIG} — nothing to build" >&2; exit 1; }
+  [[ -n "${CAT_OUT}" ]] || { echo "set catalogue.out in ${CONFIG}" >&2; exit 1; }
+
+  # Secrets must exist and be readable, or the build fails one call in, having
+  # spent nothing but the operator's patience.
+  local secret_args=() missing=0
+  for pair in ${SECRET_MAP}; do
+    local env_name="${pair%%=*}" secret="${pair#*=}"
+    if have secrets describe "${secret}" --project="${PROJECT}"; then
+      # Grant the accessor here too, so `catalogue` is self-contained after the
+      # operator creates the secrets — no need to re-run provision.
+      gcloud secrets add-iam-policy-binding "${secret}" \
+        --member="serviceAccount:${SA}" --role=roles/secretmanager.secretAccessor \
+        --project="${PROJECT}" --quiet >/dev/null
+      secret_args+=("--set-secrets=${env_name}=${secret}:latest")
+    else
+      echo "  secret ${secret} MISSING — create it with your key value:" >&2
+      echo "      printf %s \"\$YOUR_KEY\" | gcloud secrets create ${secret} --data-file=- --project=${PROJECT}" >&2
+      missing=1
+    fi
+  done
+  [[ "${missing}" -eq 0 ]] || { echo "create the secret(s) above, then re-run" >&2; exit 1; }
+
+  say "Catalogue build → ${CAT_OUT} (${CAT_VERSION})"
+  echo "  ${CAT_COMPANIES} companies × ${CAT_PRODUCTS} SKUs, concurrency ${CAT_CONCURRENCY}, budget \$${BUDGET_USD}"
+
+  # A dedicated single-task job: the build is one process that writes the whole
+  # artifact, unlike the sharded generate job. The mix rides in DOCLOOM_PROVIDERS
+  # (config); the keys are injected from Secret Manager.
+  local cat_job="${JOB}-catalogue"
+  gcloud run jobs deploy "${cat_job}" \
+    --image="${IMAGE}" --region="${REGION}" --project="${PROJECT}" \
+    --service-account="${SA}" \
+    --tasks=1 --parallelism=1 --max-retries=0 \
+    --task-timeout=3600s --cpu="${CPU}" --memory="${MEMORY}" \
+    --set-env-vars="^@^DOCLOOM_PROVIDERS=${CAT_PROVIDERS_JSON}" \
+    "${secret_args[@]}" \
+    --args="^|^catalogue|--out=${CAT_OUT}|--version=${CAT_VERSION}|--companies=${CAT_COMPANIES}|--products-per-company=${CAT_PRODUCTS}|--concurrency=${CAT_CONCURRENCY}|--budget-usd=${BUDGET_USD}|--no-batch"
+
+  gcloud run jobs execute "${cat_job}" --region="${REGION}" --project="${PROJECT}" --wait
+  echo
+  echo "  built. Inspect it:  gcloud storage cat ${CAT_OUT}/manifest.json | \${PYTHON} -m json.tool"
+  echo "  generate from it:   ./deploy.sh -c ${CONFIG} --set … run   (add --catalogue ${CAT_OUT} to the generate args)"
+}
+
 case "${COMMAND}" in
   plan)      plan ;;
   provision) provision ;;
@@ -578,6 +641,7 @@ case "${COMMAND}" in
   status)    status ;;
   logs)      logs ;;
   export)    export_golden ;;
+  catalogue) build_catalogue ;;
   teardown)  teardown ;;
   all)       plan; provision; build; deploy_job; run_job ;;
   *)         echo "unknown command: ${COMMAND}" >&2; usage; exit 1 ;;

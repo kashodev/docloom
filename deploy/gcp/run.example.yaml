@@ -150,7 +150,13 @@ documents:
 # `docloom catalogue` yourself against this file. Omit the block to build the
 # catalogue procedurally with no keys, or to generate from the built-in seed pool.
 catalogue:
-  budget_usd: 50.00        # hard ceiling for the catalogue build
+  # The published artifact this build writes, and the run that draws from it.
+  out: gs://crawler-rag-data-2026-docloom/catalogues/invoice/v1
+  version: v1
+  companies: 1000
+  products_per_company: 300
+  concurrency: 8
+  budget_usd: 20.00        # hard ceiling for the catalogue build
   providers:
     - name: deepseek
       model: deepseek-v4-flash

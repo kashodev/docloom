@@ -243,13 +243,16 @@ def plan(
     _print_status(store, run_id)
 
 
-def _llm_build(providers_file: str, *, companies: int, products_per_company: int,
-               seed: int, budget_usd: float):  # noqa: ANN202
+def _llm_build(providers: str, *, companies: int, products_per_company: int,
+               seed: int, budget_usd: float, concurrency: int, use_batch: bool):  # noqa: ANN202
     """Load a provider mix and build descriptions with it.
 
-    The mix file is the same ``providers`` block shape the deploy config and
-    `providers.factory.build_mix` already use, so there is one vocabulary for
-    "which models, in what proportion, under what budget".
+    ``providers`` is either a file path or the mix YAML inline. Inline is what
+    lets a Cloud Run job carry the mix in an env var (`DOCLOOM_PROVIDERS`) — the
+    mix is configuration, not secret, so it travels as config while the API keys
+    come from Secret Manager. Same block shape either way, and the same one the
+    deploy config uses, so there is one vocabulary for "which models, in what
+    proportion".
     """
     import yaml
 
@@ -257,20 +260,31 @@ def _llm_build(providers_file: str, *, companies: int, products_per_company: int
     from docloom.core.providers.factory import build_mix
     from docloom.packs.invoice.llm_build import build_llm_catalogue_sync
 
-    path = Path(providers_file)
-    if not path.is_file():
-        raise typer.BadParameter(f"no such providers file: {providers_file}")
-    config = yaml.safe_load(path.read_text()) or {}
-    # Accept the deploy config's `catalogue:` block verbatim — one vocabulary for
-    # "which models, in what proportion, under what budget". `build_mix` wants the
+    # `providers` is a file path or the mix inline (from DOCLOOM_PROVIDERS on
+    # Cloud Run). `Path.is_file()` calls os.stat, which raises ENAMETOOLONG on an
+    # inline JSON string rather than returning False — so guard it, and treat any
+    # unstattable value as inline content.
+    path = Path(providers)
+    try:
+        is_file = path.is_file()
+    except OSError:
+        is_file = False
+    raw = path.read_text() if is_file else providers
+    try:
+        config = yaml.safe_load(raw) or {}
+    except yaml.YAMLError as exc:
+        raise typer.BadParameter(f"providers is neither a file nor valid YAML: {exc}") from exc
+    if not isinstance(config, dict):
+        raise typer.BadParameter("providers must be a mapping with a `providers:` list")
+    # Accept the deploy config's `catalogue:` block verbatim. `build_mix` wants the
     # list under `text`; the deploy config calls it `providers`.
     if "catalogue" in config:
         config = config["catalogue"]
     specs = config.get("text") or config.get("providers")
     if not specs:
         raise typer.BadParameter(
-            f"{providers_file} needs a `providers:` (or `text:`) list of "
-            "{{name, model, weight}}; see deploy/gcp/run.example.yaml"
+            "providers needs a `providers:` (or `text:`) list of "
+            "{name, model, weight}; see deploy/gcp/run.example.yaml"
         )
     try:
         mix = build_mix({"text": specs})
@@ -282,7 +296,8 @@ def _llm_build(providers_file: str, *, companies: int, products_per_company: int
     budget = BudgetGuard(_dec(limit)) if limit > 0 else None
     return build_llm_catalogue_sync(
         mix, companies=companies, products_per_company=products_per_company,
-        seed=seed, budget=budget,
+        seed=seed, budget=budget, concurrency=concurrency, use_batch=use_batch,
+        progress=lambda msg: typer.echo(f"  {msg}"),
     )
 
 
@@ -300,10 +315,18 @@ def catalogue(
     seed: int = typer.Option(0, help="Build seed; the same seed rebuilds the same catalogue"),
     pack: str = typer.Option("invoice", help="Document pack"),
     providers: str = typer.Option(
-        "", "--providers", help="YAML/JSON provider-mix file → build descriptions "
-        "with an LLM. Omit for the procedural (key-free) build."
+        "", "--providers", envvar="DOCLOOM_PROVIDERS",
+        help="Provider-mix file OR inline YAML (env DOCLOOM_PROVIDERS) → build "
+        "descriptions with an LLM. Omit for the procedural (key-free) build."
     ),
     budget_usd: float = typer.Option(0.0, help="Hard USD ceiling for an LLM build (0 = none)"),
+    concurrency: int = typer.Option(8, help="Concurrent LLM calls in flight for an LLM build"),
+    batch: bool = typer.Option(
+        False, "--batch/--no-batch",
+        help="Use each provider's batch API (half price on Anthropic, but polls "
+        "to completion). Default off: concurrent synchronous calls, predictable "
+        "for a bounded job."
+    ),
     max_rejection_rate: float = typer.Option(
         0.02, help="Fail the build if more than this fraction of items is rejected"
     ),
@@ -335,7 +358,7 @@ def catalogue(
                    f"with an LLM (seed {seed})")
         rows, products, llm_report = _llm_build(
             providers, companies=companies, products_per_company=products_per_company,
-            seed=seed, budget_usd=budget_usd,
+            seed=seed, budget_usd=budget_usd, concurrency=concurrency, use_batch=batch,
         )
         typer.echo(f"  LLM filled {llm_report.llm_filled:,} of {llm_report.products:,} "
                    f"({llm_report.llm_fraction:.1%}), {llm_report.procedural_fallback:,} "

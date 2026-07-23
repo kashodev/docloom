@@ -28,6 +28,10 @@ ARG PLAYWRIGHT_VERSION=1.61.0
 FROM mcr.microsoft.com/playwright/python:v1.61.0-noble
 ARG PLAYWRIGHT_VERSION
 
+# Stream stdout/stderr immediately, so a long job's progress reaches Cloud
+# Logging as it happens rather than only when the process exits.
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
 # Install dependencies first so the layer caches across code changes.
