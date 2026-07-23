@@ -25,6 +25,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from docloom.core.pipeline.golden import encode_shard
+from docloom.core.pipeline.manifest import (
+    DocumentEntry,
+    ShardEntry,
+    UnitManifest,
+    sha256_hex,
+    write_unit_manifest,
+)
 from docloom.core.pipeline.renderer import DocumentRenderer
 from docloom.core.pipeline.source import DocumentSource
 from docloom.core.state.base import StateStore, WorkUnit
@@ -84,29 +91,48 @@ class GenerationWorker:
     def _generate_unit(self, unit: WorkUnit) -> int:
         """Generate, render, persist, and shard one unit. Returns doc count.
 
-        Documents are written first, then the golden shards, then the unit is
-        marked done by the caller — so a shard is never recorded for documents
-        that were not stored.
+        Documents are written first, then the golden shards, then the unit's
+        manifest part, then the unit is marked done by the caller. That order is
+        load-bearing: a shard is never recorded for documents that were not
+        stored, and a *completed* unit always has a manifest part, which is what
+        lets the root manifest trust the parts at run completion.
         """
         rows_by_table: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        documents: list[DocumentEntry] = []
 
         for index in range(unit.start_index, unit.end_index):
             record = self._source.generate(self._run_id, index)
             document = self._renderer.render(record)
-            self._blob.put(
-                self._document_key(unit, record.record_id, document.extension),
-                document.data,
-                document.content_type,
+            key = self._document_key(unit, record.record_id, document.extension)
+            self._blob.put(key, document.data, document.content_type)
+            documents.append(
+                DocumentEntry(index=index, key=key,
+                              sha256=sha256_hex(document.data), bytes=len(document.data))
             )
             for table, rows in record.to_rows().items():
                 rows_by_table[table].extend(rows)
 
+        shards: list[ShardEntry] = []
         for table, rows in rows_by_table.items():
-            self._blob.put(
-                self._shard_key(unit, table),
-                encode_shard(rows),
-                "application/gzip",
+            key = self._shard_key(unit, table)
+            encoded = encode_shard(rows)
+            self._blob.put(key, encoded, "application/gzip")
+            shards.append(
+                ShardEntry(table=table, key=key, sha256=sha256_hex(encoded),
+                           bytes=len(encoded), rows=len(rows))
             )
+
+        # The unit's part lands before the caller marks the unit done, so the
+        # root manifest — assembled at completion — never reads a done unit that
+        # has no part.
+        write_unit_manifest(
+            self._blob,
+            UnitManifest(
+                run_id=self._run_id, unit_index=unit.unit_index,
+                start_index=unit.start_index, count=unit.count,
+                documents=tuple(documents), shards=tuple(shards),
+            ),
+        )
         return unit.count
 
     # ── Deterministic key layout ────────────────────────────────────────────
