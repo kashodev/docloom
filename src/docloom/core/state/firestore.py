@@ -113,8 +113,14 @@ def doc_to_unit(run_id: str, doc: dict[str, Any]) -> WorkUnit:
 
 def _doc_id(model: str) -> str:
     """Model name as a document id. ``*`` (the run total) is not a legal id, and
-    ``/`` would nest a path, so both are escaped."""
-    return "__total__" if model == TOTAL_MODEL else model.replace("/", "_")
+    ``/`` would nest a path, so both are escaped.
+
+    The total sentinel is ``_total_`` rather than the more obvious ``__total__``:
+    Firestore rejects any id matching ``__.*__`` as reserved, so a double-
+    underscore wrapper is a 400 (``InvalidArgument``) the instant a distributed
+    budget writes its rollup. ``_total_`` has no ``__`` substring at all, and no
+    real model name escapes to it (model ids never start with ``/``)."""
+    return "_total_" if model == TOTAL_MODEL else model.replace("/", "_")
 
 
 def doc_to_spend(run_id: str, doc: dict[str, Any]) -> Spend:
