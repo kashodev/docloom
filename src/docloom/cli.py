@@ -244,6 +244,85 @@ def plan(
 
 
 @app.command()
+def catalogue(
+    out: str = typer.Option(..., "--out", help="Where to write the artifact (file:// | gs:// | s3://)"),
+    version: str = typer.Option(..., "--version", help="Catalogue version, recorded on every golden row"),
+    companies: int = typer.Option(1000, help="How many issuers"),
+    products_per_company: int = typer.Option(300, help="SKUs each issuer sells"),
+    seed: int = typer.Option(0, help="Build seed; the same seed rebuilds the same catalogue"),
+    pack: str = typer.Option("invoice", help="Document pack"),
+    max_rejection_rate: float = typer.Option(
+        0.02, help="Fail the build if more than this fraction of items is rejected"
+    ),
+) -> None:
+    """Build a content catalogue artifact.
+
+    Content is generated **once, offline**, and published; generation then draws
+    from it with no API key. That split is what lets a corpus have hundreds of
+    thousands of distinct descriptions while `docloom generate` stays local-first
+    and deterministic.
+
+    Today the pool is built procedurally — combinatorial expansion, no keys, no
+    spend. The LLM-backed build lands behind this same command and the same
+    validation gates; nothing downstream changes when it does, because the
+    artifact format is identical either way.
+    """
+    if pack != "invoice":
+        raise typer.BadParameter(f"no catalogue builder for pack {pack!r}")
+
+    from docloom.packs.invoice.artifact import write_catalogue
+    from docloom.packs.invoice.procedural import generate_catalogue
+    from docloom.packs.invoice.validation import validate
+
+    typer.echo(f"building {companies:,} companies x {products_per_company} SKUs "
+               f"(seed {seed})")
+    rows, products = generate_catalogue(
+        companies=companies, products_per_company=products_per_company, seed=seed
+    )
+    total = sum(len(v) for v in products.values())
+
+    # Validate before writing, never after: a published artifact is copied,
+    # cached and generated from for months, so a defect in it is far more
+    # expensive than a defect in one run.
+    report = validate(
+        (f"{cid}:{i}", product.description)
+        for cid, items in products.items()
+        for i, product in enumerate(items)
+    )
+    typer.echo(f"validated {report.checked:,} descriptions: "
+               f"{report.rejected:,} rejected ({report.rejection_rate:.2%}), "
+               f"{report.duplicate_groups:,} duplicate group(s)")
+    for rule, count in sorted(report.by_rule().items(), key=lambda kv: -kv[1]):
+        typer.echo(f"    {rule:16s} {count:,}")
+    for finding in report.findings[:5]:
+        typer.echo(f"    e.g. {finding.rule}: {finding.text[:60]!r}")
+
+    if report.rejection_rate > max_rejection_rate:
+        typer.echo(
+            f"rejection rate {report.rejection_rate:.2%} exceeds the "
+            f"{max_rejection_rate:.2%} ceiling — not publishing"
+        )
+        raise typer.Exit(1)
+
+    manifest = write_catalogue(
+        out, companies=rows, products=products, catalogue_version=version,
+        # The artifact ships with its own audit: how it was built and what the
+        # gates found, so a consumer can see it was checked rather than trust it.
+        provenance={
+            "generator": "procedural",
+            "seed": seed,
+            "companies": len(rows),
+            "products_per_company": products_per_company,
+            "validation": report.summary(),
+        },
+    )
+    typer.echo(f"wrote {out} ({version}): {len(rows):,} companies, {total:,} products")
+    for name, info in sorted(manifest.files.items()):
+        typer.echo(f"    {name:20s} {info['rows']:,} rows  sha256 {info['sha256'][:12]}…")
+    typer.echo(f"generate with:  docloom generate --catalogue {out} …")
+
+
+@app.command()
 def export(
     run_id: str = typer.Option(..., help="Run to export"),
     sink: str = typer.Option("./out/golden", envvar="DOCLOOM_SINK",

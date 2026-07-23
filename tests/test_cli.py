@@ -295,3 +295,53 @@ def test_a_missing_catalogue_fails_before_generating(tmp_path: Path) -> None:
         "--storage", p["storage"], "--state", p["state"],
     ])
     assert bad.exit_code != 0
+
+
+# ── docloom catalogue ───────────────────────────────────────────────────────
+def test_catalogue_builds_validates_and_generates(tmp_path: Path) -> None:
+    """The full step-5 loop: build a pool, gate it, publish it, generate from
+    it — with no API key anywhere."""
+    art = tmp_path / "cat"
+    built = runner.invoke(app, [
+        "catalogue", "--out", str(art), "--version", "v1",
+        "--companies", "12", "--products-per-company", "30", "--seed", "1",
+    ])
+    assert built.exit_code == 0, built.output
+    assert "validated 360 descriptions" in built.output
+    assert "0 rejected" in built.output
+    assert (art / "manifest.json").is_file()
+
+    p = _paths(tmp_path)
+    gen = runner.invoke(app, [
+        "generate", "--run-id", "fromcat", "--total", "6", "--unit-size", "6",
+        "--format", "html", "--max-line-items", "6", "--catalogue", str(art),
+        "--storage", p["storage"], "--state", p["state"],
+    ])
+    assert gen.exit_code == 0, gen.output
+    assert "v1" in gen.output
+
+
+def test_the_manifest_carries_the_validation_audit(tmp_path: Path) -> None:
+    """An artifact ships with its own audit, so a consumer can see it was
+    checked rather than take it on trust."""
+    import json
+
+    art = tmp_path / "cat"
+    runner.invoke(app, [
+        "catalogue", "--out", str(art), "--version", "v1",
+        "--companies", "6", "--products-per-company", "20",
+    ])
+    provenance = json.loads((art / "manifest.json").read_text())["provenance"]
+    assert provenance["generator"] == "procedural"
+    assert provenance["validation"]["checked"] == 120
+    assert provenance["validation"]["rejected"] == 0
+    assert "by_rule" in provenance["validation"]
+
+
+def test_a_catalogue_for_an_unknown_pack_is_rejected(tmp_path: Path) -> None:
+    bad = runner.invoke(app, [
+        "catalogue", "--out", str(tmp_path / "x"), "--version", "v1",
+        "--pack", "contract",
+    ])
+    assert bad.exit_code != 0
+    assert "no catalogue builder" in bad.output
