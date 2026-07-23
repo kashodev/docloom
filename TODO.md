@@ -161,6 +161,65 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         `catalogue:` block in the deploy config is documentation rather than
         configuration.
 
+- [ ] **The OpenAI-compatible provider does not handle reasoning models.** Found
+      by a direct smoke test against the three real endpoints in the deploy
+      config (deepseek-v4-flash / qwen3.5-flash / claude-haiku-4-5, 40/40/20) —
+      the first time the provider layer ran against live APIs rather than the
+      fake HTTP transport the unit tests use. Two of the three misbehaved, and
+      the config would have produced a broken catalogue at scale. Raw responses
+      confirmed both are "thinking" models returning a `reasoning_content` field:
+      - **DeepSeek returned empty content.** With `max_tokens=48` it spent all 48
+        completion tokens reasoning (`finish_reason: length`,
+        `reasoning_tokens: 48`) and emitted zero content tokens — the answer
+        never came. `OpenAICompatibleProvider.complete` reads only
+        `choices[0].message.content`, so it got `""`.
+      - **Qwen ignored `max_tokens` entirely.** `finish_reason: stop` (not
+        truncated) after 2,335 reasoning tokens for a ~24-token answer — a
+        ~50–75× output overrun, and the reason the qwen items cost 40–80× the
+        deepseek ones.
+      - **Fixes, roughly in priority order:**
+        1. **An empty / `None` completion must not count as success.**
+           `complete` takes `content` verbatim; a blank result flows through the
+           runner as `ok`, so 40% of a catalogue could come back empty and the
+           run would report clean. This is the load-bearing fix — it converts a
+           silent-bad-output failure into a loud one.
+        2. **Disable thinking for these models.** DashScope takes
+           `enable_thinking: false`; DeepSeek's non-thinking model is a different
+           id (`deepseek-chat`). For terse catalogue blurbs there is no reason to
+           pay for reasoning at all. Reading `reasoning_content` as a fallback is
+           the wrong fix — it captures tokens you never wanted.
+        3. **Some endpoints want `max_completion_tokens`, not `max_tokens`** —
+           worth checking as the mechanism behind Qwen ignoring the cap.
+      - Cross-references the budget item below and the missing `docloom
+        catalogue` command above: none of this is reachable today (no LLM-backed
+        pack, no CLI), so it blocks nothing yet — but it must be fixed before the
+        catalogue path is wired, or the first real run wastes money on garbage.
+      - Repro: `scratchpad/smoke_catalogue.py` (unmerged); `--raw` dumps the
+        message shape that proved the diagnosis.
+
+- [ ] **The budget guard is defeated by output that exceeds `max_tokens`.**
+      `BudgetGuard.check` is pre-flight and `estimate_cost` predicts output cost
+      from `request.max_tokens`. The Qwen smoke above produced 2,359 completion
+      tokens against a `max_tokens` of 48, so the estimate was ~50× low — a
+      real run could sail past a `$50` cap because every pre-flight estimate is a
+      fraction of the true cost. The guard needs to also enforce on *accumulated
+      actual* spend (the runner already tracks `report.total_cost`), not only on
+      pre-flight estimates, so a model that overshoots its own token cap still
+      trips the limit. Independent of the reasoning-model fix above: even a
+      well-behaved model whose estimate is optimistic should not be able to
+      overspend without the guard reacting.
+
+- [ ] **Exercise the provider layer against real endpoints in CI (gated).** The
+      provider/catalogue code is unit-tested only against a fake httpx transport,
+      which is why the two bugs above survived — the fake echoes a well-formed
+      `content` and never reasons, ignores `max_tokens`, or returns empty. This
+      is the same shape as the wheel/emulator/browser blind spots: the test
+      double is more forgiving than production. A key-gated smoke (skipped when
+      the three API keys are absent, like the emulator/moto tests) that sends one
+      real request per configured provider and asserts non-empty content within
+      the token cap would have caught both on the first run. `smoke_catalogue.py`
+      is the manual version of exactly this.
+
 - [ ] **Investigate logging and metrics.** The project has `structlog` as a
       dependency but no deliberate logging or metrics story: what a run should
       emit, at what level, in what format, and where it goes on each platform.
