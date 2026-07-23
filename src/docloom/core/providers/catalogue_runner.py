@@ -27,10 +27,13 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from docloom.core.logging import get_logger
 from docloom.core.providers.base import CompletionRequest, CompletionResult, TextProvider
 from docloom.core.providers.budget import BudgetGuard
 from docloom.core.providers.mix import ProviderMix
 from docloom.core.usage.base import LlmUsage, UsageSink
+
+_log = get_logger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +110,8 @@ class CatalogueRunner:
         try:
             results = await provider.complete_batch([it.request for it in group])
         except Exception as exc:  # noqa: BLE001 - one batch failing must not abort the rest
+            _log.warning("batch failed", provider=provider.name,
+                         items=len(group), error=repr(exc))
             for it in group:
                 report.failures[it.item_id] = repr(exc)
             return
@@ -160,8 +165,13 @@ class CatalogueRunner:
         report.total_cost += result.cost
         if self._budget is not None:
             self._budget.add(result.cost)
+        _log.debug("completion", item=item_id, provider=result.provider,
+                   model=result.model, input_tokens=result.usage.input_tokens,
+                   output_tokens=result.usage.output_tokens, cost=str(result.cost))
 
         if not result.text.strip():
+            _log.warning("empty completion", item=item_id, provider=result.provider,
+                         model=result.model, output_tokens=result.usage.output_tokens)
             # An empty completion is a failure, not a success. A reasoning model
             # that spends its whole token budget thinking returns `content: ""`
             # with a normal 200 and real usage — observed from deepseek, which

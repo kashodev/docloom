@@ -36,10 +36,13 @@ from typing import Any
 
 from docloom.core.enums import DocumentCondition
 from docloom.core.pack import DocumentPack
+from docloom.core.logging import get_logger
 from docloom.core.pipeline.degrade import degrade_pdf
 from docloom.core.pipeline.renderer import RenderedDocument
 from docloom.core.record import GoldenRecord
 from docloom.core.render import render_record
+
+_log = get_logger(__name__)
 
 # Page geometry, in millimetres. Top/bottom margins leave room for the running
 # header/footer; horizontal padding on the header aligns it with the body.
@@ -145,7 +148,10 @@ class PdfRenderer:
         playwright = sync_playwright().start()
         try:
             self._browser = playwright.chromium.launch()
-        except BaseException:
+        except BaseException as exc:
+            # The browser/Playwright-version mismatch that broke every document
+            # surfaced only as a per-unit exit(1). Name the cause at first launch.
+            _log.error("chromium launch failed", error=repr(exc))
             playwright.stop()
             raise
         self._playwright = playwright

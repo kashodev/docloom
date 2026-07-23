@@ -17,9 +17,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from docloom.core.logging import bind, get_logger
 from docloom.core.pipeline.golden import decode_shard
 from docloom.core.sinks.base import GoldenSink
 from docloom.core.storage.base import BlobStore
+
+_log = get_logger(__name__)
 
 
 @dataclass(slots=True)
@@ -41,11 +44,14 @@ def export_run(run_id: str, blob: BlobStore, sink: GoldenSink) -> ExportStats:
     make the tables queryable (create DuckDB views / BigQuery external tables;
     a no-op for plain Parquet).
     """
+    bind(run_id=run_id)
     prefix = f"{run_id}/golden/"
     shards_by_table: dict[str, list[str]] = {}
     for key in blob.iter_keys(prefix):
         table = key[len(prefix):].split("/", 1)[0]
         shards_by_table.setdefault(table, []).append(key)
+    _log.info("export started", tables=sorted(shards_by_table),
+              shards=sum(len(v) for v in shards_by_table.values()))
 
     stats = ExportStats()
     for table in sorted(shards_by_table):
@@ -55,7 +61,10 @@ def export_run(run_id: str, blob: BlobStore, sink: GoldenSink) -> ExportStats:
             if rows:
                 sink.write(table, rows)
                 count += len(rows)
+            else:
+                _log.warning("empty shard", key=key)
         stats.tables[table] = count
 
     sink.register()
+    _log.info("export complete", rows=stats.total_rows, tables=len(stats.tables))
     return stats
