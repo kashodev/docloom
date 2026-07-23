@@ -139,9 +139,16 @@ documents:
 # Weights must total 100. Routing is deterministic per item, so a rerun draws
 # the same model for the same item.
 #
-# ⚠ Not yet consumable: there is no `docloom catalogue` CLI command, so the
-# script validates this block and prints it, but cannot execute it. Tracked in
-# TODO.md. Remove the block entirely if you only generate procedural packs.
+# Build a catalogue from this block, once, then point generation at it:
+#
+#   docloom catalogue --providers run.yaml --out gs://…/catalogues/invoice/v1 \
+#                     --version v1 --companies 1000 --products-per-company 300
+#   docloom generate  --catalogue gs://…/catalogues/invoice/v1 …
+#
+# The deploy script does not run the catalogue build for you (it needs the
+# provider keys from Secret Manager and is a one-off, not a per-run step); run
+# `docloom catalogue` yourself against this file. Omit the block to build the
+# catalogue procedurally with no keys, or to generate from the built-in seed pool.
 catalogue:
   budget_usd: 50.00        # hard ceiling for the catalogue build
   providers:

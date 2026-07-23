@@ -345,3 +345,73 @@ def test_a_catalogue_for_an_unknown_pack_is_rejected(tmp_path: Path) -> None:
     ])
     assert bad.exit_code != 0
     assert "no catalogue builder" in bad.output
+
+
+# ── docloom catalogue --providers (LLM build) ───────────────────────────────
+def _mock_openai_transport():  # noqa: ANN202
+    """A MockTransport that answers the catalogue prompt with valid JSON products,
+    standing in for a real OpenAI-compatible endpoint."""
+    import json
+    import re
+
+    import httpx
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        prompt = body["messages"][1]["content"]
+        n = int(re.search(r"(\d+) (?:distinct|produits)", prompt).group(1))
+        arr = [{"name": f"Mock product {i}", "min": 4.0 + i, "max": 12.0 + i}
+               for i in range(n)]
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": json.dumps(arr)}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 40, "completion_tokens": 200}})
+
+    return httpx.MockTransport(handler)
+
+
+def test_catalogue_llm_build_end_to_end(tmp_path: Path) -> None:
+    """File → mix → LLM build → validate → publish, with a mock endpoint. Proves
+    the wiring without a key or network."""
+    import json
+
+    import httpx
+
+    from docloom.core.providers import factory
+
+    client = httpx.AsyncClient(transport=_mock_openai_transport())
+    real = factory.build_provider
+
+    def with_mock(spec, client=None):  # noqa: ANN001
+        return real(spec, client=globals().get("_mock_client"))
+
+    globals()["_mock_client"] = client
+    providers = tmp_path / "providers.yaml"
+    providers.write_text("providers:\n  - {name: deepseek, model: deepseek-v4-flash, weight: 100}\n")
+    out = tmp_path / "cat"
+
+    import unittest.mock as mock
+    with mock.patch.object(factory, "build_provider", with_mock):
+        built = runner.invoke(app, [
+            "catalogue", "--out", str(out), "--version", "llm-1",
+            "--companies", "4", "--products-per-company", "20",
+            "--providers", str(providers), "--seed", "1",
+        ])
+    assert built.exit_code == 0, built.output
+    assert "with an LLM" in built.output
+    assert "LLM filled 80 of 80" in built.output
+
+    provenance = json.loads((out / "manifest.json").read_text())["provenance"]
+    assert provenance["generator"] == "llm"
+    assert provenance["llm_filled"] == 80
+    assert "by_provider" in provenance
+
+
+def test_catalogue_llm_build_rejects_a_bad_providers_file(tmp_path: Path) -> None:
+    empty = tmp_path / "providers.yaml"
+    empty.write_text("something_else: true\n")
+    bad = runner.invoke(app, [
+        "catalogue", "--out", str(tmp_path / "c"), "--version", "v1",
+        "--companies", "2", "--products-per-company", "5", "--providers", str(empty),
+    ])
+    assert bad.exit_code != 0
+    assert "providers" in bad.output.lower()
