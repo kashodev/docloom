@@ -183,7 +183,12 @@ def _coerce_band(low: object, high: object) -> tuple[Decimal, Decimal] | None:
         return None
     if lo > 0 and hi / lo > _MAX_RATIO:
         return None
-    return lo.quantize(Decimal("0.0001")), hi.quantize(Decimal("0.0001"))
+    # Round to the precision the price will actually print at, so the stored band
+    # is clean rather than carrying the model's fabricated extra digits (observed:
+    # "$34.5678"). Two decimals for normal money, four only for sub-dollar items
+    # (AI tokens, telecom) — the same rule the sampler uses when it draws a price.
+    places = Decimal("0.0001") if hi < Decimal("1") else Decimal("0.01")
+    return lo.quantize(places), hi.quantize(places)
 
 
 def parse_products(text: str) -> list[tuple[str, object, object]]:

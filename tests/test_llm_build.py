@@ -239,3 +239,20 @@ def test_a_french_company_is_prompted_in_french() -> None:
     request = build_prompt(fr, 10, [("Boulon en acier, M8", __import__("decimal").Decimal("1"), __import__("decimal").Decimal("3"))])
     assert "libellés" in request.prompt.lower() and "facture" in request.prompt.lower()
     assert "EUR" in request.prompt
+
+
+def test_the_band_is_rounded_to_a_sensible_precision() -> None:
+    """A model that emits over-precise, fabricated digits ("$34.5678") should
+    store a clean band, at the precision the price will print at: 2 decimals for
+    normal money, 4 only for sub-dollar items."""
+    from docloom.packs.invoice.llm_build import _coerce_band
+
+    assert _coerce_band(34.5678, 48.2345) == (D("34.57"), D("48.23"))
+    assert _coerce_band(145.2999, 289.5) == (D("145.30"), D("289.50"))
+    # sub-dollar (AI tokens, telecom) keeps 4dp — that precision is real there
+    assert _coerce_band(0.0004, 0.0020) == (D("0.0004"), D("0.0020"))
+
+
+def test_a_clean_band_survives_unchanged() -> None:
+    from docloom.packs.invoice.llm_build import _coerce_band
+    assert _coerce_band(12.50, 40.00) == (D("12.50"), D("40.00"))
