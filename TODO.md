@@ -145,7 +145,13 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       `deploy.sh --wait`, and a CI step all read a broken run as a good one. The
       units were always recoverable with `--resume`; the silence was the problem.
 
-- [ ] **Expose the catalogue build on the CLI (`docloom catalogue`).** The
+- [x] **Expose the catalogue build on the CLI (`docloom catalogue`).**
+      *Shipped: builds a per-company catalogue, runs the quality/PII gates, and
+      writes a versioned Parquet artifact whose manifest carries the audit.
+      The pool is generated procedurally today — the LLM-backed build lands
+      behind this same command and the same gates, and nothing downstream
+      changes when it does. Remaining LLM work is tracked in the reasoning-model
+      item below.* The
       provider mix, budget guard and `build_catalogue` all exist in
       `core/providers` and `core/content`, but nothing reaches them from the
       command line — so "which LLMs, in what proportion, under what budget" is
