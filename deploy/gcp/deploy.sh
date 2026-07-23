@@ -258,7 +258,7 @@ for i, (s, count) in enumerate(zip(slices, counts), start=1):
 emit("SLICES", "\n".join(rows))
 emit("SLICE_COUNT", len(rows))
 
-# ── Catalogue provider mix (validated, not yet executable) ──────────────────
+# ── Catalogue provider mix ──────────────────────────────────────────────────
 providers = get("catalogue.providers", []) or []
 if providers:
     weights = sum(float(p.get("weight", 0)) for p in providers)
@@ -375,13 +375,15 @@ EOF
   fi
   if [[ -n "${PROVIDER_MIX}" ]]; then
     echo
-    echo "  catalogue mix (budget \$${BUDGET_USD}) — validated, NOT executed:"
+    echo "  catalogue mix (budget \$${BUDGET_USD}):"
     for p in ${PROVIDER_MIX}; do
       IFS=: read -r name model weight <<<"${p}"
       printf '    %-12s %-22s %s%%\n' "${name}" "${model}" "${weight}"
     done
-    echo "    ⚠ no 'docloom catalogue' command exists yet, so this cannot run."
-    echo "      Generation makes no LLM calls; see docs/deploy-gcp.md."
+    echo "    build once with:  docloom catalogue --providers <this catalogue block>"
+    echo "      --out gs://…/catalogues/invoice/v1 --version v1"
+    echo "    then generation draws from it: docloom generate --catalogue gs://…/v1"
+    echo "    Document generation itself still makes no LLM calls."
   fi
 }
 

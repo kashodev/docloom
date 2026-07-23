@@ -243,6 +243,54 @@ def plan(
     _print_status(store, run_id)
 
 
+def _llm_build(providers_file: str, *, companies: int, products_per_company: int,
+               seed: int, budget_usd: float):  # noqa: ANN202
+    """Load a provider mix and build descriptions with it.
+
+    The mix file is the same ``providers`` block shape the deploy config and
+    `providers.factory.build_mix` already use, so there is one vocabulary for
+    "which models, in what proportion, under what budget".
+    """
+    import yaml
+
+    from docloom.core.providers.budget import BudgetGuard
+    from docloom.core.providers.factory import build_mix
+    from docloom.packs.invoice.llm_build import build_llm_catalogue_sync
+
+    path = Path(providers_file)
+    if not path.is_file():
+        raise typer.BadParameter(f"no such providers file: {providers_file}")
+    config = yaml.safe_load(path.read_text()) or {}
+    # Accept the deploy config's `catalogue:` block verbatim — one vocabulary for
+    # "which models, in what proportion, under what budget". `build_mix` wants the
+    # list under `text`; the deploy config calls it `providers`.
+    if "catalogue" in config:
+        config = config["catalogue"]
+    specs = config.get("text") or config.get("providers")
+    if not specs:
+        raise typer.BadParameter(
+            f"{providers_file} needs a `providers:` (or `text:`) list of "
+            "{{name, model, weight}}; see deploy/gcp/run.example.yaml"
+        )
+    try:
+        mix = build_mix({"text": specs})
+    except (KeyError, ValueError) as exc:
+        raise typer.BadParameter(f"bad provider mix: {exc}") from exc
+
+    # A budget from the flag, or from the config's own `budget_usd`.
+    limit = budget_usd or float(config.get("budget_usd", 0) or 0)
+    budget = BudgetGuard(_dec(limit)) if limit > 0 else None
+    return build_llm_catalogue_sync(
+        mix, companies=companies, products_per_company=products_per_company,
+        seed=seed, budget=budget,
+    )
+
+
+def _dec(value: float):  # noqa: ANN202
+    from decimal import Decimal
+    return Decimal(str(value))
+
+
 @app.command()
 def catalogue(
     out: str = typer.Option(..., "--out", help="Where to write the artifact (file:// | gs:// | s3://)"),
@@ -251,6 +299,11 @@ def catalogue(
     products_per_company: int = typer.Option(300, help="SKUs each issuer sells"),
     seed: int = typer.Option(0, help="Build seed; the same seed rebuilds the same catalogue"),
     pack: str = typer.Option("invoice", help="Document pack"),
+    providers: str = typer.Option(
+        "", "--providers", help="YAML/JSON provider-mix file → build descriptions "
+        "with an LLM. Omit for the procedural (key-free) build."
+    ),
+    budget_usd: float = typer.Option(0.0, help="Hard USD ceiling for an LLM build (0 = none)"),
     max_rejection_rate: float = typer.Option(
         0.02, help="Fail the build if more than this fraction of items is rejected"
     ),
@@ -262,10 +315,12 @@ def catalogue(
     thousands of distinct descriptions while `docloom generate` stays local-first
     and deterministic.
 
-    Today the pool is built procedurally — combinatorial expansion, no keys, no
-    spend. The LLM-backed build lands behind this same command and the same
-    validation gates; nothing downstream changes when it does, because the
-    artifact format is identical either way.
+    With no `--providers`, the pool is built **procedurally** — combinatorial
+    expansion, no keys, no spend. With a provider mix, an LLM writes the
+    descriptions (and suggests a price band), falling back to the procedural
+    product for anything it cannot fill — so a build is always complete, and a
+    provider outage degrades to the procedural pool rather than failing. Both
+    paths run the same validation gates and write the identical artifact format.
     """
     if pack != "invoice":
         raise typer.BadParameter(f"no catalogue builder for pack {pack!r}")
@@ -274,18 +329,41 @@ def catalogue(
     from docloom.packs.invoice.procedural import generate_catalogue
     from docloom.packs.invoice.validation import validate
 
-    typer.echo(f"building {companies:,} companies x {products_per_company} SKUs "
-               f"(seed {seed})")
-    rows, products = generate_catalogue(
-        companies=companies, products_per_company=products_per_company, seed=seed
-    )
+    build_provenance: dict[str, object]
+    if providers:
+        typer.echo(f"building {companies:,} companies x {products_per_company} SKUs "
+                   f"with an LLM (seed {seed})")
+        rows, products, llm_report = _llm_build(
+            providers, companies=companies, products_per_company=products_per_company,
+            seed=seed, budget_usd=budget_usd,
+        )
+        typer.echo(f"  LLM filled {llm_report.llm_filled:,} of {llm_report.products:,} "
+                   f"({llm_report.llm_fraction:.1%}), {llm_report.procedural_fallback:,} "
+                   f"fell back, {llm_report.rounds} round(s), cost ${llm_report.total_cost}")
+        build_provenance = {"seed": seed, **llm_report.summary()}
+    else:
+        typer.echo(f"building {companies:,} companies x {products_per_company} SKUs "
+                   f"procedurally (seed {seed})")
+        rows, products = generate_catalogue(
+            companies=companies, products_per_company=products_per_company, seed=seed
+        )
+        build_provenance = {"generator": "procedural", "seed": seed,
+                            "companies": len(rows),
+                            "products_per_company": products_per_company}
     total = sum(len(v) for v in products.values())
 
     # Validate before writing, never after: a published artifact is copied,
     # cached and generated from for months, so a defect in it is far more
-    # expensive than a defect in one run.
+    # expensive than a defect in one run. Check the text that will actually
+    # *print* — a French company's line items come from `fr`, so validating only
+    # the English `description` would let a bad French string through.
+    locale_of = {r.company_id: str(r.locale) for r in rows}
+
+    def _printed(cid: str, product) -> str:  # noqa: ANN001
+        return product.fr if locale_of[cid].startswith("fr") and product.fr else product.description
+
     report = validate(
-        (f"{cid}:{i}", product.description)
+        (f"{cid}:{i}", _printed(cid, product))
         for cid, items in products.items()
         for i, product in enumerate(items)
     )
@@ -308,13 +386,7 @@ def catalogue(
         out, companies=rows, products=products, catalogue_version=version,
         # The artifact ships with its own audit: how it was built and what the
         # gates found, so a consumer can see it was checked rather than trust it.
-        provenance={
-            "generator": "procedural",
-            "seed": seed,
-            "companies": len(rows),
-            "products_per_company": products_per_company,
-            "validation": report.summary(),
-        },
+        provenance={**build_provenance, "validation": report.summary()},
     )
     typer.echo(f"wrote {out} ({version}): {len(rows):,} companies, {total:,} products")
     for name, info in sorted(manifest.files.items()):

@@ -52,6 +52,25 @@ _PREAMBLE = re.compile(
 #: rather than returning a bare description.
 _MARKUP = re.compile(r"(^[\s]*[-*#>]\s|```|^\s*[\[{]|\*\*|__)", re.MULTILINE)
 
+#: Promotional verbs that mark ad copy rather than an invoice line item. An
+#: invoice line is a noun phrase ("Ceramic brake pad set, front axle") — it does
+#: not "enhance", "ensure" or "deliver" anything. Observed live: an LLM told to
+#: "write products" returns "Enhance operations with this energy-efficient …".
+#: Matched as a whole word anywhere, case-insensitive; these verbs essentially
+#: never appear in a real SKU name, so the false-positive risk is slight and the
+#: rejected item just falls back to procedural.
+_MARKETING = re.compile(
+    r"\b(enhance|ensure|ensures|deliver|delivers|boost|boosts|maximi[sz]e[sd]?|"
+    r"experience|discover|introducing|upgrade|transform[s]?|achieve[s]?|unlock[s]?|"
+    r"elevate[s]?|streamline[s]?|optimi[sz]e[sd]?|empower[s]?|revolutioni[sz]e[sd]?|"
+    r"améliore[rz]?|garantit|assure[rz]?|profitez|découvrez|optimise[rz]?)\b",
+    re.IGNORECASE,
+)
+#: Length past which a line item is almost certainly a sentence. Well above a
+#: real SKU name (the procedural ones top out near 70 chars) but below the hard
+#: MAX_LENGTH, so it catches prose the promotional-verb list misses.
+_PROSE_LENGTH = 90
+
 # ── PII patterns ────────────────────────────────────────────────────────────
 # Deliberately broad. A false positive costs one regenerated item; a false
 # negative ships personal data in a published file.
@@ -150,6 +169,15 @@ def check_text(item_id: str, text: str) -> list[Finding]:
         findings.append(Finding(item_id, "markup", "markdown or structured output", stripped))
     if "\n" in stripped:
         findings.append(Finding(item_id, "multiline", "newline in a line item", stripped))
+    if _MARKETING.search(stripped):
+        findings.append(Finding(item_id, "marketing", "promotional verb, not a line item",
+                                stripped))
+    elif len(stripped) > _PROSE_LENGTH and " " in stripped:
+        # Long and not obviously promotional, but past what a SKU name runs to —
+        # very likely a sentence. `elif` so it is not double-counted with the
+        # clearer marketing signal.
+        findings.append(Finding(item_id, "prose", f"{len(stripped)} chars, likely a sentence",
+                                stripped))
 
     lowered = stripped.lower()
     for match in _EMAIL.finditer(stripped):

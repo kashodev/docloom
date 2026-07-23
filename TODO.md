@@ -181,6 +181,30 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         `catalogue:` block in the deploy config is documentation rather than
         configuration.
 
+- [x] **LLM-backed catalogue build.** `packs/invoice/llm_build.py` drives the
+      existing `CatalogueRunner` to write product descriptions (and a co-generated
+      price band) behind the same `docloom catalogue` command and the same
+      validation/PII gates. Structural fields, the roster and the fallback all
+      stay procedural: any slot the LLM cannot fill (failed call, unparseable
+      output, rejected description, bad band) keeps its procedural product, so a
+      build is always complete and a provider outage degrades to the procedural
+      pool. The price band is a sampling input, never a golden number — a bad one
+      is dropped in favour of the procedural band. `--providers <file>` on the
+      catalogue command; provenance (model mix, fill rate, cost, rounds) goes in
+      the manifest. Tested against fake providers (no key); the CLI path tested
+      through a mock OpenAI transport.
+      - **Two key-gated steps remain, and both need real API keys so they are
+        the operator's to run, not automatable here:**
+        1. *Live re-verification* — the provider fixes (empty-is-failure,
+           `enable_thinking:false`, self-correcting estimate) have only run
+           against fakes since the last live smoke. Re-run
+           `scripts/smoke_catalogue.py` with thinking disabled and confirm all
+           three providers return non-empty text within the cap **before** any
+           real build. This is the reasoning-model item below.
+        2. *A ~1,000-item pilot* (~$0.05) before the full 300k (~$8–10): audit the
+           output by hand, then compare variety against the procedural baseline
+           to confirm the LLM is buying the semantic long tail it costs.
+
 - [ ] **The OpenAI-compatible provider does not handle reasoning models.** Found
       by a direct smoke test against the three real endpoints in the deploy
       config (deepseek-v4-flash / qwen3.5-flash / claude-haiku-4-5, 40/40/20) —
