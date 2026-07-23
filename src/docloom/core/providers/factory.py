@@ -73,7 +73,10 @@ def build_provider(spec: dict[str, Any], *, client: httpx.AsyncClient | None = N
     )
     api_key = os.environ.get(preset.key_env) if preset.key_env else None
     return OpenAICompatibleProvider(
-        name=name, model=model, base_url=base_url, api_key=api_key, client=client
+        name=name, model=model, base_url=base_url, api_key=api_key, client=client,
+        # Provider-specific request parameters, straight from config — e.g.
+        # `extra_body: {enable_thinking: false}` to stop a Qwen model reasoning.
+        extra_body=spec.get("extra_body"),
     )
 
 

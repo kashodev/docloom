@@ -311,3 +311,77 @@ def test_build_mix_from_config() -> None:
 def test_build_provider_rejects_unknown_name() -> None:
     with pytest.raises(ValueError, match="unknown provider"):
         build_provider({"name": "nope", "model": "x"})
+
+
+# ── Reasoning models (regressions from a real smoke run) ────────────────────
+def _reasoning_response(*, content, completion_tokens, capture=None):  # noqa: ANN001, ANN202
+    """A DeepSeek/Qwen-shaped reply where the model spent its budget thinking."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if capture is not None:
+            import json
+            capture.append(json.loads(request.content))
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": content,
+                                     "reasoning_content": "thinking…" * 20},
+                         "finish_reason": "length"}],
+            "usage": {"prompt_tokens": 37, "completion_tokens": completion_tokens,
+                      "completion_tokens_details": {"reasoning_tokens": completion_tokens}},
+        })
+    return handler
+
+
+def test_null_content_does_not_propagate_as_none() -> None:
+    """DeepSeek returns `content: null` — not absent, not "" — when reasoning
+    consumes the whole token budget. Letting None through would put a null into
+    a catalogue record."""
+    provider = OpenAICompatibleProvider(
+        name="deepseek", model="deepseek-v4-flash", base_url="https://x",
+        client=_mock_client(_reasoning_response(content=None, completion_tokens=48)),
+    )
+    result = asyncio.run(provider.complete(CompletionRequest(system="s", prompt="p")))
+    assert result.text == ""
+    assert result.usage.output_tokens == 48      # billed for it regardless
+
+
+def test_extra_body_is_merged_into_the_request() -> None:
+    """How thinking gets disabled: DashScope takes `enable_thinking: false`.
+    A passthrough, so the kernel never learns each vendor's vocabulary."""
+    seen: list[dict] = []
+    provider = OpenAICompatibleProvider(
+        name="dashscope", model="qwen3.5-flash", base_url="https://x",
+        client=_mock_client(_reasoning_response(content="ok", completion_tokens=20,
+                                                capture=seen)),
+        extra_body={"enable_thinking": False},
+    )
+    asyncio.run(provider.complete(CompletionRequest(system="s", prompt="p")))
+    assert seen[0]["enable_thinking"] is False
+    assert seen[0]["model"] == "qwen3.5-flash"
+
+
+def test_extra_body_can_override_a_default() -> None:
+    """Some endpoints want `max_completion_tokens` instead of `max_tokens`."""
+    seen: list[dict] = []
+    provider = OpenAICompatibleProvider(
+        name="dashscope", model="qwen3.5-flash", base_url="https://x",
+        client=_mock_client(_reasoning_response(content="ok", completion_tokens=5,
+                                                capture=seen)),
+        extra_body={"max_tokens": 999},
+    )
+    asyncio.run(provider.complete(CompletionRequest(system="s", prompt="p", max_tokens=48)))
+    assert seen[0]["max_tokens"] == 999
+
+
+def test_the_estimate_learns_from_output_that_broke_the_cap() -> None:
+    """Qwen returned 2,359 tokens against max_tokens=48, so every pre-flight
+    estimate was ~50x low. The estimate must never under-predict against
+    evidence — it is what sizes a *batch*, which `BudgetGuard.add` cannot
+    backstop."""
+    provider = OpenAICompatibleProvider(
+        name="dashscope", model="qwen3.5-flash", base_url="https://x",
+        client=_mock_client(_reasoning_response(content="ok", completion_tokens=2359)),
+    )
+    request = CompletionRequest(system="s", prompt="p", max_tokens=48)
+    before = provider.estimate_cost(request)
+    asyncio.run(provider.complete(request))
+    after = provider.estimate_cost(request)
+    assert after > before * 10, f"estimate did not learn: {before} -> {after}"

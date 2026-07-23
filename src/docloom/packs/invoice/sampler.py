@@ -73,6 +73,34 @@ def _period(rng: Random) -> tuple[date, date]:
 # ─────────────────────────────────────────────────────────────────────────────
 # Per-billing-model line construction — each returns an exact LineItem
 # ─────────────────────────────────────────────────────────────────────────────
+def _draw_products(
+    rng: Random, products: tuple[ProductTemplate, ...], n: int
+) -> list[ProductTemplate]:
+    """``n`` products, distinct until the pool is exhausted, then reshuffled.
+
+    Drawing with ``rng.choice`` — which is what this replaced — samples *with*
+    replacement, so a 6-line invoice against a 5-product pool almost always
+    listed the same product twice. Real invoices do not repeat a line; they
+    increase its quantity. It was the most visible unrealism in the corpus and
+    showed up plainly in the committed samples.
+
+    Cycling through reshuffled permutations rather than sampling without
+    replacement outright, because ``n`` legitimately exceeds the pool: a telecom
+    invoice bills 60–400 lines from a handful of usage products. Each pass uses
+    every product once before any repeats, so repetition is as spread out as the
+    pool allows, and reshuffling each pass avoids the tell-tale strict rotation
+    (A, B, C, A, B, C…) that a single cycled permutation would produce.
+    """
+    if not products:
+        return []
+    drawn: list[ProductTemplate] = []
+    while len(drawn) < n:
+        pool = list(products)
+        rng.shuffle(pool)
+        drawn.extend(pool[: n - len(drawn)])
+    return drawn
+
+
 def _build_line(rng: Random, line_no: int, product: ProductTemplate, language: object) -> LineItem:
     unit_price = _price(rng, product.price_low, product.price_high)
     code = f"{product.code_prefix}-{rng.randint(1000, 99999)}" if product.code_prefix else None
@@ -285,7 +313,8 @@ class InvoiceSampler:
         language = company.locale.language
         n = min(rng.randint(spec.line_count_low, spec.line_count_high), self._max_line_items)
         lines = tuple(
-            _build_line(rng, i + 1, rng.choice(products), language) for i in range(n)
+            _build_line(rng, i + 1, product, language)
+            for i, product in enumerate(_draw_products(rng, products, n))
         )
         if company.business_type is BusinessType.TELECOM:
             lines = _telecom_grouping(rng, lines, language)   # subscriber → category → event

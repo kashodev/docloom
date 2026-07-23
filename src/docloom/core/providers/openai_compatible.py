@@ -40,12 +40,26 @@ class OpenAICompatibleProvider:
         api_key: str | None = None,
         pricing: Pricing | None = None,
         client: httpx.AsyncClient | None = None,
+        extra_body: dict[str, Any] | None = None,
     ) -> None:
         self.name = name
         self.model = model
         self.pricing = pricing or pricing_for(model)
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
+        # Merged into every request body, overriding the defaults built here.
+        # A deliberate passthrough rather than named options: the parameters that
+        # matter are provider-specific and this adapter serves several. DashScope
+        # disables Qwen's thinking with `enable_thinking: false`; without it,
+        # qwen3.5-flash ignored `max_tokens` entirely and spent 2,335 tokens
+        # reasoning before a ~24-token answer. Encoding that as a docloom-level
+        # option would mean teaching the kernel each vendor's vocabulary.
+        self._extra_body = dict(extra_body or {})
+        # Largest output this model has actually returned, used to floor the
+        # pre-flight estimate (see `estimate_cost`). Plain attribute rather than
+        # a lock: this adapter is driven from one asyncio loop, where an integer
+        # assignment cannot be interleaved.
+        self._observed_max_output = 0
         # A caller-supplied client is reused (and injected by tests); otherwise
         # one is created lazily on first use and owned by this provider.
         self._client = client
@@ -70,22 +84,45 @@ class OpenAICompatibleProvider:
                 {"role": "user", "content": request.prompt},
             ],
         }
+        # Last, so a configured parameter can override a default — including
+        # `max_tokens` itself, for endpoints that want `max_completion_tokens`.
+        body.update(self._extra_body)
         resp = await client.post(
             f"{self._base_url}/chat/completions", json=body, headers=headers
         )
         resp.raise_for_status()
         data = resp.json()
 
-        text = data["choices"][0]["message"]["content"]
+        # `content` is null, not absent, when a reasoning model exhausts its
+        # token budget before producing an answer — so coalesce rather than
+        # letting None propagate into a record. The runner rejects empty text as
+        # a failure; see CatalogueRunner._record.
+        text = data["choices"][0]["message"].get("content") or ""
         usage = _parse_usage(data.get("usage", {}))
+        self._observed_max_output = max(self._observed_max_output, usage.output_tokens)
         cost = self.pricing.cost(usage.input_tokens, usage.output_tokens, usage.cached_input_tokens)
         return CompletionResult(
             text=text, usage=usage, model=self.model, provider=self.name, cost=cost
         )
 
     def estimate_cost(self, request: CompletionRequest) -> Decimal:
+        """Pre-flight estimate, floored by what this model has actually produced.
+
+        Estimating output as ``max_tokens`` assumes the model honours its own
+        cap. Qwen did not: asked for 48 it returned 2,359, so every estimate was
+        ~50× low. That matters most on the *batch* path, where one aggregate
+        estimate approves a whole batch in a single call — the per-call path is
+        backstopped by :meth:`BudgetGuard.add`, which enforces on real spend, but
+        a batch can overshoot before any actual cost is recorded.
+
+        So the estimate never under-predicts against evidence: once a response
+        has exceeded ``max_tokens``, later estimates assume at least that much.
+        Self-correcting after one call, and conservative in the direction that
+        protects the budget.
+        """
         est_input = (len(request.system) + len(request.prompt)) // _CHARS_PER_TOKEN
-        return self.pricing.cost(est_input, request.max_tokens)
+        est_output = max(request.max_tokens, self._observed_max_output)
+        return self.pricing.cost(est_input, est_output)
 
     async def aclose(self) -> None:
         if self._owns_client and self._client is not None:

@@ -197,17 +197,21 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       - Repro: `scratchpad/smoke_catalogue.py` (unmerged); `--raw` dumps the
         message shape that proved the diagnosis.
 
-- [ ] **The budget guard is defeated by output that exceeds `max_tokens`.**
-      `BudgetGuard.check` is pre-flight and `estimate_cost` predicts output cost
-      from `request.max_tokens`. The Qwen smoke above produced 2,359 completion
-      tokens against a `max_tokens` of 48, so the estimate was ~50× low — a
-      real run could sail past a `$50` cap because every pre-flight estimate is a
-      fraction of the true cost. The guard needs to also enforce on *accumulated
-      actual* spend (the runner already tracks `report.total_cost`), not only on
-      pre-flight estimates, so a model that overshoots its own token cap still
-      trips the limit. Independent of the reasoning-model fix above: even a
-      well-behaved model whose estimate is optimistic should not be able to
-      overspend without the guard reacting.
+- [x] **The budget pre-flight estimate is defeated by output that exceeds
+      `max_tokens`.** *(Correction: an earlier version of this entry claimed the
+      guard did not enforce on actual spend. It does — `BudgetGuard.add` raises
+      once cumulative real spend passes the limit, so per-call damage was always
+      bounded. The real hole was narrower and is recorded accurately here.)*
+      `estimate_cost` predicted output from `request.max_tokens`; Qwen returned
+      2,359 against a cap of 48, making every estimate ~50× low.
+      - **Where that actually bit: the batch path.** `_run_batched` checks one
+        aggregate estimate for a whole batch and then executes it, so a large
+        batch could overshoot badly *before* any actual cost reached `add()`.
+        The per-call path was backstopped; the batch path was not.
+      - **Fixed** by flooring the estimate with observed output: once a response
+        has exceeded `max_tokens`, later estimates assume at least that much.
+        Self-correcting after one call and conservative in the direction that
+        protects the budget.
 
 - [ ] **Exercise the provider layer against real endpoints in CI (gated).** The
       provider/catalogue code is unit-tested only against a fake httpx transport,

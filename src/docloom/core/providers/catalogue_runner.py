@@ -154,8 +154,24 @@ class CatalogueRunner:
         )
 
     def _record(self, report: RunReport, item_id: str, result: CompletionResult) -> None:
-        report.results[item_id] = result
+        # Cost and routing are recorded even when the text is unusable: the call
+        # was billed, so the budget must see it. Only success/failure differs.
         report.by_provider[result.provider] += 1
         report.total_cost += result.cost
         if self._budget is not None:
             self._budget.add(result.cost)
+
+        if not result.text.strip():
+            # An empty completion is a failure, not a success. A reasoning model
+            # that spends its whole token budget thinking returns `content: ""`
+            # with a normal 200 and real usage — observed from deepseek, which
+            # burned all 48 completion tokens on `reasoning_content` and emitted
+            # no answer. Recording that as a result would bake blank descriptions
+            # into a catalogue and report the build clean.
+            report.failures[item_id] = (
+                f"empty completion from {result.provider}/{result.model} "
+                f"({result.usage.output_tokens} output tokens, cost {result.cost}) — "
+                "if this is a reasoning model, disable thinking or raise max_tokens"
+            )
+            return
+        report.results[item_id] = result
