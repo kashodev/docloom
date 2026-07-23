@@ -260,8 +260,16 @@ def _llm_build(providers: str, *, companies: int, products_per_company: int,
     from docloom.core.providers.factory import build_mix
     from docloom.packs.invoice.llm_build import build_llm_catalogue_sync
 
+    # `providers` is a file path or the mix inline (from DOCLOOM_PROVIDERS on
+    # Cloud Run). `Path.is_file()` calls os.stat, which raises ENAMETOOLONG on an
+    # inline JSON string rather than returning False — so guard it, and treat any
+    # unstattable value as inline content.
     path = Path(providers)
-    raw = path.read_text() if path.is_file() else providers
+    try:
+        is_file = path.is_file()
+    except OSError:
+        is_file = False
+    raw = path.read_text() if is_file else providers
     try:
         config = yaml.safe_load(raw) or {}
     except yaml.YAMLError as exc:
