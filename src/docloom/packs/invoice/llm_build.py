@@ -102,37 +102,66 @@ def _is_french(locale: Locale) -> bool:
     return str(locale).startswith("fr")
 
 
-def build_prompt(company: CompanyRow, count: int) -> CompletionRequest:
-    """One chunk request: ``count`` products for one company, in its language.
+def _few_shot(examples: list[tuple[str, Decimal, Decimal]]) -> str:
+    """The example products as the JSON the model should return, so the style and
+    the format are shown together — the most reliable way to pin both."""
+    return json.dumps(
+        [{"name": text, "min": float(lo), "max": float(hi)} for text, lo, hi in examples],
+        ensure_ascii=False,
+    )
 
-    French companies are prompted in French and asked for French text, because
-    that is what prints on their invoices — translating afterwards is what
-    produced the half-French strings the procedural build had to fix.
+
+def build_prompt(
+    company: CompanyRow, count: int, examples: list[tuple[str, Decimal, Decimal]]
+) -> CompletionRequest:
+    """One chunk request: ``count`` line items for one company, in its language.
+
+    The register is the thing to get right: an invoice line item is a terse
+    *noun phrase* with a spec — "Stainless steel hex bolt, M8 x 40mm (pack of
+    10)" — not a marketing sentence ("Enhance operations with our energy-efficient
+    …"). A model told only "write products" reaches for ad copy, so the prompt is
+    shown the procedural descriptions as few-shot examples and told to match them
+    exactly. Anchoring to real examples fixes the format, the domain and the
+    register at once, far more reliably than an adjective like "terse".
+
+    French companies are prompted in French with French examples, because that is
+    what prints on their invoices — translating afterwards is what produced the
+    half-French strings the procedural build had to fix.
     """
     french = _is_french(company.locale)
     currency = str(company.currency)
     kind = company.business_type.value.replace("_", " ")
+    shots = _few_shot(examples)
     if french:
-        system = ("Tu rédiges des lignes de facture B2B concises. Réponds "
-                  "uniquement par un tableau JSON, sans texte autour.")
+        system = (
+            "Tu génères des libellés de lignes de facture : un nom de produit ou "
+            "de service concis, tel qu'il apparaît sur une vraie facture — un "
+            "groupe nominal avec ses caractéristiques, jamais une phrase, jamais "
+            "un texte publicitaire, sans verbe promotionnel. Réponds uniquement "
+            "par un tableau JSON."
+        )
         prompt = (
             f"Entreprise : {company.name}, secteur « {kind} ».\n"
-            f"Génère {count} produits ou services distincts qu'elle pourrait "
-            f"facturer, chacun avec une fourchette de prix plausible en {currency}.\n"
-            'Réponds par un tableau JSON d\'objets '
-            '{"nom": "...", "min": 0.0, "max": 0.0}. '
-            "Le nom est une seule ligne, sans préambule."
+            f"Écris {count} libellés de lignes de facture distincts, chacun avec "
+            f"une fourchette de prix plausible en {currency}.\n"
+            f"Reproduis exactement le style et le format de ces exemples :\n{shots}\n"
+            'Chaque « name » est une seule ligne : produit/service + '
+            "caractéristique clé, sans phrase ni argumentaire."
         )
     else:
-        system = ("You write terse B2B invoice line items. Reply with a JSON "
-                  "array only, no surrounding text.")
+        system = (
+            "You write invoice line-item labels: a terse product or service name "
+            "as it appears on a real invoice — a noun phrase with its spec, never "
+            "a sentence, never marketing copy, no promotional verbs like 'enhance' "
+            "or 'deliver'. Reply with a JSON array only."
+        )
         prompt = (
             f"Company: {company.name}, a {kind} business.\n"
-            f"Generate {count} distinct products or services it might invoice, "
-            f"each with a plausible price range in {currency}.\n"
-            'Reply with a JSON array of objects '
-            '{"name": "...", "min": 0.0, "max": 0.0}. '
-            "The name is a single line with no preamble."
+            f"Write {count} distinct invoice line items, each with a plausible "
+            f"price range in {currency}.\n"
+            f"Match the style and format of these examples exactly:\n{shots}\n"
+            "Each 'name' is one short line: product/service plus a key spec — no "
+            "sentence, no marketing."
         )
     return CompletionRequest(system=system, prompt=prompt, max_tokens=40 * count,
                              metadata={"company_id": company.company_id})
@@ -232,6 +261,16 @@ async def build_llm_catalogue(
     products: dict[str, list[ProductTemplate]] = {
         cid: list(items) for cid, items in fallback.items()
     }
+    # Two procedural products per company become the prompt's few-shot examples —
+    # the style the LLM must match. Taken from the fallback, in the company's
+    # printed language, with their price bands so the format is shown too.
+    examples: dict[str, list[tuple[str, Decimal, Decimal]]] = {
+        cid: [
+            (_printed_text(p, _is_french(by_id[cid].locale)), p.price_low, p.price_high)
+            for p in items[:2]
+        ]
+        for cid, items in fallback.items()
+    }
     report = BuildReport(companies=len(rows),
                          products=sum(len(v) for v in products.values()))
 
@@ -247,7 +286,7 @@ async def build_llm_catalogue(
         if not pending:
             break
         report.rounds = round_no + 1
-        items, slot_map = _chunk_items(pending, by_id, round_no)
+        items, slot_map = _chunk_items(pending, by_id, examples, round_no)
         outcome = await runner.run(items)
         report.total_cost += outcome.total_cost
         for provider, n in outcome.by_provider.items():
@@ -271,7 +310,10 @@ async def build_llm_catalogue(
 
 
 def _chunk_items(
-    pending: list[tuple[str, int]], by_id: dict[str, CompanyRow], round_no: int
+    pending: list[tuple[str, int]],
+    by_id: dict[str, CompanyRow],
+    examples: dict[str, list[tuple[str, Decimal, Decimal]]],
+    round_no: int,
 ) -> tuple[list[CatalogueItem], dict[str, list[tuple[str, int]]]]:
     """Group pending slots into per-company chunk requests.
 
@@ -288,7 +330,8 @@ def _chunk_items(
         for offset in range(0, len(slots), CHUNK):
             chunk = slots[offset:offset + CHUNK]
             item_id = f"{cid}:r{round_no}:{offset // CHUNK}"
-            items.append(CatalogueItem(item_id, build_prompt(by_id[cid], len(chunk))))
+            items.append(CatalogueItem(
+                item_id, build_prompt(by_id[cid], len(chunk), examples[cid])))
             slot_map[item_id] = chunk
     return items, slot_map
 

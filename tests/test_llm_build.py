@@ -35,7 +35,7 @@ def run(mix, **kw):  # noqa: ANN001, ANN201
 
 def n_asked(request: CompletionRequest) -> int:
     import re
-    return int(re.search(r"(\d+) (?:distinct|produits)", request.prompt).group(1))
+    return int(re.search(r"(?:Write|Écris)\s+(\d+)", request.prompt).group(1))
 
 
 class Fake:
@@ -236,6 +236,6 @@ def test_a_french_company_is_prompted_in_french() -> None:
 
     fr = CompanyRow("fr0", "Voltaire SARL", BusinessType.RETAIL, Jurisdiction.FR,
                     Locale.FR_FR, Currency.EUR, 1.0)
-    request = build_prompt(fr, 10)
-    assert "produits" in request.prompt.lower()
+    request = build_prompt(fr, 10, [("Boulon en acier, M8", __import__("decimal").Decimal("1"), __import__("decimal").Decimal("3"))])
+    assert "libellés" in request.prompt.lower() and "facture" in request.prompt.lower()
     assert "EUR" in request.prompt

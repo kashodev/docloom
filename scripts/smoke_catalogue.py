@@ -68,8 +68,8 @@ def make_items(n: int) -> list[CatalogueItem]:
         items.append(CatalogueItem(
             item_id=f"prod-{i:03d}",
             request=CompletionRequest(
-                system="You write terse B2B product blurbs. One sentence, no preamble.",
-                prompt=f"Describe this catalogue product in one sentence: {product}.",
+                system="You write invoice line-item labels: a terse noun phrase with a spec, like a catalogue entry — never a sentence, never marketing.",
+                prompt=f"Write one invoice line item for: {product}. Reply with the label only, e.g. 'Stainless steel hex bolt, M8 x 40mm (pack of 10)'.",
                 max_tokens=48,
                 metadata={"product": product},
             ),
@@ -99,8 +99,8 @@ async def dump_raw() -> None:
     from docloom.core.providers.factory import PRESETS
 
     req = CompletionRequest(
-        system="You write terse B2B product blurbs. One sentence, no preamble.",
-        prompt="Describe this catalogue product in one sentence: LED work light, 20W.",
+        system="You write invoice line-item labels: a terse noun phrase with a spec, never a sentence.",
+        prompt="Write one invoice line item for: LED work light, 20W. Label only.",
         max_tokens=48,
     )
     async with httpx.AsyncClient(timeout=120.0) as client:
@@ -191,7 +191,7 @@ async def main() -> int:
     print("\n── results ────────────────────────────────────────────")
     for item_id in sorted(report.results):
         r = report.results[item_id]
-        text = " ".join(r.text.split())[:70]
+        text = " ".join(r.text.split())
         print(f"  {item_id}  {r.provider:10s} {r.model:18s} "
               f"${r.cost:.6f}  in={r.usage.input_tokens} out={r.usage.output_tokens}")
         print(f"            “{text}”")

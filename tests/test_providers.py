@@ -191,9 +191,20 @@ def test_anthropic_provider_via_fake_client() -> None:
     assert result.cost == D("500") * D("1.00") / 1_000_000 + D("90") * D("5.00") / 1_000_000
 
 
+def _anthropic_installed() -> bool:
+    import importlib.util
+    return importlib.util.find_spec("anthropic") is not None
+
+
+@pytest.mark.skipif(
+    _anthropic_installed(),
+    reason="tests the SDK-absent path; the anthropic extra is present here",
+)
 def test_anthropic_provider_without_sdk_gives_actionable_error() -> None:
-    # anthropic is not installed in the test env; constructing without an
-    # injected client must name the extra.
+    # Only meaningful when the extra is absent (the default core-only env):
+    # constructing without an injected client must name the extra rather than
+    # raising a bare ModuleNotFoundError. Skipped once anthropic is installed —
+    # e.g. after an LLM catalogue build or smoke run in the same venv.
     with pytest.raises(ImportError, match=r"docloom\[anthropic\]"):
         AnthropicProvider(model="claude-haiku-4-5")
 
