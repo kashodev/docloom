@@ -42,6 +42,39 @@ Two consequences follow:
   same documents and the same golden rows. Retrying a failed unit is therefore
   safe and exact, and a run is auditable from its id alone.
 
+### Reproducibility is per code version, not absolute
+
+The seed determines the document **given the same generator**. A document is a
+function of `(run_id, index, generator version)`, and the third term is easy to
+forget because it is invisible in the run id.
+
+Any change to *how the RNG is consumed* changes the output for every index —
+even when the change is not "about" content. Drawing a value one extra time,
+drawing in a different order, or drawing a different number of values all shift
+every subsequent draw. The sampling change that made line items distinct is
+exactly this: no arithmetic invariant moved, no validator changed, and every
+document still reconciles — but `("run_2026_07", 4182)` is a *different invoice*
+before and after.
+
+Three practical consequences:
+
+- **Do not upgrade mid-run.** A resumed run whose remaining units are generated
+  by a newer version produces a corpus with two different content distributions
+  in it. Nothing errors; the mixture is simply not what the run id claims. Finish
+  a run, then upgrade.
+- **Already-generated data is safe.** Documents and golden rows that exist are
+  untouched by an upgrade — they are stored, not recomputed. The hazard is only
+  in *re-generating*.
+- **Re-running an old run id does not recover an old corpus.** If you need a
+  corpus reproduced exactly, pin the version that produced it. This is what the
+  catalogue artifact's version pinning is for — see
+  [the catalogue design](../feature_explorations/) — since content will
+  increasingly live in a versioned artifact rather than in code.
+
+The golden *invariants* — the arithmetic reconciles, the validators hold, the
+record matches the rendered page — are stable across versions. The specific
+corpus is not.
+
 ## The atomic claim is the single coordination point
 
 Coordination is **pull-based**. Workers do not get assigned work; each one loops,

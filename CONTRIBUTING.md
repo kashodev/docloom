@@ -63,3 +63,11 @@ PYTHONPATH=src pytest -q          # full suite
 - Committing third-party reference material (see `templates/stamps/`).
 - Changing a golden value. The record is the ground truth an extraction pipeline
   is scored against — rendering may change freely, the computed figures may not.
+- Changing how the RNG is consumed **without saying so in the PR**. Drawing an
+  extra value, drawing in a different order, or drawing a different number of
+  values shifts every subsequent draw, so every document changes for a given
+  `(run_id, index)`. That is sometimes the right thing to do — making line items
+  distinct was — but it means a run cannot be resumed across the change, and an
+  old run id no longer reproduces its old corpus. Call it out explicitly under
+  *Risk & rollout* so a reviewer can weigh it. See
+  [docs/concurrency.md](docs/concurrency.md#reproducibility-is-per-code-version-not-absolute).

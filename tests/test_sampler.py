@@ -164,3 +164,54 @@ def test_sampler_drives_a_full_run(tmp_path) -> None:  # noqa: ANN001
     assert all(isinstance(r["grand_total"], D) for r in rows)
     # Distinct companies appeared (weighted roster), and totals are exact.
     assert len({r["company_id"] for r in rows}) >= 2
+
+
+# ── Line-item variety ───────────────────────────────────────────────────────
+def test_lines_are_as_distinct_as_the_pool_allows() -> None:
+    """The realism invariant: a document uses every product available to it
+    before repeating any.
+
+    Lines used to be drawn with `rng.choice` — with replacement — so a 6-line
+    invoice against a 5-product pool almost always listed the same product twice
+    while leaving others unused. Real invoices raise a quantity instead of
+    repeating a line. Remaining repetition is now purely a pool-size limit
+    (7 lines from 5 products must repeat 2), which is what the catalogue work
+    addresses; this test pins the sampler's half of it.
+    """
+    catalogue = SeedCatalogue()
+    sampler = InvoiceSampler(catalogue, max_line_items=8000)
+    for index in range(60):
+        invoice = sampler.generate("variety", index)
+        pool = catalogue.business_spec(invoice.business_type).products
+        descriptions = [li.description for li in invoice.line_items]
+        # Telecom regroups its lines, so compare against what was drawable.
+        expected = min(len(descriptions), len({p.describe(invoice.locale.language)
+                                               for p in pool}))
+        assert len(set(descriptions)) == expected, (
+            f"index {index}: {len(set(descriptions))} distinct of {len(descriptions)} "
+            f"lines, pool allows {expected}"
+        )
+
+
+def test_a_short_invoice_never_repeats_a_line() -> None:
+    """The visible case: when the pool is bigger than the line count, every line
+    is different."""
+    catalogue = SeedCatalogue()
+    sampler = InvoiceSampler(catalogue, max_line_items=3)
+    for index in range(40):
+        invoice = sampler.generate("short", index)
+        if len(invoice.line_items) > 3:
+            continue                      # telecom regrouping; covered above
+        descriptions = [li.description for li in invoice.line_items]
+        pool_size = len(catalogue.business_spec(invoice.business_type).products)
+        if len(descriptions) <= pool_size:
+            assert len(set(descriptions)) == len(descriptions)
+
+
+def test_drawing_is_still_deterministic() -> None:
+    """Reshuffling must not cost reproducibility — the whole pipeline rests on
+    (run_id, index) determining the document."""
+    a = InvoiceSampler(max_line_items=20).generate("det", 11)
+    b = InvoiceSampler(max_line_items=20).generate("det", 11)
+    assert [li.description for li in a.line_items] == [li.description for li in b.line_items]
+    assert a.totals.grand_total == b.totals.grand_total

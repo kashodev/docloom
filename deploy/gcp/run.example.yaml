@@ -151,6 +151,12 @@ catalogue:
     - name: dashscope
       model: qwen3.5-flash
       weight: 40
+      # Qwen is a thinking model: without this it ignores `max_tokens` outright
+      # (observed: 2,335 reasoning tokens for a ~24-token answer) and costs
+      # ~50x the estimate. `extra_body` is passed straight through to the
+      # provider, so any vendor-specific parameter can go here.
+      extra_body:
+        enable_thinking: false
     - name: anthropic
       model: claude-haiku-4-5
       weight: 20

@@ -240,3 +240,59 @@ def test_complete_batch_restores_input_order_and_batch_cost() -> None:
     assert [r.text for r in results] == ["first", "second", "third"]   # reordered by custom_id
     # Half-price: 500 in @ $0.50/M + 90 out @ $2.50/M.
     assert results[0].cost == D("500") * D("0.50") / 1_000_000 + D("90") * D("2.50") / 1_000_000
+
+
+# ── Empty completions are failures, not results ─────────────────────────────
+class EmptyStub(SyncStub):
+    """A reasoning model that spent its whole budget thinking: HTTP 200, real
+    usage, real cost, and no text. Observed from deepseek-v4-flash."""
+
+    async def complete(self, request: CompletionRequest) -> CompletionResult:
+        self.calls += 1
+        return CompletionResult("", Usage(37, 48), self.model, self.name, self._cost)
+
+
+class BlankStub(SyncStub):
+    """Whitespace-only — the same defect wearing a disguise."""
+
+    async def complete(self, request: CompletionRequest) -> CompletionResult:
+        self.calls += 1
+        return CompletionResult("   \n  ", Usage(37, 48), self.model, self.name, self._cost)
+
+
+def test_an_empty_completion_is_a_failure_not_a_result() -> None:
+    """The bug that would have baked blank descriptions into a shipped catalogue
+    while reporting the build clean."""
+    mix = ProviderMix([EmptyStub("deepseek", D("0.001"))], [1.0])
+    report = run(CatalogueRunner(mix).run(items(4)))
+    assert report.results == {}
+    assert len(report.failures) == 4
+    assert "empty completion" in report.failures["item-0"]
+
+
+def test_a_whitespace_only_completion_is_also_a_failure() -> None:
+    mix = ProviderMix([BlankStub("qwen", D("0.001"))], [1.0])
+    report = run(CatalogueRunner(mix).run(items(2)))
+    assert report.results == {}
+    assert len(report.failures) == 2
+
+
+def test_an_empty_completion_still_costs_money() -> None:
+    """You were billed for the tokens whether or not you got an answer, so the
+    budget and the cost total must see it — only success differs."""
+    budget = BudgetGuard(D("1.00"))
+    mix = ProviderMix([EmptyStub("deepseek", D("0.01"))], [1.0])
+    report = run(CatalogueRunner(mix, budget=budget).run(items(5)))
+    assert report.total_cost == D("0.05")
+    assert budget.spent == D("0.05")
+    assert report.results == {}
+
+
+def test_good_and_empty_completions_are_separated() -> None:
+    """A mixed run must keep the usable results and reject only the blanks."""
+    good, empty = SyncStub("good", D("0.001")), EmptyStub("empty", D("0.001"))
+    mix = ProviderMix([good, empty], [0.5, 0.5])
+    report = run(CatalogueRunner(mix).run(items(20)))
+    assert report.results and report.failures
+    assert len(report.results) + len(report.failures) == 20
+    assert all(r.text for r in report.results.values())
