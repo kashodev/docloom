@@ -242,3 +242,56 @@ def test_a_worker_retrying_into_an_all_failed_run_still_exits_nonzero(
         "a retry that claimed nothing reported success over an all-failed run"
     )
     assert "0 done" not in second.output or "2 failed" in second.output
+
+
+def test_generate_draws_from_a_catalogue_artifact(tmp_path: Path) -> None:
+    """The artifact reaches the sampler and is recorded on the golden rows —
+    reading a Parquet file needs no credential, so this stays local-first."""
+    from decimal import Decimal as D
+
+    from docloom.core.locale.enums import Currency, Locale
+    from docloom.packs.invoice.artifact import CompanyRow, write_catalogue
+    from docloom.packs.invoice.catalog import ProductTemplate
+    from docloom.packs.invoice.enums import BusinessType
+    from docloom.packs.invoice.jurisdictions import Jurisdiction
+
+    art = tmp_path / "catalogue"
+    rows = [CompanyRow("solo", "Solo Supply Ltd", BusinessType.RETAIL,
+                       Jurisdiction.US, Locale.EN_US, Currency.USD, 1.0)]
+    write_catalogue(str(art), companies=rows,
+                    products={"solo": [ProductTemplate(f"Bespoke part {i}", D("3.00"), D("9.00"))
+                                       for i in range(12)]},
+                    catalogue_version="cli-test-1")
+
+    p = _paths(tmp_path)
+    gen = runner.invoke(app, [
+        "generate", "--run-id", "cat", "--total", "4", "--unit-size", "4",
+        "--format", "html", "--max-line-items", "5", "--catalogue", str(art),
+        "--storage", p["storage"], "--state", p["state"],
+    ])
+    assert gen.exit_code == 0, gen.output
+    assert "cli-test-1" in gen.output
+
+    exp = runner.invoke(app, [
+        "export", "--run-id", "cat",
+        "--storage", p["storage"], "--sink", f"duckdb:///{p['sink']}",
+    ])
+    assert exp.exit_code == 0, exp.output
+
+    import duckdb
+    conn = duckdb.connect(p["sink"])
+    assert conn.execute("select distinct catalogue_version from invoices").fetchall() == [
+        ("cli-test-1",)
+    ]
+    descriptions = conn.execute("select distinct description from line_items").fetchall()
+    assert all(d[0].startswith("Bespoke part") for d in descriptions), descriptions
+
+
+def test_a_missing_catalogue_fails_before_generating(tmp_path: Path) -> None:
+    p = _paths(tmp_path)
+    bad = runner.invoke(app, [
+        "generate", "--run-id", "nocat", "--total", "2", "--format", "html",
+        "--catalogue", str(tmp_path / "absent"),
+        "--storage", p["storage"], "--state", p["state"],
+    ])
+    assert bad.exit_code != 0

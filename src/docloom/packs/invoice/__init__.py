@@ -34,6 +34,7 @@ from docloom.packs.invoice.context import (
     column_headers,
     group_line_items,
 )
+from docloom.packs.invoice.catalog import Catalogue
 from docloom.packs.invoice.sampler import InvoiceSampler
 from docloom.packs.invoice.enums import (
     BillingModel,
@@ -141,15 +142,27 @@ class InvoicePack:
         *,
         selection: Selection | None = None,
         max_line_items: int | None = None,
+        catalogue: str | None = None,
     ) -> InvoiceSampler:
-        """The sampler over the procedural seed catalogue — no API keys.
+        """The sampler over a content catalogue — no API keys either way.
+
+        With no ``catalogue`` this is the built-in seed pool, which is what keeps
+        `pip install docloom` runnable end to end. Point it at a published
+        artifact for the large, varied corpus; loading a Parquet file needs no
+        credential, so local-first survives the upgrade.
 
         The selection is resolved lazily, on the first document of a run, because
         "use 10 companies" is a function of the run id the sampler does not have
         yet. An impossible constraint therefore surfaces on the first unit rather
         than at construction — still before any document is written.
         """
+        source: Catalogue | None = None
+        if catalogue:
+            from docloom.packs.invoice.artifact import load_catalogue
+
+            source = load_catalogue(catalogue)
         return InvoiceSampler(
+            source,
             selection=selection,
             **({"max_line_items": max_line_items} if max_line_items is not None else {}),
         )
