@@ -111,6 +111,59 @@ def test_a_failed_unit_leaves_no_root_manifest(tmp_path: Path, monkeypatch) -> N
         load_catalogue(out)                     # no root manifest for a partial build
 
 
+def test_an_incomplete_build_never_reports_itself_complete(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    """The false-green that made a 1-of-10 build read as four successful tasks.
+
+    A worker that claims nothing is not a success: the first attempt fails its
+    units and exits non-zero, then the platform retries the task, the retry finds
+    no PENDING units and drains cleanly. Unless completion is reported from the
+    *build*, that retry exits 0 and the execution goes green over a broken build.
+    """
+    from docloom.packs.invoice import build_run
+
+    real = build_run.generate_company_range
+
+    def explode(start, end, **kw):  # noqa: ANN001, ANN003
+        if start >= 40:
+            raise RuntimeError("provider is out of credit")
+        return real(start, end, **kw)
+
+    monkeypatch.setattr(build_run, "generate_company_range", explode)
+    out = str(tmp_path / "cat")
+    state = _state(tmp_path)
+    kw = dict(out=out, build_id="b", catalogue_version="v1", companies=100,
+              products_per_company=6, unit_size=20, seed=1)
+
+    first = build_catalogue_run(state, **kw)          # type: ignore[arg-type]
+    assert first.units_failed == 3 and first.build_complete is False
+
+    # The retry: re-queues the failed units, fails them again, and must still
+    # report the build as incomplete rather than "nothing to do, all good".
+    second = build_catalogue_run(state, **kw)         # type: ignore[arg-type]
+    assert second.build_complete is False
+    assert second.units_failed == 3, "failed units must be retried, not skipped"
+    with pytest.raises(FileNotFoundError):
+        load_catalogue(out)
+
+
+def test_a_worker_that_claims_nothing_reports_the_builds_state(tmp_path: Path) -> None:
+    """A second worker arriving after the build is done exits successfully; one
+    arriving to a half-built run does not."""
+    out = str(tmp_path / "cat")
+    db = tmp_path / "b.db"
+    kw = dict(out=out, build_id="b", catalogue_version="v1", companies=40,
+              products_per_company=6, unit_size=20, seed=1)
+    first = SqliteStateStore(db)
+    build_catalogue_run(first, **kw)                  # type: ignore[arg-type]
+    first.close()
+
+    latecomer = SqliteStateStore(db)
+    stats = build_catalogue_run(latecomer, **kw)      # type: ignore[arg-type]
+    latecomer.close()
+    assert stats.units_completed == 0                 # nothing left to claim
+    assert stats.build_complete is True               # …but the build IS done
+
+
 def test_a_resume_completes_the_build(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
     from docloom.core.pipeline import resume_run
     from docloom.packs.invoice import build_run

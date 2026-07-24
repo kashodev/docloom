@@ -71,6 +71,11 @@ class BuildStats:
     llm_filled: int = 0
     procedural_fallback: int = 0
     total_cost: Decimal = Decimal(0)
+    #: Whether the *build* (not this worker) finished — i.e. every unit is done
+    #: and the root manifest exists. A worker that legitimately claims nothing
+    #: still has to report this, or an incomplete build exits 0 and reads as a
+    #: success. See ``build_catalogue_run``.
+    build_complete: bool = False
 
 
 def build_catalogue_run(
@@ -107,6 +112,16 @@ def build_catalogue_run(
         budget = DistributedBudgetGuard(state, build_id, Decimal(str(budget_usd)))
 
     stats = BuildStats()
+    # Return previously failed units to the pool before draining. Without this a
+    # unit that fails once is failed forever: the claim only hands out PENDING
+    # units, so a retried task finds nothing to do, drains cleanly and exits 0 —
+    # reporting success for a build that is still full of holes. Bounded by
+    # construction: the reset happens once per invocation, so a unit can fail at
+    # most once per attempt rather than spinning inside one drain.
+    requeued = state.reset_failed_units(build_id)
+    if requeued:
+        _log.info("catalogue build: re-queued failed units", requeued=requeued)
+
     _log.info("catalogue build: worker draining", companies=companies, unit_size=unit_size,
               out=out, mode="llm" if mix is not None else "procedural")
     while (unit := state.claim_next_unit(build_id)) is not None:
@@ -114,9 +129,11 @@ def build_catalogue_run(
                    products_per_company=products_per_company, seed=seed, mix=mix,
                    budget=budget, concurrency=concurrency, max_rounds=max_rounds)
 
-    _finalize_if_complete(state, artifact, out, build_id, catalogue_version, provenance)
+    stats.build_complete = _finalize_if_complete(
+        state, artifact, out, build_id, catalogue_version, provenance)
     _log.info("catalogue build: worker drained", units=stats.units_completed,
-              failed=stats.units_failed, products=stats.products, cost=str(stats.total_cost))
+              failed=stats.units_failed, products=stats.products,
+              cost=str(stats.total_cost), build_complete=stats.build_complete)
     return stats
 
 
@@ -169,19 +186,25 @@ def _work_unit(
 def _finalize_if_complete(
     state: StateStore, artifact: BlobStore, out: str, build_id: str,
     catalogue_version: str, provenance: dict | None,
-) -> None:
-    """Write the root manifest once every unit is done, from the shard parts."""
+) -> bool:
+    """Write the root manifest once every unit is done, from the shard parts.
+
+    Returns whether the *build* is complete — including when another worker
+    finalised it — so the caller can set an exit code that reflects the build
+    rather than this worker's share of it.
+    """
     progress = state.progress(build_id)
     outstanding = progress[WorkUnitState.PENDING] + progress[WorkUnitState.RUNNING]
     if outstanding or progress[WorkUnitState.FAILED]:
-        if progress[WorkUnitState.FAILED]:
-            _log.warning("catalogue build left incomplete",
-                         failed=progress[WorkUnitState.FAILED], pending=outstanding)
-        return
+        _log.warning("catalogue build left incomplete",
+                     failed=progress[WorkUnitState.FAILED], pending=outstanding)
+        return False
 
     run = state.get_run(build_id)
-    if run is None or run.state is RunState.COMPLETED:
-        return   # someone already finalised
+    if run is None:
+        return False
+    if run.state is RunState.COMPLETED:
+        return True   # someone already finalised
     state.set_run_state(build_id, RunState.COMPLETED)
 
     shards = [json.loads(artifact.get(key))
@@ -197,3 +220,4 @@ def _finalize_if_complete(
     _log.info("catalogue build complete", units=len(shards),
               companies=total_provenance["companies"],
               products=total_provenance["products"], manifest=f"{out}/{MANIFEST_KEY}")
+    return True

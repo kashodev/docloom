@@ -347,7 +347,13 @@ def _sharded_catalogue(*, out: str, version: str, companies: int, products_per_c
     typer.echo(f"  this worker: {stats.units_completed} unit(s), {stats.products:,} products"
                + (f", {stats.units_failed} failed" if stats.units_failed else "")
                + (f", cost ${stats.total_cost}" if stats.total_cost else ""))
-    if stats.units_failed:
+    # The exit code reports the BUILD, not this worker's share of it. A worker
+    # that claimed nothing — because the units were all taken, or all already
+    # failed — has "succeeded" at doing nothing, and exiting 0 on that turns an
+    # incomplete build into a green execution. Only a finished build is a zero.
+    if not stats.build_complete:
+        typer.echo("  build incomplete — no root manifest written; "
+                   "re-run to retry the failed units", err=True)
         raise typer.Exit(1)
 
 
