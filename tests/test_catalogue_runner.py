@@ -87,9 +87,9 @@ class EmptyStub(SyncStub):
         return CompletionResult("", Usage(50, 2000), self.model, self.name, self._cost)
 
 
-def mix_of(*providers, weights=None):  # noqa: ANN002, ANN003, ANN201
+def mix_of(*providers, weights=None, fallback=None):  # noqa: ANN002, ANN003, ANN201
     weights = weights or [1.0] * len(providers)
-    return ProviderMix(list(providers), weights)
+    return ProviderMix(list(providers), weights, fallback=fallback)
 
 
 # ── Routing, results, accounting ────────────────────────────────────────────
@@ -199,12 +199,14 @@ def test_a_quarantined_provider_falls_back_to_procedural_by_default() -> None:
     assert good.calls - good_before == len(second.results)
 
 
-def test_reroute_quarantined_moves_the_share_to_survivors_when_opted_in() -> None:
-    """The opt-in: a caller who would rather keep the LLM fill high can pay the
-    surviving models for the dead one's share."""
+def test_a_fallback_pool_sends_a_dead_providers_share_to_the_named_model() -> None:
+    """A fallback pool naming a survivor keeps the LLM fill high — the dead
+    provider's share is paid to the model the operator chose, not lost to
+    procedural. (This replaces the old reroute_quarantined boolean.)"""
     bad, good = EmptyStub("bad", D("0.01")), SyncStub("good", D("0.001"))
-    runner = CatalogueRunner(mix_of(bad, good, weights=[0.5, 0.5]),
-                             empty_streak_limit=3, reroute_quarantined=True)
+    runner = CatalogueRunner(
+        mix_of(bad, good, weights=[0.5, 0.5], fallback=[("good", 100.0)]),
+        empty_streak_limit=3)
 
     run(runner.run(items(40)))
     assert "bad" in runner._quarantined
@@ -212,9 +214,30 @@ def test_reroute_quarantined_moves_the_share_to_survivors_when_opted_in() -> Non
 
     second = run(runner.run(items(40, start=40)))
     assert bad.calls == calls_before               # never called again
-    assert len(second.results) == 40               # all rerouted to the survivor
+    assert len(second.results) == 40               # all sent to the named survivor
     assert all(r.provider == "good" for r in second.results.values())
     assert second.failures == {}
+
+
+def test_a_fallback_pool_splits_the_dead_share_by_configured_proportion() -> None:
+    """The core of the feature: a dead provider's share is split across the pool
+    in the configured ratio — here 70% to a survivor, 30% to procedural."""
+    # good has weight 0, so everything normally routes to bad; once bad is
+    # quarantined its whole share redistributes 70/30.
+    bad, good = EmptyStub("bad", D("0.01")), SyncStub("good", D("0.001"))
+    runner = CatalogueRunner(
+        mix_of(bad, good, weights=[1.0, 0.0],
+               fallback=[("good", 70.0), ("procedural", 30.0)]),
+        empty_streak_limit=3)
+
+    run(runner.run(items(60)))                     # quarantine bad
+    assert "bad" in runner._quarantined
+
+    second = run(runner.run(items(400, start=100)))
+    filled, proc = len(second.results), len(second.failures)
+    assert filled + proc == 400
+    assert all(r.provider == "good" for r in second.results.values())
+    assert 0.62 < filled / 400 < 0.78              # ~70% to good, ~30% procedural
 
 
 def test_an_occasional_empty_does_not_quarantine() -> None:

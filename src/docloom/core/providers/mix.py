@@ -26,6 +26,28 @@ from docloom.core.providers.base import CompletionRequest, CompletionResult, Tex
 from docloom.core.providers.budget import BudgetGuard
 from docloom.core.usage.base import LlmUsage, UsageSink
 
+#: The literal a `catalogue.fallback` entry uses to send a share to the free
+#: procedural description instead of another model.
+PROCEDURAL_TARGET = "procedural"
+
+
+class _Procedural:
+    """Sentinel returned by :meth:`ProviderMix.route` for "no provider — use the
+    procedural description". A distinct object so callers test it with ``is``."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "PROCEDURAL"
+
+
+#: Route sentinel: this item has no live model and falls back to procedural.
+PROCEDURAL = _Procedural()
+
+#: Decorrelates the fallback draw from the primary provider draw so the two
+#: distributions are independent while both stay a pure function of the seed.
+_FALLBACK_SALT = 0x9E3779B1
+
 
 class ProviderMix:
     """A weighted ensemble of providers with deterministic per-item routing."""
@@ -37,6 +59,7 @@ class ProviderMix:
         *,
         budget: BudgetGuard | None = None,
         usage: UsageSink | None = None,
+        fallback: list[tuple[str, float]] | None = None,
     ) -> None:
         if len(providers) != len(weights):
             raise ValueError("providers and weights must be the same length")
@@ -57,6 +80,24 @@ class ProviderMix:
             self._cumulative.append(acc)
         self._budget = budget
         self._usage = usage
+
+        # Fallback pool: how a quarantined provider's share is redistributed.
+        # Each entry targets a provider already in the mix or the literal
+        # `procedural` (the free sink). Empty ⇒ a quarantined share goes
+        # straight to procedural — the safe default. Shares are normalised here.
+        self._by_name = {p.name: p for p in providers}
+        self._fallback: list[tuple[str, float]] = []
+        if fallback:
+            unknown = [t for t, _ in fallback
+                       if t != PROCEDURAL_TARGET and t not in self._by_name]
+            if unknown:
+                raise ValueError(
+                    f"fallback target(s) {unknown} are neither {PROCEDURAL_TARGET!r} "
+                    f"nor a provider in the mix ({sorted(self._by_name)})")
+            ftotal = sum(share for _, share in fallback)
+            if ftotal <= 0:
+                raise ValueError("fallback shares must sum to a positive number")
+            self._fallback = [(t, s / ftotal) for t, s in fallback]
 
     @property
     def providers(self) -> list[TextProvider]:
@@ -89,6 +130,38 @@ class ProviderMix:
             if point < ceiling:
                 return provider
         return self._providers[-1]   # guard against float rounding at 1.0
+
+    def route(
+        self, seed: int, *, quarantined: frozenset[str] = frozenset()
+    ) -> TextProvider | _Procedural:
+        """Route an item to a live provider, or to :data:`PROCEDURAL`.
+
+        The item's provider is chosen normally (by weight, from ``seed``). If that
+        provider is quarantined, its share is redistributed across the configured
+        **fallback pool** — never silently onto the surviving mix by weight, which
+        could land a dead cheap model's work on the priciest survivor. With no
+        fallback pool the share goes to procedural (the safe default). A fallback
+        entry that is itself quarantined is dropped and its share renormalised
+        over the rest; a ``procedural`` entry, or an exhausted pool, yields
+        :data:`PROCEDURAL`. Deterministic in ``(seed, quarantined)``.
+        """
+        chosen = self.choose(seed)
+        if chosen.name not in quarantined:
+            return chosen
+        live = [(t, s) for t, s in self._fallback
+                if t == PROCEDURAL_TARGET or t not in quarantined]
+        if not live:
+            return PROCEDURAL
+        total = sum(s for _, s in live)
+        point = Random(seed ^ _FALLBACK_SALT).random()
+        acc = 0.0
+        target = live[-1][0]                       # float-rounding tail default
+        for name, s in live:
+            acc += s / total
+            if point < acc:
+                target = name
+                break
+        return PROCEDURAL if target == PROCEDURAL_TARGET else self._by_name[target]
 
     async def complete(self, request: CompletionRequest, *, seed: int) -> CompletionResult:
         """Route one request to its seed-chosen provider, honouring the budget.

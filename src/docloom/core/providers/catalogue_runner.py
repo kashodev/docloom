@@ -30,7 +30,7 @@ from decimal import Decimal
 from docloom.core.logging import get_logger
 from docloom.core.providers.base import CompletionRequest, CompletionResult, TextProvider
 from docloom.core.providers.budget import BudgetExceeded, BudgetGuard
-from docloom.core.providers.mix import ProviderMix
+from docloom.core.providers.mix import PROCEDURAL, ProviderMix
 from docloom.core.usage.base import LlmUsage, UsageSink
 
 _log = get_logger(__name__)
@@ -72,7 +72,6 @@ class CatalogueRunner:
         use_batch: bool = True,
         usage: UsageSink | None = None,
         empty_streak_limit: int = 10,
-        reroute_quarantined: bool = False,
     ) -> None:
         self._mix = mix
         self._budget = budget
@@ -87,15 +86,11 @@ class CatalogueRunner:
         # whole duration. A single non-empty completion clears the streak, so an
         # occasional blank never trips it.
         #
-        # By default a quarantined provider's share falls back to **procedural**
-        # (free). Rerouting it onto the surviving models is opt-in
-        # (``reroute_quarantined``) and off by default on purpose: silently
-        # moving 40% of a build onto whichever models remain can land it on the
-        # priciest one and drain the whole budget before the target is met. The
-        # safe default degrades to procedural; a caller who would rather pay to
-        # keep the LLM fill high asks for it explicitly.
+        # Where a quarantined provider's share goes is the ProviderMix's decision
+        # (its fallback pool): procedural by default, or a configured pool of
+        # models + shares. The runner only detects the failure and reports the
+        # quarantined set to `mix.route`.
         self._empty_streak_limit = max(empty_streak_limit, 1)
-        self._reroute_quarantined = reroute_quarantined
         self._empty_streak: Counter[str] = Counter()
         self._quarantined: set[str] = set()
 
@@ -108,20 +103,13 @@ class CatalogueRunner:
         index_of = {id(p): i for i, p in enumerate(providers)}
         quarantined = frozenset(self._quarantined)
         for item in items:
-            provider = self._mix.choose(item_seed(item.item_id))
-            if provider.name in quarantined:
-                # Reroute only if asked, and only to a genuinely healthy model;
-                # otherwise this item's description stays procedural. Never pay a
-                # surviving (possibly pricier) model for a dead one's share by
-                # default — see the circuit-breaker note in __init__.
-                if self._reroute_quarantined:
-                    provider = self._mix.choose(item_seed(item.item_id), exclude=quarantined)
-                if not self._reroute_quarantined or provider.name in quarantined:
-                    report.failures[item.item_id] = (
-                        f"provider {provider.name} quarantined (all empty) — "
-                        "procedural fallback")
-                    continue
-            groups[index_of[id(provider)]].append(item)
+            target = self._mix.route(item_seed(item.item_id), quarantined=quarantined)
+            if target is PROCEDURAL:
+                # No live model for this item (its provider is quarantined and the
+                # fallback pool sent its share to procedural, or is exhausted).
+                report.failures[item.item_id] = "quarantined — fallback to procedural"
+                continue
+            groups[index_of[id(target)]].append(item)
 
         for idx, group in groups.items():
             provider = providers[idx]
