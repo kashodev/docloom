@@ -377,8 +377,11 @@ def _resolve_mix(providers: str):  # noqa: ANN202
     specs = config.get("text") or config.get("providers")
     if not specs:
         raise typer.BadParameter("providers needs a `providers:` (or `text:`) list")
-    return build_mix({"text": specs}), {
-        "models": [f"{s['name']}:{s.get('model')}" for s in specs]}
+    fallback = config.get("fallback")
+    provenance = {"models": [f"{s['name']}:{s.get('model')}" for s in specs]}
+    if fallback:
+        provenance["fallback"] = [f"{f['name']}:{f['share']}" for f in fallback]
+    return build_mix({"text": specs, "fallback": fallback}), provenance
 
 
 @app.command()

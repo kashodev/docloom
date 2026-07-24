@@ -380,6 +380,25 @@ def test_build_mix_from_config() -> None:
     assert [p.name for p in mix.providers] == ["deepseek", "dashscope", "ollama"]
 
 
+def test_build_mix_parses_a_fallback_pool() -> None:
+    from docloom.core.providers.mix import PROCEDURAL
+    config = {
+        "text": [
+            {"name": "deepseek", "model": "deepseek-v4-flash", "weight": 0.5},
+            {"name": "dashscope", "model": "qwen3.5-flash", "weight": 0.5},
+        ],
+        "fallback": [{"name": "dashscope", "share": 70}, {"name": "procedural", "share": 30}],
+    }
+    mix = build_mix(config)
+    # A deepseek-routed seed, with deepseek quarantined, lands on dashscope or
+    # procedural — never back on deepseek.
+    dead = frozenset({"deepseek"})
+    for seed in range(300):
+        if mix.choose(seed).name == "deepseek":
+            r = mix.route(seed, quarantined=dead)
+            assert r is PROCEDURAL or r.name == "dashscope"
+
+
 def test_build_provider_rejects_unknown_name() -> None:
     with pytest.raises(ValueError, match="unknown provider"):
         build_provider({"name": "nope", "model": "x"})

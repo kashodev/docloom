@@ -275,6 +275,27 @@ emit("SECRET_MAP", " ".join(
     f"{k}={v}" for k, v in (get("catalogue.secrets", {}) or {}).items()
 ))
 
+# ── Catalogue fallback pool ─────────────────────────────────────────────────
+# How a quarantined provider's share is redistributed: entries name a provider
+# in the mix or the literal `procedural` (the free sink), and their shares total
+# 100. Omitted ⇒ procedural. Validated here so a typo fails at plan, not 20
+# minutes into a paid build.
+fallback = get("catalogue.fallback", []) or []
+if fallback:
+    provider_names = {p["name"] for p in providers}
+    for f in fallback:
+        if "name" not in f or "share" not in f:
+            sys.exit(f"each `catalogue.fallback` entry needs a name and a share, got {f}")
+        if f["name"] != "procedural" and f["name"] not in provider_names:
+            sys.exit(f"fallback name {f['name']!r} is neither 'procedural' nor a "
+                     f"catalogue.providers name ({', '.join(sorted(provider_names))})")
+    fshare = sum(float(f.get("share", 0)) for f in fallback)
+    if abs(fshare - 100.0) > 1e-6:
+        sys.exit(f"`catalogue.fallback` shares must total 100, got {fshare:g}")
+    emit("FALLBACK_POOL", " ".join(f"{f['name']}:{f['share']}" for f in fallback))
+else:
+    emit("FALLBACK_POOL", "")
+
 # Catalogue build parameters + the full provider mix as YAML. The mix (with each
 # provider's extra_body, e.g. enable_thinking) travels to the container in the
 # DOCLOOM_PROVIDERS env var — it is configuration, not secret; the API keys go
@@ -296,7 +317,10 @@ emit("CAT_BUILD_ID", get("catalogue.build_id", ""))
 # than multi-line YAML: an env var value must survive gcloud's flag parsing, and
 # a newline or a stray comma in a YAML block does not travel cleanly.
 import json as _json
-emit("CAT_PROVIDERS_JSON", _json.dumps({"providers": providers}) if providers else "")
+_mix_json = {"providers": providers}
+if fallback:
+    _mix_json["fallback"] = fallback
+emit("CAT_PROVIDERS_JSON", _json.dumps(_mix_json) if providers else "")
 PYEOF
 }
 
@@ -411,6 +435,15 @@ EOF
       IFS=: read -r name model weight <<<"${p}"
       printf '    %-12s %-22s %s%%\n' "${name}" "${model}" "${weight}"
     done
+    if [[ -n "${FALLBACK_POOL}" ]]; then
+      echo "  fallback (a quarantined provider's share →):"
+      for f in ${FALLBACK_POOL}; do
+        IFS=: read -r name share <<<"${f}"
+        printf '    %-12s %s%%\n' "${name}" "${share}"
+      done
+    else
+      echo "  fallback: none → a quarantined provider's share goes to procedural"
+    fi
     echo "    build once with:  docloom catalogue --providers <this catalogue block>"
     echo "      --out gs://…/catalogues/invoice/v1 --version v1"
     echo "    then generation draws from it: docloom generate --catalogue gs://…/v1"
