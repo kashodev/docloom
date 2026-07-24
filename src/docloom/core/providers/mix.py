@@ -46,11 +46,14 @@ class ProviderMix:
         if total <= 0:
             raise ValueError("weights must sum to a positive number")
         self._providers = providers
-        # Cumulative, normalised bands: [0.4, 0.8, 1.0] for 40/40/20.
+        # Normalised weights, and their cumulative bands: [0.4, 0.8, 1.0] for
+        # 40/40/20. The weights are kept so a subset can be renormalised on the
+        # fly when a provider is excluded (a quarantined, all-empty model).
+        self._weights = [w / total for w in weights]
         acc = 0.0
         self._cumulative: list[float] = []
-        for w in weights:
-            acc += w / total
+        for w in self._weights:
+            acc += w
             self._cumulative.append(acc)
         self._budget = budget
         self._usage = usage
@@ -59,9 +62,29 @@ class ProviderMix:
     def providers(self) -> list[TextProvider]:
         return self._providers
 
-    def choose(self, seed: int) -> TextProvider:
-        """Pick a provider deterministically from ``seed``."""
+    def choose(self, seed: int, *, exclude: frozenset[str] = frozenset()) -> TextProvider:
+        """Pick a provider deterministically from ``seed``.
+
+        ``exclude`` names providers to route *around* — a caller quarantines a
+        model that is returning nothing but empty completions, and its share is
+        renormalised across the survivors so their relative weights are kept. If
+        every provider is excluded there is no one left to route around, so the
+        full mix is used (the caller decides what to do with the result). The
+        no-exclude path is unchanged, so an ordinary run stays bit-for-bit
+        reproducible.
+        """
         point = Random(seed).random()
+        if exclude:
+            live = [(p, w) for p, w in zip(self._providers, self._weights, strict=True)
+                    if p.name not in exclude]
+            if live:
+                total = sum(w for _, w in live)
+                acc = 0.0
+                for provider, w in live:
+                    acc += w / total
+                    if point < acc:
+                        return provider
+                return live[-1][0]
         for provider, ceiling in zip(self._providers, self._cumulative, strict=True):
             if point < ceiling:
                 return provider

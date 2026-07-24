@@ -71,6 +71,7 @@ class CatalogueRunner:
         concurrency: int = 8,
         use_batch: bool = True,
         usage: UsageSink | None = None,
+        empty_streak_limit: int = 10,
     ) -> None:
         self._mix = mix
         self._budget = budget
@@ -78,6 +79,15 @@ class CatalogueRunner:
         self._use_batch = use_batch
         self._usage = usage
         self._budget_exhausted = False   # log the cap being reached only once
+        # Circuit breaker: a provider that returns this many empty completions in
+        # a row is quarantined and routed around on the next run. A model that
+        # reasons its whole token budget away and returns `content: ""` — deepseek
+        # and qwen have both done it — otherwise burns real money on every call
+        # for a build's whole duration. A single non-empty completion clears the
+        # streak, so an occasional blank never trips it.
+        self._empty_streak_limit = max(empty_streak_limit, 1)
+        self._empty_streak: Counter[str] = Counter()
+        self._quarantined: set[str] = set()
 
     async def run(self, items: list[CatalogueItem]) -> RunReport:
         report = RunReport()
@@ -86,8 +96,9 @@ class CatalogueRunner:
         groups: dict[int, list[CatalogueItem]] = defaultdict(list)
         providers: list[TextProvider] = self._mix.providers
         index_of = {id(p): i for i, p in enumerate(providers)}
+        exclude = frozenset(self._quarantined)
         for item in items:
-            provider = self._mix.choose(item_seed(item.item_id))
+            provider = self._mix.choose(item_seed(item.item_id), exclude=exclude)
             groups[index_of[id(provider)]].append(item)
 
         for idx, group in groups.items():
@@ -211,5 +222,19 @@ class CatalogueRunner:
                 f"({result.usage.output_tokens} output tokens, cost {result.cost}) — "
                 "if this is a reasoning model, disable thinking or raise max_tokens"
             )
+            self._note_empty(result.provider, result.model)
             return
+        self._empty_streak[result.provider] = 0   # a good answer clears the streak
         report.results[item_id] = result
+
+    def _note_empty(self, provider: str, model: str) -> None:
+        """Count a consecutive empty completion and quarantine a provider that has
+        crossed the limit, so the next run routes around it instead of paying it
+        to reason into the void again."""
+        self._empty_streak[provider] += 1
+        if (self._empty_streak[provider] >= self._empty_streak_limit
+                and provider not in self._quarantined):
+            self._quarantined.add(provider)
+            _log.warning("provider quarantined — all empty, routing around it",
+                         provider=provider, model=model,
+                         empty_streak=self._empty_streak[provider])

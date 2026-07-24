@@ -115,12 +115,12 @@ def work_run(
     # Before anything is claimed: a source that cannot satisfy its run-scoped
     # configuration must stop the run here, not fail unit after unit.
     prepare_source(source, run_id)
-    _log.info("worker draining")
+    _log.info("worker started")
     worker = GenerationWorker(
         run_id=run_id, source=source, renderer=renderer, blob=blob, state=state
     )
     stats = worker.run()
-    _log.info("worker drained", completed=stats.units_completed,
+    _log.info("worker finished", completed=stats.units_completed,
               failed=stats.units_failed, documents=stats.documents_written)
 
     progress = state.progress(run_id)

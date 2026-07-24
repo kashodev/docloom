@@ -122,7 +122,7 @@ def build_catalogue_run(
     if requeued:
         _log.info("catalogue build: re-queued failed units", requeued=requeued)
 
-    _log.info("catalogue build: worker draining", companies=companies, unit_size=unit_size,
+    _log.info("catalogue build: worker started", companies=companies, unit_size=unit_size,
               out=out, mode="llm" if mix is not None else "procedural")
     while (unit := state.claim_next_unit(build_id)) is not None:
         _work_unit(state, artifact, out, build_id, unit, stats,
@@ -131,7 +131,7 @@ def build_catalogue_run(
 
     stats.build_complete = _finalize_if_complete(
         state, artifact, out, build_id, catalogue_version, provenance)
-    _log.info("catalogue build: worker drained", units=stats.units_completed,
+    _log.info("catalogue build: worker finished", units=stats.units_completed,
               failed=stats.units_failed, products=stats.products,
               cost=str(stats.total_cost), build_complete=stats.build_complete)
     return stats

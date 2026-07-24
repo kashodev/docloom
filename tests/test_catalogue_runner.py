@@ -34,8 +34,9 @@ def run(coro):  # noqa: ANN001, ANN201
     return asyncio.run(coro)
 
 
-def items(n: int) -> list[CatalogueItem]:
-    return [CatalogueItem(f"item-{i}", CompletionRequest(system="s", prompt=f"p{i}")) for i in range(n)]
+def items(n: int, *, start: int = 0) -> list[CatalogueItem]:
+    return [CatalogueItem(f"item-{i}", CompletionRequest(system="s", prompt=f"p{i}"))
+            for i in range(start, start + n)]
 
 
 # ── Fake providers ──────────────────────────────────────────────────────────
@@ -75,6 +76,15 @@ class BatchStub(SyncStub):
             CompletionResult(f"{self.name}:{r.prompt}", Usage(10, 5), self.model, self.name, self._cost)
             for r in requests
         ]
+
+
+class EmptyStub(SyncStub):
+    """A provider that answers — and bills — but returns no text, the reasoning-
+    model-with-thinking-on failure that drained deepseek credits in production."""
+
+    async def complete(self, request: CompletionRequest) -> CompletionResult:
+        self.calls += 1
+        return CompletionResult("", Usage(50, 2000), self.model, self.name, self._cost)
 
 
 def mix_of(*providers, weights=None):  # noqa: ANN002, ANN003, ANN201
@@ -162,6 +172,43 @@ def test_one_item_failing_does_not_sink_the_rest() -> None:
     assert len(report.results) == 5
     assert "item-3" in report.failures
     assert "model blip" in report.failures["item-3"]
+
+
+# ── Empty-provider circuit breaker ──────────────────────────────────────────
+def test_an_all_empty_provider_is_quarantined_and_routed_around() -> None:
+    """A model that only ever returns empty text (deepseek/qwen reasoning their
+    token budget away) is quarantined after a streak of empties and routed around
+    on the next run, so it stops being paid to produce nothing — and its share is
+    picked up by the healthy providers rather than lost to procedural."""
+    bad, good = EmptyStub("bad", D("0.01")), SyncStub("good", D("0.001"))
+    runner = CatalogueRunner(mix_of(bad, good, weights=[0.5, 0.5]),
+                             empty_streak_limit=3)
+
+    first = run(runner.run(items(40)))
+    assert "bad" in runner._quarantined            # crossed the streak limit
+    assert bad.calls > 0                            # it was tried before quarantine
+    calls_before = bad.calls
+    good_before = good.calls
+
+    second = run(runner.run(items(40, start=40)))
+    assert bad.calls == calls_before               # never called again
+    assert good.calls > good_before                # its share moved to the healthy one
+    assert all(r.provider == "good" for r in second.results.values())
+    assert second.failures == {}                   # nothing fell back to procedural
+
+
+def test_an_occasional_empty_does_not_quarantine() -> None:
+    """One blank among good answers must not trip the breaker — the streak resets
+    on any non-empty completion."""
+    class Blip(SyncStub):
+        async def complete(self, request: CompletionRequest) -> CompletionResult:
+            self.calls += 1
+            text = "" if request.prompt == "p2" else f"{self.name}:{request.prompt}"
+            return CompletionResult(text, Usage(10, 5), self.model, self.name, self._cost)
+
+    runner = CatalogueRunner(mix_of(Blip("a")), empty_streak_limit=3)
+    run(runner.run(items(10)))
+    assert runner._quarantined == set()
 
 
 # ── Anthropic batch mapping (pure + fake client) ────────────────────────────
