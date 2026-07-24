@@ -142,6 +142,14 @@ def build_catalogue_run(
     requeued = state.reset_failed_units(build_id)
     if requeued:
         _log.info("catalogue build: re-queued failed units", requeued=requeued)
+    # Also reclaim units a *crashed or timed-out* worker abandoned — RUNNING with
+    # a lapsed lease. The Firestore claim does not scan for these (too costly per
+    # claim), so without an explicit reclaim a unit left mid-build by a killed
+    # task is invisible forever: a re-run claims nothing and the build can never
+    # finish. This is the catalogue build's equivalent of `resume_run`.
+    reclaimed = state.reclaim_expired_units(build_id)
+    if reclaimed:
+        _log.info("catalogue build: reclaimed crashed units", reclaimed=reclaimed)
 
     _log.info("catalogue build: worker started", companies=companies, unit_size=unit_size,
               out=out, mode="llm" if mix is not None else "procedural")

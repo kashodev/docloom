@@ -167,6 +167,43 @@ def test_a_worker_that_claims_nothing_reports_the_builds_state(tmp_path: Path) -
     assert stats.build_has_failures is False
 
 
+def test_a_build_reclaims_a_unit_a_crashed_worker_abandoned(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    """A unit left RUNNING with a lapsed lease by a killed/timed-out worker must be
+    reclaimed at start. The Firestore claim does not scan for expired leases, so
+    without an explicit reclaim such a unit is invisible to a re-run forever — the
+    build claims nothing and can never finish. (Execution px8t4 recovered nothing
+    for exactly this reason.)"""
+    from datetime import UTC, datetime, timedelta
+
+    from docloom.core.pipeline.run import create_run
+    from docloom.packs.invoice.build_run import CATALOGUE_PACK
+
+    out = str(tmp_path / "cat")
+    state = _state(tmp_path)
+    kw = dict(out=out, build_id="b", catalogue_version="v1", companies=40,
+              products_per_company=6, unit_size=20, seed=1)                # 2 units
+
+    create_run(state, run_id="b", pack=CATALOGUE_PACK, config_id="v1",
+               total=40, unit_size=20)
+    abandoned = state.claim_next_unit("b")                # a worker claims, then "crashes"
+    assert abandoned is not None
+    # Force its lease into the past — the worker died over a lease-length ago.
+    state._conn.execute(                                  # type: ignore[attr-defined]
+        "UPDATE work_units SET lease_expires_at=? WHERE run_id=? AND unit_index=?",
+        ((datetime.now(UTC) - timedelta(hours=1)).isoformat(), "b", abandoned.unit_index))
+    state._conn.commit()                                 # type: ignore[attr-defined]
+
+    reclaimed_for = []
+    real = state.reclaim_expired_units
+    monkeypatch.setattr(state, "reclaim_expired_units",
+                        lambda rid, **k: (reclaimed_for.append(rid), real(rid, **k))[1])
+
+    stats = build_catalogue_run(state, **kw)             # type: ignore[arg-type]
+    assert "b" in reclaimed_for                          # the build ran a reclaim…
+    assert stats.build_complete is True                  # …and finished both units
+    assert len(load_catalogue(out).roster()) == 40
+
+
 def test_a_worker_finishing_before_its_peers_is_not_a_failure(tmp_path: Path) -> None:
     """A worker that drained its share while a peer is still mid-unit must not
     report failure: the build simply is not globally done yet, and only real
