@@ -227,6 +227,31 @@ def test_a_consistently_erroring_provider_is_quarantined_and_routed_around() -> 
     assert all(r.provider == "good" for r in second.results.values())
 
 
+def test_a_hanging_provider_is_quarantined_without_awaiting_every_call() -> None:
+    """The rpqrc fix. A provider whose calls hang (holds the connection to the
+    timeout) is what defeated the old `gather` version: the post-loop that
+    quarantines never ran, so one dead provider burned a whole task's wall clock.
+    Now results are consumed as they complete — after a few fast failures trip
+    the breaker, the remaining hung calls are cancelled and the run returns
+    promptly instead of awaiting a 30s sleep on every one."""
+    import asyncio
+
+    class Hanging(SyncStub):
+        async def complete(self, request: CompletionRequest) -> CompletionResult:
+            self.calls += 1
+            if self.calls <= 3:
+                raise RuntimeError("fast fail to trip the breaker")
+            await asyncio.sleep(30)                 # would hang; must be cancelled
+            raise AssertionError("a cancelled call must never return")
+
+    bad = Hanging("bad", D("0.001"))
+    runner = CatalogueRunner(mix_of(bad), empty_streak_limit=3, concurrency=4)
+    report = run(asyncio.wait_for(runner.run(items(40)), timeout=5))  # << 30s
+    assert "bad" in runner._quarantined
+    assert bad.calls < 40                           # the hung/pending calls were cancelled
+    assert len(report.failures) == 40               # every item still accounted for
+
+
 def test_an_occasional_error_does_not_quarantine() -> None:
     """One transient error among good answers must not trip the breaker — the
     streak resets on any usable completion."""

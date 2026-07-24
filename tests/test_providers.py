@@ -404,6 +404,15 @@ def test_build_provider_rejects_unknown_name() -> None:
         build_provider({"name": "nope", "model": "x"})
 
 
+def test_provider_timeout_defaults_low_and_is_configurable() -> None:
+    """120s was a trap — a hung call ties up a slot until it. Default is short,
+    and an operator can tune it per provider from config."""
+    from docloom.core.providers.openai_compatible import OpenAICompatibleProvider
+    assert OpenAICompatibleProvider(name="x", model="m", base_url="http://h")._timeout_s == 45.0
+    tuned = build_provider({"name": "deepseek", "model": "m", "timeout_s": 20})
+    assert tuned._timeout_s == 20.0
+
+
 # ── Reasoning models (regressions from a real smoke run) ────────────────────
 def _reasoning_response(*, content, completion_tokens, capture=None):  # noqa: ANN001, ANN202
     """A DeepSeek/Qwen-shaped reply where the model spent its budget thinking."""

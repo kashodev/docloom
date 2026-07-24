@@ -168,27 +168,51 @@ class CatalogueRunner:
     ) -> None:
         semaphore = asyncio.Semaphore(self._concurrency)
 
-        async def one(item: CatalogueItem) -> tuple[str, CompletionResult | Exception]:
+        async def one(item: CatalogueItem) -> CompletionResult | Exception:
             async with semaphore:
                 try:
                     if self._budget is not None:
                         self._budget.check(provider.estimate_cost(item.request))
-                    return item.item_id, await provider.complete(item.request)
+                    return await provider.complete(item.request)
                 except Exception as exc:  # noqa: BLE001 - collected per item
-                    return item.item_id, exc
+                    return exc
 
-        by_id = {it.item_id: it for it in group}
-        for item_id, outcome in await asyncio.gather(*(one(it) for it in group)):
-            if isinstance(outcome, Exception):
-                report.failures[item_id] = repr(outcome)
-                # A raised call counts toward the quarantine streak too — a bad
-                # key or a down endpoint is as "unusable" as an empty answer, and
-                # should route to the fallback pool rather than be retried forever.
-                if not isinstance(outcome, BudgetExceeded):
-                    self._note_unusable(provider.name, provider.model, repr(outcome))
-            else:
-                self._record_usage(by_id[item_id], outcome)
-                self._record(report, item_id, outcome)
+        # Results are consumed **as they complete**, not after a `gather` over the
+        # whole group. That is what lets the circuit breaker act mid-round: once
+        # this provider is quarantined we stop waiting on its remaining calls,
+        # cancel them, and let their items fall to the fallback pool next round.
+        # With `gather` a provider that *hangs* (holds the connection to the
+        # per-call timeout) never lets the post-loop run, so the breaker could
+        # never fire and one dead provider could burn a whole task's wall clock.
+        fut_item = {asyncio.ensure_future(one(it)): it for it in group}
+        pending = set(fut_item)
+        try:
+            while pending:
+                done, pending = await asyncio.wait(
+                    pending, return_when=asyncio.FIRST_COMPLETED)
+                for fut in done:
+                    item, outcome = fut_item[fut], fut.result()
+                    if isinstance(outcome, Exception):
+                        report.failures[item.item_id] = repr(outcome)
+                        # A raised call is as "unusable" as an empty answer — a bad
+                        # key, a down endpoint, a hung connection — and counts
+                        # toward the quarantine streak. A budget decline does not:
+                        # that is the cap talking, not the provider failing.
+                        if not isinstance(outcome, BudgetExceeded):
+                            self._note_unusable(provider.name, provider.model, repr(outcome))
+                    else:
+                        self._record_usage(item, outcome)
+                        self._record(report, item.item_id, outcome)
+                if provider.name in self._quarantined:
+                    break   # dead provider — stop paying for the rest of its share
+        finally:
+            for fut in pending:
+                fut.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+                for fut in pending:
+                    report.failures[fut_item[fut].item_id] = (
+                        f"provider {provider.name} quarantined mid-round — not sent")
 
     def _record_usage(
         self, item: CatalogueItem, result: CompletionResult, *, is_batch: bool = False

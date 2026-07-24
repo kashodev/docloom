@@ -177,18 +177,12 @@ def _work_unit(
             else:
                 # TODO(progress): emit intra-unit progress logs (~every 5% of the
                 # unit's products filled) between "worker started" and "unit
-                # completed". A large unit (e.g. 100 companies × 300 = 30k
-                # products) is ~25 min of silence today. `build_llm_catalogue`
-                # already takes a `progress` callback but only fires it at *round*
-                # boundaries, and a unit is dominated by round 1 — so wiring that
-                # callback to `_log.info` here (small) helps little on its own.
-                # For real 5% granularity: add a per-chunk progress hook to
-                # CatalogueRunner (switch `_run_concurrent`/`_run_batched` from
-                # `gather` to `as_completed` so results report as they land),
-                # thread it through the round loop, throttle to 5% boundaries of
-                # report.products, and log via `_log.info` under this bound `unit`
-                # context. Small–medium effort; the as_completed swap is the only
-                # change to the concurrency hot path (preserve failure isolation).
+                # completed". `_run_concurrent` now consumes results as they land
+                # (the as_completed rework), so the hard part is done — what's left
+                # is to invoke a progress callback in that loop, thread it through
+                # build_llm_catalogue's round loop, throttle to 5% boundaries of
+                # report.products, and log it via `_log.info` under this bound
+                # `unit` context. Small now.
                 # Seed the breaker from what earlier units already learned, so a
                 # dead provider is not re-discovered (and re-paid) unit by unit;
                 # flush anything this unit newly quarantines back for later ones.

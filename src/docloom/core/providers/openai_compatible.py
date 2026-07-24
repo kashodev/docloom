@@ -41,12 +41,19 @@ class OpenAICompatibleProvider:
         pricing: Pricing | None = None,
         client: httpx.AsyncClient | None = None,
         extra_body: dict[str, Any] | None = None,
+        timeout_s: float = 45.0,
     ) -> None:
         self.name = name
         self.model = model
         self.pricing = pricing or pricing_for(model)
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
+        # A single short description is seconds of work; 120s was a trap. A model
+        # that holds the connection open (a throttled/tarpitted key, a stuck
+        # endpoint) otherwise ties up a concurrency slot for two minutes a call,
+        # and a whole unit's worth of that runs a task out of its wall-clock
+        # budget before the circuit breaker can quarantine it. Fail fast instead.
+        self._timeout_s = timeout_s
         # Merged into every request body, overriding the defaults built here.
         # A deliberate passthrough rather than named options: the parameters that
         # matter are provider-specific and this adapter serves several. DashScope
@@ -67,7 +74,7 @@ class OpenAICompatibleProvider:
 
     async def _ensure_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=httpx.Timeout(120.0))
+            self._client = httpx.AsyncClient(timeout=httpx.Timeout(self._timeout_s))
         return self._client
 
     async def complete(self, request: CompletionRequest) -> CompletionResult:
