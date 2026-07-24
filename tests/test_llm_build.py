@@ -16,7 +16,7 @@ import json
 from decimal import Decimal as D
 
 from docloom.core.providers.base import CompletionRequest, CompletionResult, Usage
-from docloom.core.providers.budget import BudgetExceeded, BudgetGuard
+from docloom.core.providers.budget import BudgetGuard
 from docloom.core.providers.mix import ProviderMix
 from docloom.core.providers.pricing import pricing_for
 from docloom.packs.invoice.artifact import load_catalogue, write_catalogue
@@ -202,15 +202,23 @@ def test_generated_invoices_from_an_llm_catalogue_reconcile(tmp_path) -> None:  
 
 
 # ── Budget and parsing ──────────────────────────────────────────────────────
-def test_the_budget_guard_stops_a_runaway_build() -> None:
-    mix = ProviderMix([Fake(good_json, cost=D("1.00"))], [1.0])
+def test_a_budget_smaller_than_the_build_completes_procedurally_without_raising() -> None:
+    # A budget below the build's cost is a spend ceiling, not a failure. Round
+    # one's calls are billed (empty answers here, so every slot stays pending);
+    # the cap is then over, so later rounds are declined item by item and those
+    # slots fall back to procedural. The build completes, spend is bounded to
+    # about one round rather than max_rounds, and nothing raises.
+    fake = Fake(lambda _r: "", cost=D("1.00"))        # empty → slots stay pending
+    mix = ProviderMix([fake], [1.0])
     budget = BudgetGuard(D("2.50"))
-    try:
-        _, _, report = run(mix, companies=20, products_per_company=10, seed=1,
-                           budget=budget, max_rounds=1)
-    except BudgetExceeded:
-        pass  # tripping is a valid outcome; not overspending is the point
-    assert budget.spent <= budget.limit + D("1.00")   # bounded by one call
+    _, products, report = run(mix, companies=20, products_per_company=10, seed=1,
+                              budget=budget, max_rounds=3)
+    assert sum(len(v) for v in products.values()) == 200   # complete catalogue
+    assert report.procedural_fallback == 200               # all fell back
+    # Round one issued one call per company; the cap was then over, so the two
+    # retry rounds were declined before sending — 20 calls, not 60. That is the
+    # runaway the budget exists to stop.
+    assert fake.calls == 20
 
 
 def test_parse_accepts_english_and_french_keys() -> None:

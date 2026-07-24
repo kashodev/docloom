@@ -170,3 +170,56 @@ def test_an_empty_completion_is_logged(json_logs) -> None:  # noqa: ANN001
     empties = [e for e in json_logs() if e["message"] == "empty completion"]
     assert empties and empties[0]["provider"] == "deepseek"
     assert empties[0]["severity"] == "WARNING"
+
+
+def test_a_failure_record_leads_with_severity_and_message() -> None:
+    """The two fields that say *what happened* and *how bad* must come first.
+
+    Renaming level/event in place appended them after the structured traceback,
+    so anything that truncated a record dropped exactly the fields a search keys
+    on — which is how a whole sharded build failed with nothing legible in Cloud
+    Logging.
+    """
+    import io
+    import json
+
+    buf = io.StringIO()
+    configure(level="info", fmt="json", stream=buf, force=True)
+    try:
+        raise RuntimeError("provider is out of credit")
+    except RuntimeError as exc:
+        get_logger("t").warning("catalogue unit failed", error=repr(exc), exc_info=exc)
+
+    line = buf.getvalue().strip()
+    assert list(json.loads(line))[:2] == ["severity", "message"]
+    record = json.loads(line)
+    assert record["severity"] == "WARNING"
+    assert record["message"] == "catalogue unit failed"
+
+
+def test_a_traceback_carries_no_frame_locals() -> None:
+    """``dict_tracebacks`` serialises every local in every frame. A catalogue
+    unit holds the company rows and 30,000 products, so the one record that
+    explains a failure becomes unusably large. Keep the frames, drop the locals.
+    """
+    import io
+    import json
+
+    buf = io.StringIO()
+    configure(level="info", fmt="json", stream=buf, force=True)
+
+    def fails() -> None:
+        products = [{"sku": i, "description": "x" * 80} for i in range(5000)]  # noqa: F841
+        raise RuntimeError("boom")
+
+    try:
+        fails()
+    except RuntimeError as exc:
+        get_logger("t").warning("catalogue unit failed", exc_info=exc)
+
+    line = buf.getvalue().strip()
+    record = json.loads(line)
+    frames = record["exception"][0]["frames"]
+    assert frames, "the traceback itself must survive"
+    assert all("locals" not in f for f in frames)
+    assert len(line) < 4000, f"failure record is {len(line)} bytes; locals leaked back in"

@@ -242,6 +242,7 @@ async def build_llm_catalogue(
     companies: int = 1_000,
     products_per_company: int = 300,
     seed: int = 0,
+    company_start: int = 0,
     budget: BudgetGuard | None = None,
     max_rounds: int = 3,
     concurrency: int = 8,
@@ -266,8 +267,10 @@ async def build_llm_catalogue(
     fill after ``max_rounds`` keep their procedural product, so the result is
     always complete and a provider outage degrades to the procedural build.
     """
-    rows, fallback = generate_catalogue(
-        companies=companies, products_per_company=products_per_company, seed=seed
+    from docloom.packs.invoice.procedural import generate_company_range
+    rows, fallback = generate_company_range(
+        company_start, company_start + companies,
+        products_per_company=products_per_company, seed=seed,
     )
     by_id = {r.company_id: r for r in rows}
     products: dict[str, list[ProductTemplate]] = {

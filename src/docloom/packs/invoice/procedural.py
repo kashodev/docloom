@@ -28,6 +28,7 @@ from decimal import Decimal
 from random import Random
 
 from docloom.core.locale.enums import Currency, Locale
+from docloom.core.pipeline.source import stable_seed
 from docloom.packs.invoice.artifact import CompanyRow
 from docloom.packs.invoice.catalog import ProductTemplate
 from docloom.packs.invoice.enums import (
@@ -349,6 +350,62 @@ def generate_products(
     return products
 
 
+def generate_company(
+    index: int,
+    *,
+    seed: int = 0,
+    products_per_company: int = 300,
+    business_types: tuple[BusinessType, ...] = BUSINESS_TYPES,
+) -> tuple[CompanyRow, list[ProductTemplate]]:
+    """One company and its products, from its index alone.
+
+    Seeded per index (``stable_seed(seed, index)``) rather than from one
+    sequential RNG, so **any range of companies can be built independently** — a
+    worker builds ``[start, end)`` without first building everything before it.
+    That is what lets a catalogue build shard across tasks, exactly as document
+    generation seeds each document from ``(run_id, index)``.
+
+    Market and business type are a function of the index (round-robin), so every
+    locale is represented in proportion no matter how the range is sliced.
+    """
+    rng = Random(stable_seed(str(seed), index))
+    juris, locale, currency = _MARKETS[index % len(_MARKETS)]
+    business_type = business_types[index % len(business_types)]
+    name = f"{rng.choice(_STEM_A)}{rng.choice(_STEM_B)} {rng.choice(_SUFFIX[juris])}"
+    row = CompanyRow(
+        company_id=f"c{index:06d}",
+        name=name,
+        business_type=business_type,
+        jurisdiction=juris,
+        locale=locale,
+        currency=currency,
+        # A long tail: most companies issue a little, a few issue a lot.
+        weight=round(rng.paretovariate(1.5), 3),
+    )
+    return row, generate_products(rng, business_type, products_per_company)
+
+
+def generate_company_range(
+    start: int,
+    end: int,
+    *,
+    seed: int = 0,
+    products_per_company: int = 300,
+    business_types: tuple[BusinessType, ...] = BUSINESS_TYPES,
+) -> tuple[list[CompanyRow], dict[str, list[ProductTemplate]]]:
+    """Companies ``[start, end)`` and their products — one shard's worth."""
+    rows: list[CompanyRow] = []
+    products: dict[str, list[ProductTemplate]] = {}
+    for i in range(start, end):
+        row, prods = generate_company(
+            i, seed=seed, products_per_company=products_per_company,
+            business_types=business_types,
+        )
+        rows.append(row)
+        products[row.company_id] = prods
+    return rows, products
+
+
 def generate_catalogue(
     *,
     companies: int = 1_000,
@@ -358,37 +415,13 @@ def generate_catalogue(
 ) -> tuple[list[CompanyRow], dict[str, list[ProductTemplate]]]:
     """Build a whole catalogue: a roster and each company's own product pool.
 
-    Deterministic from ``seed``, so a published artifact can be rebuilt and
-    verified byte-for-byte rather than trusted.
-
-    Markets are assigned round-robin so every locale is represented in
-    proportion — a corpus that is 95% en-US cannot exercise a French extractor.
+    Deterministic from ``seed``. Now a thin wrapper over the range builder, so
+    the single-process build and a sharded one produce identical companies for
+    identical indices.
     """
     if companies < 1:
         raise ValueError("a catalogue needs at least one company")
-    rng = Random(seed)
-    rows: list[CompanyRow] = []
-    products: dict[str, list[ProductTemplate]] = {}
-
-    for i in range(companies):
-        juris, locale, currency = _MARKETS[i % len(_MARKETS)]
-        business_type = business_types[i % len(business_types)]
-        name = (f"{rng.choice(_STEM_A)}{rng.choice(_STEM_B)} "
-                f"{rng.choice(_SUFFIX[juris])}")
-        company_id = f"c{i:06d}"
-        rows.append(
-            CompanyRow(
-                company_id=company_id,
-                name=name,
-                business_type=business_type,
-                jurisdiction=juris,
-                locale=locale,
-                currency=currency,
-                # A long tail: most companies issue a little, a few issue a lot,
-                # which is what a real corpus looks like.
-                weight=round(rng.paretovariate(1.5), 3),
-            )
-        )
-        products[company_id] = generate_products(rng, business_type, products_per_company)
-
-    return rows, products
+    return generate_company_range(
+        0, companies, seed=seed, products_per_company=products_per_company,
+        business_types=business_types,
+    )

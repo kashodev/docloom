@@ -70,6 +70,19 @@ MANIFEST_KEY = "manifest.json"
 COMPANIES_KEY = "companies.parquet"
 PRODUCTS_KEY = "products.parquet"
 
+#: Sharded layout: one parquet pair per build unit, under this prefix. A
+#: distributed build writes a shard per worker and never holds the whole
+#: catalogue in memory; the root manifest indexes the shards.
+SHARDS_DIR = "shards"
+
+
+def companies_shard_key(unit_index: int) -> str:
+    return f"{SHARDS_DIR}/companies-{unit_index:06d}.parquet"
+
+
+def products_shard_key(unit_index: int) -> str:
+    return f"{SHARDS_DIR}/products-{unit_index:06d}.parquet"
+
 #: Money as decimal128, matching the golden pipeline (which already maps
 #: decimal128 → BigQuery NUMERIC). Prices here are sampling *inputs* rather than
 #: golden values, so a float would technically do — consistency is worth more
@@ -105,9 +118,16 @@ class CatalogueManifest:
     schema_version: int = SCHEMA_VERSION
     created_at: str = ""
     files: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: Sharded layout only: one entry per build unit, each with its two shard
+    #: keys, row counts and sha256s. Empty for a single-file artifact.
+    shards: list[dict[str, Any]] = field(default_factory=list)
     #: How it was built — models used, dedup and regeneration rates, PII scan
     #: result. An artifact ships with its own audit.
     provenance: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def is_sharded(self) -> bool:
+        return bool(self.shards)
 
     def to_json(self) -> bytes:
         return json.dumps(
@@ -117,6 +137,7 @@ class CatalogueManifest:
                 "schema_version": self.schema_version,
                 "created_at": self.created_at,
                 "files": self.files,
+                "shards": self.shards,
                 "provenance": self.provenance,
             },
             indent=2,
@@ -132,6 +153,7 @@ class CatalogueManifest:
             schema_version=int(data.get("schema_version", 0)),
             created_at=data.get("created_at", ""),
             files=data.get("files", {}),
+            shards=data.get("shards", []),
             provenance=data.get("provenance", {}),
         )
 
@@ -208,9 +230,37 @@ def write_catalogue(
     for companies it does not need, without exploding the artifact into a
     directory per company.
     """
-    pa = _pa()
     if not companies:
         raise ValueError("a catalogue needs at least one company")
+    _reject_empty_companies(companies, products)
+    companies_bytes = _table_bytes(_companies_table(companies))
+    products_table = _products_table(companies, products)
+    products_bytes = _table_bytes(products_table)
+    rows = products_table  # for the row count below
+
+    manifest = CatalogueManifest(
+        catalogue_version=catalogue_version,
+        created_at=datetime.now(UTC).isoformat(),
+        files={
+            COMPANIES_KEY: {"sha256": _sha256(companies_bytes), "rows": len(companies)},
+            PRODUCTS_KEY: {"sha256": _sha256(products_bytes), "rows": rows.num_rows},
+        },
+        provenance=dict(provenance or {}),
+    )
+
+    blob = open_store(uri)
+    blob.put(COMPANIES_KEY, companies_bytes, "application/vnd.apache.parquet")
+    blob.put(PRODUCTS_KEY, products_bytes, "application/vnd.apache.parquet")
+    # Manifest last: it is the completion marker. A reader that finds it can
+    # trust the parquet files beside it are whole.
+    blob.put(MANIFEST_KEY, manifest.to_json(), "application/json")
+    return manifest
+
+
+# ── Shared table construction ───────────────────────────────────────────────
+def _reject_empty_companies(
+    companies: Sequence[CompanyRow], products: Mapping[str, Sequence[ProductTemplate]]
+) -> None:
     missing = [c.company_id for c in companies if not products.get(c.company_id)]
     if missing:
         raise ValueError(
@@ -218,7 +268,10 @@ def write_catalogue(
             "a company that sells nothing cannot issue an invoice"
         )
 
-    companies_table = pa.Table.from_pydict(
+
+def _companies_table(companies: Sequence[CompanyRow]):  # noqa: ANN202
+    pa = _pa()
+    return pa.Table.from_pydict(
         {
             "company_id": [c.company_id for c in companies],
             "name": [c.name for c in companies],
@@ -231,13 +284,18 @@ def write_catalogue(
         schema=companies_schema(),
     )
 
+
+def _products_table(
+    companies: Sequence[CompanyRow], products: Mapping[str, Sequence[ProductTemplate]]
+):  # noqa: ANN202
+    pa = _pa()
     rows: list[tuple[str, ProductTemplate, int]] = [
         (c.company_id, p, i)
         for c in sorted(companies, key=lambda c: c.company_id)
         for i, p in enumerate(products[c.company_id])
     ]
     quant = Decimal(1).scaleb(-_MONEY_SCALE)
-    products_table = pa.Table.from_pydict(
+    return pa.Table.from_pydict(
         {
             "company_id": [cid for cid, _, _ in rows],
             "sku_id": [f"{cid}-{i:05d}" for cid, _, i in rows],
@@ -254,25 +312,66 @@ def write_catalogue(
         schema=products_schema(),
     )
 
-    companies_bytes = _table_bytes(companies_table)
-    products_bytes = _table_bytes(products_table)
 
+# ── Sharded write (one pair per build unit) ─────────────────────────────────
+def write_catalogue_shard(
+    uri: str,
+    unit_index: int,
+    *,
+    companies: Sequence[CompanyRow],
+    products: Mapping[str, Sequence[ProductTemplate]],
+) -> dict[str, Any]:
+    """Write one build unit's shard pair and return its manifest descriptor.
+
+    A distributed build calls this per company range, so a worker never holds
+    more than its range in memory and its output lands incrementally. The root
+    manifest — written once at completion — indexes the descriptors returned
+    here. Idempotent per ``unit_index``: a retried unit overwrites its shard.
+    """
+    if not companies:
+        raise ValueError("a shard needs at least one company")
+    _reject_empty_companies(companies, products)
+    c_bytes = _table_bytes(_companies_table(companies))
+    p_table = _products_table(companies, products)
+    p_bytes = _table_bytes(p_table)
+
+    c_key, p_key = companies_shard_key(unit_index), products_shard_key(unit_index)
+    blob = open_store(uri)
+    blob.put(c_key, c_bytes, "application/vnd.apache.parquet")
+    blob.put(p_key, p_bytes, "application/vnd.apache.parquet")
+    return {
+        "unit_index": unit_index,
+        "companies_key": c_key, "companies_sha256": _sha256(c_bytes),
+        "companies": len(companies),
+        "products_key": p_key, "products_sha256": _sha256(p_bytes),
+        "products": p_table.num_rows,
+    }
+
+
+def write_sharded_manifest(
+    uri: str,
+    *,
+    catalogue_version: str,
+    shards: Sequence[dict[str, Any]],
+    provenance: dict[str, Any] | None = None,
+) -> CatalogueManifest:
+    """Write the root manifest for a sharded build, indexing its shards.
+
+    Written once, when every unit is done — its presence is the completion
+    signal, exactly like a run manifest. Refuses a gap: a root that claimed
+    completeness over a missing shard would be worse than none.
+    """
+    ordered = sorted(shards, key=lambda s: s["unit_index"])
+    indices = [s["unit_index"] for s in ordered]
+    if len(set(indices)) != len(indices):
+        raise ValueError(f"duplicate shard unit_index in {uri!r}: {indices}")
     manifest = CatalogueManifest(
         catalogue_version=catalogue_version,
         created_at=datetime.now(UTC).isoformat(),
-        files={
-            COMPANIES_KEY: {"sha256": _sha256(companies_bytes), "rows": len(companies)},
-            PRODUCTS_KEY: {"sha256": _sha256(products_bytes), "rows": len(rows)},
-        },
+        shards=list(ordered),
         provenance=dict(provenance or {}),
     )
-
-    blob = open_store(uri)
-    blob.put(COMPANIES_KEY, companies_bytes, "application/vnd.apache.parquet")
-    blob.put(PRODUCTS_KEY, products_bytes, "application/vnd.apache.parquet")
-    # Manifest last: it is the completion marker. A reader that finds it can
-    # trust the parquet files beside it are whole.
-    blob.put(MANIFEST_KEY, manifest.to_json(), "application/json")
+    open_store(uri).put(MANIFEST_KEY, manifest.to_json(), "application/json")
     return manifest
 
 
@@ -354,6 +453,32 @@ def _to_company(row: CompanyRow) -> Company:
     )
 
 
+def _parse_companies(table) -> list[CompanyRow]:  # noqa: ANN001
+    return [
+        CompanyRow(
+            company_id=r["company_id"], name=r["name"],
+            business_type=BusinessType(r["business_type"]),
+            jurisdiction=Jurisdiction(r["jurisdiction"]),
+            locale=Locale(r["locale"]), currency=Currency(r["currency"]),
+            weight=float(r["weight"]),
+        )
+        for r in table.to_pylist()
+    ]
+
+
+def _parse_products_into(table, products: dict[str, list[ProductTemplate]]) -> None:  # noqa: ANN001
+    for r in table.to_pylist():
+        products.setdefault(r["company_id"], []).append(
+            ProductTemplate(
+                description=r["description"], price_low=r["price_low"],
+                price_high=r["price_high"], fr=r["description_fr"] or "",
+                kind=LineItemKind(r["kind"]), billing_model=BillingModel(r["billing_model"]),
+                code_system=CodeSystem(r["code_system"]), code_prefix=r["code_prefix"],
+                usage_unit=UsageUnit(r["usage_unit"]),
+            )
+        )
+
+
 def load_catalogue(uri: str, *, verify: bool = True) -> ArtifactCatalogue:
     """Load a catalogue artifact from ``uri`` (``file://``, ``gs://``, ``s3://``).
 
@@ -380,46 +505,32 @@ def load_catalogue(uri: str, *, verify: bool = True) -> ArtifactCatalogue:
             f"but this docloom understands up to {SCHEMA_VERSION} — upgrade docloom"
         )
 
-    raw = {key: blob.get(key) for key in (COMPANIES_KEY, PRODUCTS_KEY)}
-    if verify:
-        for key, data in raw.items():
-            expected = manifest.files.get(key, {}).get("sha256")
-            actual = _sha256(data)
-            if expected and expected != actual:
-                raise ValueError(
-                    f"{key} in {uri!r} does not match its manifest hash "
-                    f"(expected {expected[:12]}…, got {actual[:12]}…) — the "
-                    "artifact is truncated or was modified"
-                )
+    # Which parquet files to read, and the hashes to check them against — a
+    # single pair for a legacy artifact, every shard's pair for a sharded one.
+    if manifest.is_sharded:
+        to_read = [
+            (s["companies_key"], s["companies_sha256"], s["products_key"], s["products_sha256"])
+            for s in manifest.shards
+        ]
+    else:
+        to_read = [(
+            COMPANIES_KEY, manifest.files.get(COMPANIES_KEY, {}).get("sha256"),
+            PRODUCTS_KEY, manifest.files.get(PRODUCTS_KEY, {}).get("sha256"),
+        )]
 
-    companies = [
-        CompanyRow(
-            company_id=r["company_id"],
-            name=r["name"],
-            business_type=BusinessType(r["business_type"]),
-            jurisdiction=Jurisdiction(r["jurisdiction"]),
-            locale=Locale(r["locale"]),
-            currency=Currency(r["currency"]),
-            weight=float(r["weight"]),
-        )
-        for r in pq.read_table(io.BytesIO(raw[COMPANIES_KEY])).to_pylist()
-    ]
-
+    companies: list[CompanyRow] = []
     products: dict[str, list[ProductTemplate]] = {}
-    for r in pq.read_table(io.BytesIO(raw[PRODUCTS_KEY])).to_pylist():
-        products.setdefault(r["company_id"], []).append(
-            ProductTemplate(
-                description=r["description"],
-                price_low=r["price_low"],
-                price_high=r["price_high"],
-                fr=r["description_fr"] or "",
-                kind=LineItemKind(r["kind"]),
-                billing_model=BillingModel(r["billing_model"]),
-                code_system=CodeSystem(r["code_system"]),
-                code_prefix=r["code_prefix"],
-                usage_unit=UsageUnit(r["usage_unit"]),
-            )
-        )
+    for c_key, c_sha, p_key, p_sha in to_read:
+        c_bytes, p_bytes = blob.get(c_key), blob.get(p_key)
+        if verify:
+            for key, data, expected in ((c_key, c_bytes, c_sha), (p_key, p_bytes, p_sha)):
+                if expected and _sha256(data) != expected:
+                    raise ValueError(
+                        f"{key} in {uri!r} does not match its manifest hash — the "
+                        "artifact is truncated or was modified"
+                    )
+        companies.extend(_parse_companies(pq.read_table(io.BytesIO(c_bytes))))
+        _parse_products_into(pq.read_table(io.BytesIO(p_bytes)), products)
 
     orphans = [c.company_id for c in companies if c.company_id not in products]
     if orphans:

@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from docloom.core.enums import RunState, WorkUnitState
-from docloom.core.state.base import Run, WorkUnit
+from docloom.core.state.base import TOTAL_MODEL, Run, WorkUnit
 from decimal import Decimal as D
 
 from docloom.core.state.firestore import (
@@ -194,8 +194,21 @@ def test_reclaim_leaves_live_leases_alone_against_emulator() -> None:  # pragma:
 # ── Spend rollup ────────────────────────────────────────────────────────────
 def test_total_row_gets_a_legal_document_id() -> None:
     """'*' is not a valid Firestore document id, and '/' would nest a path."""
-    assert _doc_id("*") == "__total__"
+    assert _doc_id("*") == "_total_"
     assert "/" not in _doc_id("vendor/model-1")
+
+
+def test_no_doc_id_matches_the_reserved_pattern() -> None:
+    """Firestore rejects any document id matching ``__.*__`` with a 400. That
+    only bites against the real database — the emulator and SQLite accept it —
+    so the ``__total__`` sentinel shipped green and failed the first distributed
+    budget write in production. Guard every id the mapping can emit."""
+    import re
+
+    reserved = re.compile(r"^__.*__$")
+    for model in (TOTAL_MODEL, "deepseek-v4-flash", "qwen3.5-flash",
+                  "claude-haiku-4-5", "vendor/model-1"):
+        assert not reserved.match(_doc_id(model)), model
 
 
 def test_spend_document_mapping_round_trips_the_cost() -> None:

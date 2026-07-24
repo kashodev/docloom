@@ -29,7 +29,7 @@ from decimal import Decimal
 
 from docloom.core.logging import get_logger
 from docloom.core.providers.base import CompletionRequest, CompletionResult, TextProvider
-from docloom.core.providers.budget import BudgetGuard
+from docloom.core.providers.budget import BudgetExceeded, BudgetGuard
 from docloom.core.providers.mix import ProviderMix
 from docloom.core.usage.base import LlmUsage, UsageSink
 
@@ -71,12 +71,33 @@ class CatalogueRunner:
         concurrency: int = 8,
         use_batch: bool = True,
         usage: UsageSink | None = None,
+        empty_streak_limit: int = 10,
+        reroute_quarantined: bool = False,
     ) -> None:
         self._mix = mix
         self._budget = budget
         self._concurrency = max(concurrency, 1)
         self._use_batch = use_batch
         self._usage = usage
+        self._budget_exhausted = False   # log the cap being reached only once
+        # Circuit breaker: a provider that returns this many empty completions in
+        # a row is quarantined on the next run. A model that reasons its whole
+        # token budget away and returns `content: ""` — deepseek and qwen have
+        # both done it — otherwise burns real money on every call for a build's
+        # whole duration. A single non-empty completion clears the streak, so an
+        # occasional blank never trips it.
+        #
+        # By default a quarantined provider's share falls back to **procedural**
+        # (free). Rerouting it onto the surviving models is opt-in
+        # (``reroute_quarantined``) and off by default on purpose: silently
+        # moving 40% of a build onto whichever models remain can land it on the
+        # priciest one and drain the whole budget before the target is met. The
+        # safe default degrades to procedural; a caller who would rather pay to
+        # keep the LLM fill high asks for it explicitly.
+        self._empty_streak_limit = max(empty_streak_limit, 1)
+        self._reroute_quarantined = reroute_quarantined
+        self._empty_streak: Counter[str] = Counter()
+        self._quarantined: set[str] = set()
 
     async def run(self, items: list[CatalogueItem]) -> RunReport:
         report = RunReport()
@@ -85,8 +106,21 @@ class CatalogueRunner:
         groups: dict[int, list[CatalogueItem]] = defaultdict(list)
         providers: list[TextProvider] = self._mix.providers
         index_of = {id(p): i for i, p in enumerate(providers)}
+        quarantined = frozenset(self._quarantined)
         for item in items:
             provider = self._mix.choose(item_seed(item.item_id))
+            if provider.name in quarantined:
+                # Reroute only if asked, and only to a genuinely healthy model;
+                # otherwise this item's description stays procedural. Never pay a
+                # surviving (possibly pricier) model for a dead one's share by
+                # default — see the circuit-breaker note in __init__.
+                if self._reroute_quarantined:
+                    provider = self._mix.choose(item_seed(item.item_id), exclude=quarantined)
+                if not self._reroute_quarantined or provider.name in quarantined:
+                    report.failures[item.item_id] = (
+                        f"provider {provider.name} quarantined (all empty) — "
+                        "procedural fallback")
+                    continue
             groups[index_of[id(provider)]].append(item)
 
         for idx, group in groups.items():
@@ -106,7 +140,19 @@ class CatalogueRunner:
             (provider.estimate_batch_cost(it.request) for it in group), Decimal(0)
         )
         if self._budget is not None:
-            self._budget.check(estimate)
+            try:
+                self._budget.check(estimate)
+            except BudgetExceeded as exc:
+                # Over budget before sending: the whole group stays pending and
+                # degrades to procedural, exactly as the concurrent path does per
+                # item. Never abort the unit for it.
+                if not self._budget_exhausted:
+                    self._budget_exhausted = True
+                    _log.info("budget reached; remaining items fall back to procedural",
+                              detail=str(exc))
+                for it in group:
+                    report.failures[it.item_id] = repr(exc)
+                return
         try:
             results = await provider.complete_batch([it.request for it in group])
         except Exception as exc:  # noqa: BLE001 - one batch failing must not abort the rest
@@ -164,7 +210,22 @@ class CatalogueRunner:
         report.by_provider[result.provider] += 1
         report.total_cost += result.cost
         if self._budget is not None:
-            self._budget.add(result.cost)
+            # ``add`` records the spend and *then* raises once the cap is crossed.
+            # That call already happened and is billed, so the raise must not
+            # abort the unit — it only means no *further* calls should go out.
+            # The pre-flight ``check`` in the item paths enforces exactly that
+            # (it declines once spent > cap, so remaining items stay pending and
+            # degrade to the procedural description). Letting this propagate
+            # instead would throw away every LLM result in the unit and fail a
+            # unit the design intends to complete — a budget cap is a spend
+            # ceiling on a complete build, not a reason to abandon one.
+            try:
+                self._budget.add(result.cost)
+            except BudgetExceeded as exc:
+                if not self._budget_exhausted:
+                    self._budget_exhausted = True
+                    _log.info("budget reached; remaining items fall back to procedural",
+                              detail=str(exc))
         _log.debug("completion", item=item_id, provider=result.provider,
                    model=result.model, input_tokens=result.usage.input_tokens,
                    output_tokens=result.usage.output_tokens, cost=str(result.cost))
@@ -183,5 +244,19 @@ class CatalogueRunner:
                 f"({result.usage.output_tokens} output tokens, cost {result.cost}) — "
                 "if this is a reasoning model, disable thinking or raise max_tokens"
             )
+            self._note_empty(result.provider, result.model)
             return
+        self._empty_streak[result.provider] = 0   # a good answer clears the streak
         report.results[item_id] = result
+
+    def _note_empty(self, provider: str, model: str) -> None:
+        """Count a consecutive empty completion and quarantine a provider that has
+        crossed the limit, so the next run routes around it instead of paying it
+        to reason into the void again."""
+        self._empty_streak[provider] += 1
+        if (self._empty_streak[provider] >= self._empty_streak_limit
+                and provider not in self._quarantined):
+            self._quarantined.add(provider)
+            _log.warning("provider quarantined — all empty, routing around it",
+                         provider=provider, model=model,
+                         empty_streak=self._empty_streak[provider])

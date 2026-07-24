@@ -68,13 +68,21 @@ def _cloud_logging_fields(_logger: Any, _method: str, event: dict[str, Any]) -> 
 
     ``level`` → ``severity`` (uppercase), ``event`` → ``message``. Applied only in
     JSON mode, so console output keeps structlog's native, friendlier shape.
+
+    The renamed keys are emitted **first**. Renaming in place would append them
+    after everything else — including a structured traceback — so a record that
+    got truncated anywhere downstream would lose precisely the two fields that
+    say what happened and how bad it was.
     """
     level = event.pop("level", None)
+    message = event.pop("event", None)
+    ordered: dict[str, Any] = {}
     if level is not None:
-        event["severity"] = level.upper()
-    if "event" in event:
-        event["message"] = event.pop("event")
-    return event
+        ordered["severity"] = level.upper()
+    if message is not None:
+        ordered["message"] = message
+    ordered.update(event)
+    return ordered
 
 
 def configure(*, level: str | None = None, fmt: str | None = None,
@@ -102,7 +110,14 @@ def configure(*, level: str | None = None, fmt: str | None = None,
     ]
     if json_mode:
         renderer: list[Any] = [
-            structlog.processors.dict_tracebacks,     # exceptions as structured data
+            # Structured tracebacks, but WITHOUT frame locals. `dict_tracebacks`
+            # serialises every local in every frame: in a catalogue unit those
+            # include the company rows and 30,000 products, so the one record
+            # that explains a failure balloons and becomes unusable — the reason
+            # a whole sharded build failed with nothing legible in the logs.
+            structlog.processors.ExceptionRenderer(
+                structlog.tracebacks.ExceptionDictTransformer(show_locals=False)
+            ),
             _cloud_logging_fields,
             structlog.processors.JSONRenderer(),
         ]

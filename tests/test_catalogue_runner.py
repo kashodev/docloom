@@ -13,10 +13,7 @@ from __future__ import annotations
 import asyncio
 from decimal import Decimal as D
 
-import pytest
-
 from docloom.core.providers import (
-    BudgetExceeded,
     BudgetGuard,
     CatalogueItem,
     CatalogueRunner,
@@ -37,8 +34,9 @@ def run(coro):  # noqa: ANN001, ANN201
     return asyncio.run(coro)
 
 
-def items(n: int) -> list[CatalogueItem]:
-    return [CatalogueItem(f"item-{i}", CompletionRequest(system="s", prompt=f"p{i}")) for i in range(n)]
+def items(n: int, *, start: int = 0) -> list[CatalogueItem]:
+    return [CatalogueItem(f"item-{i}", CompletionRequest(system="s", prompt=f"p{i}"))
+            for i in range(start, start + n)]
 
 
 # ── Fake providers ──────────────────────────────────────────────────────────
@@ -78,6 +76,15 @@ class BatchStub(SyncStub):
             CompletionResult(f"{self.name}:{r.prompt}", Usage(10, 5), self.model, self.name, self._cost)
             for r in requests
         ]
+
+
+class EmptyStub(SyncStub):
+    """A provider that answers — and bills — but returns no text, the reasoning-
+    model-with-thinking-on failure that drained deepseek credits in production."""
+
+    async def complete(self, request: CompletionRequest) -> CompletionResult:
+        self.calls += 1
+        return CompletionResult("", Usage(50, 2000), self.model, self.name, self._cost)
 
 
 def mix_of(*providers, weights=None):  # noqa: ANN002, ANN003, ANN201
@@ -127,11 +134,22 @@ def test_use_batch_false_falls_back_to_per_item_calls() -> None:
 
 
 # ── Budget ──────────────────────────────────────────────────────────────────
-def test_budget_stops_the_run_before_overspending() -> None:
-    guard = BudgetGuard(D("0.005"))            # only ~5 items at 0.001 each
+def test_budget_declines_further_work_once_the_cap_is_reached() -> None:
+    # A budget cap is a spend ceiling, not a reason to abort. The runner never
+    # raises: within one run the whole group is dispatched before any of it is
+    # billed, so enforcement is *between* runs — once spend has crossed the cap a
+    # later run is declined item by item, and those items become failures the
+    # build falls back to procedural. Letting the cap raise instead would throw
+    # away every result and fail a build the design means to complete.
+    # (Regression: prod run ktwww failed four tasks this way.)
+    guard = BudgetGuard(D("0.005"))            # ~5 items at 0.001 each
     runner = CatalogueRunner(mix_of(SyncStub("a", D("0.001"))), budget=guard)
-    with pytest.raises(BudgetExceeded):
-        run(runner.run(items(50)))
+    first = run(runner.run(items(5)))          # 0.005 spent — right at the cap
+    assert len(first.results) == 5 and guard.spent == D("0.005")
+    second = run(runner.run(items(5)))         # now over it
+    assert second.results == {}                # every item declined
+    assert len(second.failures) == 5           # …as failures, nothing raised
+    assert guard.spent == D("0.005")           # declined items are never billed
 
 
 def test_within_budget_completes_and_tracks_spend() -> None:
@@ -154,6 +172,63 @@ def test_one_item_failing_does_not_sink_the_rest() -> None:
     assert len(report.results) == 5
     assert "item-3" in report.failures
     assert "model blip" in report.failures["item-3"]
+
+
+# ── Empty-provider circuit breaker ──────────────────────────────────────────
+def test_a_quarantined_provider_falls_back_to_procedural_by_default() -> None:
+    """A model that only ever returns empty text (deepseek/qwen reasoning their
+    token budget away) is quarantined after a streak of empties, then its share
+    degrades to procedural — NOT onto the surviving models, which by default must
+    never inherit a dead provider's share and risk draining the budget on the
+    pricier one. It simply stops being paid to produce nothing."""
+    bad, good = EmptyStub("bad", D("0.01")), SyncStub("good", D("0.001"))
+    runner = CatalogueRunner(mix_of(bad, good, weights=[0.5, 0.5]),
+                             empty_streak_limit=3)
+
+    run(runner.run(items(40)))
+    assert "bad" in runner._quarantined            # crossed the streak limit
+    calls_before, good_before = bad.calls, good.calls
+
+    second = run(runner.run(items(40, start=40)))
+    assert bad.calls == calls_before               # never called again
+    assert len(second.failures) > 0                # bad's share went procedural…
+    assert len(second.results) < 40                # …not to good
+    assert len(second.results) + len(second.failures) == 40
+    assert all(r.provider == "good" for r in second.results.values())
+    # good handled only its own share — it did not inherit bad's.
+    assert good.calls - good_before == len(second.results)
+
+
+def test_reroute_quarantined_moves_the_share_to_survivors_when_opted_in() -> None:
+    """The opt-in: a caller who would rather keep the LLM fill high can pay the
+    surviving models for the dead one's share."""
+    bad, good = EmptyStub("bad", D("0.01")), SyncStub("good", D("0.001"))
+    runner = CatalogueRunner(mix_of(bad, good, weights=[0.5, 0.5]),
+                             empty_streak_limit=3, reroute_quarantined=True)
+
+    run(runner.run(items(40)))
+    assert "bad" in runner._quarantined
+    calls_before = bad.calls
+
+    second = run(runner.run(items(40, start=40)))
+    assert bad.calls == calls_before               # never called again
+    assert len(second.results) == 40               # all rerouted to the survivor
+    assert all(r.provider == "good" for r in second.results.values())
+    assert second.failures == {}
+
+
+def test_an_occasional_empty_does_not_quarantine() -> None:
+    """One blank among good answers must not trip the breaker — the streak resets
+    on any non-empty completion."""
+    class Blip(SyncStub):
+        async def complete(self, request: CompletionRequest) -> CompletionResult:
+            self.calls += 1
+            text = "" if request.prompt == "p2" else f"{self.name}:{request.prompt}"
+            return CompletionResult(text, Usage(10, 5), self.model, self.name, self._cost)
+
+    runner = CatalogueRunner(mix_of(Blip("a")), empty_streak_limit=3)
+    run(runner.run(items(10)))
+    assert runner._quarantined == set()
 
 
 # ── Anthropic batch mapping (pure + fake client) ────────────────────────────

@@ -284,6 +284,14 @@ emit("CAT_VERSION", get("catalogue.version", "v1"))
 emit("CAT_COMPANIES", int(get("catalogue.companies", 1000)))
 emit("CAT_PRODUCTS", int(get("catalogue.products_per_company", 300)))
 emit("CAT_CONCURRENCY", int(get("catalogue.concurrency", 8)))
+# A build over more than one task is a *sharded* build: it is a run over company
+# ranges, coordinated through the same StateStore and work-unit claim as
+# generation (so it reuses the composite index provision already creates). One
+# task keeps the single-process in-memory build — the safe, unchanged default.
+emit("CAT_TASKS", int(get("catalogue.tasks", 1)))
+emit("CAT_PARALLELISM", int(get("catalogue.parallelism", get("catalogue.tasks", 1))))
+emit("CAT_UNIT_SIZE", int(get("catalogue.unit_size", 200)))
+emit("CAT_BUILD_ID", get("catalogue.build_id", ""))
 # Compact single-line JSON (valid YAML, so the CLI parses it unchanged) rather
 # than multi-line YAML: an env var value must survive gcloud's flag parsing, and
 # a newline or a stray comma in a YAML block does not travel cleanly.
@@ -391,7 +399,14 @@ EOF
   fi
   if [[ -n "${PROVIDER_MIX}" ]]; then
     echo
-    echo "  catalogue mix (budget \$${BUDGET_USD}):"
+    if (( CAT_TASKS > 1 )); then
+      local cat_units=$(( (CAT_COMPANIES + CAT_UNIT_SIZE - 1) / CAT_UNIT_SIZE ))
+      echo "  catalogue (budget \$${BUDGET_USD}): ${CAT_COMPANIES} companies, sharded —"
+      echo "    ${cat_units} unit(s) of ${CAT_UNIT_SIZE} across ${CAT_TASKS} task(s), resumable"
+    else
+      echo "  catalogue (budget \$${BUDGET_USD}): ${CAT_COMPANIES} companies, single-task in-memory build"
+    fi
+    echo "  provider mix:"
     for p in ${PROVIDER_MIX}; do
       IFS=: read -r name model weight <<<"${p}"
       printf '    %-12s %-22s %s%%\n' "${name}" "${model}" "${weight}"
@@ -612,18 +627,43 @@ build_catalogue() {
   say "Catalogue build → ${CAT_OUT} (${CAT_VERSION})"
   echo "  ${CAT_COMPANIES} companies × ${CAT_PRODUCTS} SKUs, concurrency ${CAT_CONCURRENCY}, budget \$${BUDGET_USD}"
 
-  # A dedicated single-task job: the build is one process that writes the whole
-  # artifact, unlike the sharded generate job. The mix rides in DOCLOOM_PROVIDERS
-  # (config); the keys are injected from Secret Manager.
   local cat_job="${JOB}-catalogue"
+  local -a cat_args=(
+    "catalogue"
+    "--out=${CAT_OUT}" "--version=${CAT_VERSION}"
+    "--companies=${CAT_COMPANIES}" "--products-per-company=${CAT_PRODUCTS}"
+    "--concurrency=${CAT_CONCURRENCY}" "--budget-usd=${BUDGET_USD}"
+  )
+  local tasks parallelism retries
+  if (( CAT_TASKS > 1 )); then
+    # A sharded build: a run over company ranges, worked by N tasks against the
+    # shared StateStore. The atomic claim splits the units, each task writes its
+    # own shards, and whoever finishes last writes the root manifest — the same
+    # coordination as generation, so it resumes and cannot double-spend the
+    # budget. `--state` is what switches the CLI into this mode.
+    echo "  sharded: ${CAT_TASKS} task(s), ${CAT_UNIT_SIZE} companies/shard, resumable via state ${STATE_URI}"
+    cat_args+=("--state=${STATE_URI}" "--unit-size=${CAT_UNIT_SIZE}")
+    [[ -n "${CAT_BUILD_ID}" ]] && cat_args+=("--build-id=${CAT_BUILD_ID}")
+    tasks="${CAT_TASKS}"; parallelism="${CAT_PARALLELISM}"; retries="${MAX_RETRIES}"
+  else
+    # A single-task job: one process builds the whole catalogue in memory and
+    # uploads once. Simplest, and fine up to a few hundred thousand companies.
+    cat_args+=("--no-batch")
+    tasks=1; parallelism=1; retries=0
+  fi
+
+  # The mix rides in DOCLOOM_PROVIDERS (config); the keys are injected from
+  # Secret Manager. Args are joined with `|` (no catalogue value contains one),
+  # matching the `^|^` delimiter used for the generate job.
+  local joined; joined="$(IFS='|'; echo "${cat_args[*]}")"
   gcloud run jobs deploy "${cat_job}" \
     --image="${IMAGE}" --region="${REGION}" --project="${PROJECT}" \
     --service-account="${SA}" \
-    --tasks=1 --parallelism=1 --max-retries=0 \
-    --task-timeout=3600s --cpu="${CPU}" --memory="${MEMORY}" \
+    --tasks="${tasks}" --parallelism="${parallelism}" --max-retries="${retries}" \
+    --task-timeout="${TASK_TIMEOUT}" --cpu="${CPU}" --memory="${MEMORY}" \
     --set-env-vars="^@^DOCLOOM_PROVIDERS=${CAT_PROVIDERS_JSON}" \
     "${secret_args[@]}" \
-    --args="^|^catalogue|--out=${CAT_OUT}|--version=${CAT_VERSION}|--companies=${CAT_COMPANIES}|--products-per-company=${CAT_PRODUCTS}|--concurrency=${CAT_CONCURRENCY}|--budget-usd=${BUDGET_USD}|--no-batch"
+    --args="^|^${joined}"
 
   gcloud run jobs execute "${cat_job}" --region="${REGION}" --project="${PROJECT}" --wait
   echo
