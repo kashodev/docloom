@@ -87,6 +87,14 @@ class EmptyStub(SyncStub):
         return CompletionResult("", Usage(50, 2000), self.model, self.name, self._cost)
 
 
+class ErroringStub(SyncStub):
+    """A provider whose every call raises — a bad API key or a down endpoint."""
+
+    async def complete(self, request: CompletionRequest) -> CompletionResult:
+        self.calls += 1
+        raise RuntimeError("401 Unauthorized")
+
+
 def mix_of(*providers, weights=None, fallback=None):  # noqa: ANN002, ANN003, ANN201
     weights = weights or [1.0] * len(providers)
     return ProviderMix(list(providers), weights, fallback=fallback)
@@ -197,6 +205,55 @@ def test_a_quarantined_provider_falls_back_to_procedural_by_default() -> None:
     assert all(r.provider == "good" for r in second.results.values())
     # good handled only its own share — it did not inherit bad's.
     assert good.calls - good_before == len(second.results)
+
+
+def test_a_consistently_erroring_provider_is_quarantined_and_routed_around() -> None:
+    """A bad API key or a down endpoint (every call raises) is as unusable as an
+    all-empty provider — it too is quarantined, so its share routes through the
+    fallback pool instead of erroring on every item forever. This is what makes a
+    wrong key a valid way to test the fallback behaviour."""
+    bad, good = ErroringStub("bad", D("0.01")), SyncStub("good", D("0.001"))
+    runner = CatalogueRunner(
+        mix_of(bad, good, weights=[1.0, 0.0], fallback=[("good", 100.0)]),
+        empty_streak_limit=3)
+
+    run(runner.run(items(20)))                     # errors quarantine bad
+    assert "bad" in runner._quarantined
+    calls_before = bad.calls
+
+    second = run(runner.run(items(40, start=100)))
+    assert bad.calls == calls_before               # never called again
+    assert len(second.results) == 40               # its share went to the survivor
+    assert all(r.provider == "good" for r in second.results.values())
+
+
+def test_an_occasional_error_does_not_quarantine() -> None:
+    """One transient error among good answers must not trip the breaker — the
+    streak resets on any usable completion."""
+    class Flaky(SyncStub):
+        async def complete(self, request: CompletionRequest) -> CompletionResult:
+            self.calls += 1
+            if request.prompt in ("p2", "p7"):
+                raise RuntimeError("transient")
+            return await SyncStub.complete(self, request)
+
+    runner = CatalogueRunner(mix_of(Flaky("a")), empty_streak_limit=3)
+    run(runner.run(items(15)))
+    assert runner._quarantined == set()
+
+
+def test_a_budget_decline_is_not_counted_as_a_provider_error() -> None:
+    """Declining an item for budget is not the provider failing — it must never
+    contribute to the quarantine streak, or a tight budget would quarantine a
+    perfectly healthy model. Enforcement is between runs, so the first run spends
+    and the second is fully declined; the healthy provider must survive it."""
+    guard = BudgetGuard(D("0.005"))
+    good = SyncStub("good", D("0.001"))
+    runner = CatalogueRunner(mix_of(good), budget=guard, empty_streak_limit=3)
+    run(runner.run(items(5)))                      # spends 0.005, at the cap
+    second = run(runner.run(items(40, start=100)))  # every item declined for budget
+    assert len(second.failures) == 40 and second.results == {}
+    assert runner._quarantined == set()            # budget declines never quarantine
 
 
 def test_a_fallback_pool_sends_a_dead_providers_share_to_the_named_model() -> None:

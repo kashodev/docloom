@@ -94,7 +94,7 @@ class CatalogueRunner:
         # ``quarantined`` seeds the set from a prior unit's findings (persisted in
         # the run state) so a build does not re-learn a dead provider unit by unit.
         self._empty_streak_limit = max(empty_streak_limit, 1)
-        self._empty_streak: Counter[str] = Counter()
+        self._fail_streak: Counter[str] = Counter()   # empty completions AND errors
         self._quarantined: set[str] = set(quarantined or ())
 
     @property
@@ -156,6 +156,8 @@ class CatalogueRunner:
                          items=len(group), error=repr(exc))
             for it in group:
                 report.failures[it.item_id] = repr(exc)
+            # One failed batch = one failed call toward the quarantine streak.
+            self._note_unusable(provider.name, provider.model, repr(exc))
             return
         for it, result in zip(group, results, strict=True):
             self._record_usage(it, result, is_batch=True)
@@ -179,6 +181,11 @@ class CatalogueRunner:
         for item_id, outcome in await asyncio.gather(*(one(it) for it in group)):
             if isinstance(outcome, Exception):
                 report.failures[item_id] = repr(outcome)
+                # A raised call counts toward the quarantine streak too — a bad
+                # key or a down endpoint is as "unusable" as an empty answer, and
+                # should route to the fallback pool rather than be retried forever.
+                if not isinstance(outcome, BudgetExceeded):
+                    self._note_unusable(provider.name, provider.model, repr(outcome))
             else:
                 self._record_usage(by_id[item_id], outcome)
                 self._record(report, item_id, outcome)
@@ -240,19 +247,22 @@ class CatalogueRunner:
                 f"({result.usage.output_tokens} output tokens, cost {result.cost}) — "
                 "if this is a reasoning model, disable thinking or raise max_tokens"
             )
-            self._note_empty(result.provider, result.model)
+            self._note_unusable(result.provider, result.model, "empty")
             return
-        self._empty_streak[result.provider] = 0   # a good answer clears the streak
+        self._fail_streak[result.provider] = 0   # a good answer clears the streak
         report.results[item_id] = result
 
-    def _note_empty(self, provider: str, model: str) -> None:
-        """Count a consecutive empty completion and quarantine a provider that has
-        crossed the limit, so the next run routes around it instead of paying it
-        to reason into the void again."""
-        self._empty_streak[provider] += 1
-        if (self._empty_streak[provider] >= self._empty_streak_limit
+    def _note_unusable(self, provider: str, model: str, reason: str) -> None:
+        """Count a consecutive **unusable** outcome from a provider — an empty
+        completion *or* a raised call (a bad key, a down endpoint, a rate limit) —
+        and quarantine it once the streak crosses the limit, so the next run
+        routes its share through the fallback pool instead of paying it to fail
+        again. A single usable answer clears the streak, so a transient blip never
+        trips it."""
+        self._fail_streak[provider] += 1
+        if (self._fail_streak[provider] >= self._empty_streak_limit
                 and provider not in self._quarantined):
             self._quarantined.add(provider)
-            _log.warning("provider quarantined — all empty, routing around it",
-                         provider=provider, model=model,
-                         empty_streak=self._empty_streak[provider])
+            _log.warning("provider quarantined — routing its share through fallback",
+                         provider=provider, model=model, reason=reason,
+                         fail_streak=self._fail_streak[provider])
