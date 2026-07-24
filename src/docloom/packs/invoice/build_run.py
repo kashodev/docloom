@@ -245,16 +245,27 @@ def _finalize_if_complete(
     """
     progress = state.progress(build_id)
     outstanding = progress[WorkUnitState.PENDING] + progress[WorkUnitState.RUNNING]
-    if outstanding or progress[WorkUnitState.FAILED]:
-        _log.warning("catalogue build left incomplete",
+    if progress[WorkUnitState.FAILED]:
+        # Real holes — a re-run is needed to retry them. This is the only case
+        # that warrants a warning.
+        _log.warning("catalogue build has failed units — a re-run is needed",
                      failed=progress[WorkUnitState.FAILED], pending=outstanding)
+        return False
+    if outstanding:
+        # Not a failure: this worker drained its share while peers are still
+        # finishing theirs. Whoever finishes the last unit writes the root. An
+        # INFO, not a warning — the old warning read as a broken build when the
+        # build was simply still in progress across the fleet.
+        _log.info("catalogue build not complete yet; peers still finishing",
+                  in_flight=outstanding)
         return False
 
     run = state.get_run(build_id)
     if run is None:
         return False
     if run.state is RunState.COMPLETED:
-        return True   # someone already finalised
+        _log.info("catalogue build already complete")   # finalised by a peer
+        return True
     state.set_run_state(build_id, RunState.COMPLETED)
 
     shards = [json.loads(artifact.get(key))
