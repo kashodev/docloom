@@ -136,12 +136,14 @@ def test_an_incomplete_build_never_reports_itself_complete(tmp_path: Path, monke
 
     first = build_catalogue_run(state, **kw)          # type: ignore[arg-type]
     assert first.units_failed == 3 and first.build_complete is False
+    assert first.build_has_failures is True           # real holes → exit non-zero
 
     # The retry: re-queues the failed units, fails them again, and must still
     # report the build as incomplete rather than "nothing to do, all good".
     second = build_catalogue_run(state, **kw)         # type: ignore[arg-type]
     assert second.build_complete is False
     assert second.units_failed == 3, "failed units must be retried, not skipped"
+    assert second.build_has_failures is True
     with pytest.raises(FileNotFoundError):
         load_catalogue(out)
 
@@ -162,6 +164,34 @@ def test_a_worker_that_claims_nothing_reports_the_builds_state(tmp_path: Path) -
     latecomer.close()
     assert stats.units_completed == 0                 # nothing left to claim
     assert stats.build_complete is True               # …but the build IS done
+    assert stats.build_has_failures is False
+
+
+def test_a_worker_finishing_before_its_peers_is_not_a_failure(tmp_path: Path) -> None:
+    """A worker that drained its share while a peer is still mid-unit must not
+    report failure: the build simply is not globally done yet, and only real
+    holes (failed units) are a failure. Reporting one as failed is what made
+    execution qwcc2 pointlessly retry its healthy early-finishers.
+
+    Simulated by leaving one unit claimed-but-unfinished (a stand-in for a peer
+    that is still working it) while this worker drains the rest."""
+    from docloom.core.pipeline.run import create_run
+    from docloom.packs.invoice.build_run import CATALOGUE_PACK
+
+    out = str(tmp_path / "cat")
+    state = _state(tmp_path)
+    kw = dict(out=out, build_id="b", catalogue_version="v1", companies=100,
+              products_per_company=6, unit_size=20, seed=1)               # 5 units
+
+    create_run(state, run_id="b", pack=CATALOGUE_PACK, config_id="v1",
+               total=100, unit_size=20)
+    peer_unit = state.claim_next_unit("b")            # a peer holds one, RUNNING
+    assert peer_unit is not None
+
+    stats = build_catalogue_run(state, **kw)          # type: ignore[arg-type]
+    assert stats.units_completed == 4                 # drained the other four
+    assert stats.build_complete is False              # the peer's unit is unfinished
+    assert stats.build_has_failures is False          # …but no holes → NOT a failure
 
 
 def test_a_resume_completes_the_build(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001

@@ -347,13 +347,15 @@ def _sharded_catalogue(*, out: str, version: str, companies: int, products_per_c
     typer.echo(f"  this worker: {stats.units_completed} unit(s), {stats.products:,} products"
                + (f", {stats.units_failed} failed" if stats.units_failed else "")
                + (f", cost ${stats.total_cost}" if stats.total_cost else ""))
-    # The exit code reports the BUILD, not this worker's share of it. A worker
-    # that claimed nothing — because the units were all taken, or all already
-    # failed — has "succeeded" at doing nothing, and exiting 0 on that turns an
-    # incomplete build into a green execution. Only a finished build is a zero.
-    if not stats.build_complete:
-        typer.echo("  build incomplete — no root manifest written; "
-                   "re-run to retry the failed units", err=True)
+    # Exit non-zero only for a real hole — a unit this worker failed, or a FAILED
+    # unit anywhere in the build — because that is what needs a re-run. A worker
+    # that finished its share cleanly while peers are still mid-unit is NOT a
+    # failure: the build simply isn't globally done yet, and making that early
+    # finisher exit non-zero just gets it pointlessly retried. A worker that
+    # claimed nothing over a build that already has holes still exits non-zero
+    # (build_has_failures catches it), so a broken build never reads green.
+    if stats.units_failed or stats.build_has_failures:
+        typer.echo("  build has failed units — re-run to retry them", err=True)
         raise typer.Exit(1)
 
 

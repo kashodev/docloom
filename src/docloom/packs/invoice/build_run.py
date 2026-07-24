@@ -76,6 +76,13 @@ class BuildStats:
     #: still has to report this, or an incomplete build exits 0 and reads as a
     #: success. See ``build_catalogue_run``.
     build_complete: bool = False
+    #: Whether the build has FAILED units (holes) at the end of this worker's
+    #: drain. This — not ``build_complete`` — is what a failure exit code keys on.
+    #: A worker that finished its share cleanly while peers are still mid-unit is
+    #: not a failure (the build simply isn't globally done yet); only real holes
+    #: are. Conflating the two makes every early-finisher exit non-zero and get
+    #: pointlessly retried.
+    build_has_failures: bool = False
 
 
 def build_catalogue_run(
@@ -131,9 +138,11 @@ def build_catalogue_run(
 
     stats.build_complete = _finalize_if_complete(
         state, artifact, out, build_id, catalogue_version, provenance)
+    stats.build_has_failures = state.progress(build_id)[WorkUnitState.FAILED] > 0
     _log.info("catalogue build: worker finished", units=stats.units_completed,
               failed=stats.units_failed, products=stats.products,
-              cost=str(stats.total_cost), build_complete=stats.build_complete)
+              cost=str(stats.total_cost), build_complete=stats.build_complete,
+              build_has_failures=stats.build_has_failures)
     return stats
 
 
