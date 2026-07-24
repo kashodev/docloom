@@ -142,7 +142,7 @@ def test_a_swallowed_unit_failure_is_still_logged(tmp_path: Path, json_logs) -> 
     assert len(failures) == 2
     assert all("render exploded" in e["error"] for e in failures)
     assert all(e["severity"] == "WARNING" for e in failures)
-    assert any(e["message"] == "run left incomplete" for e in events)
+    assert any(e["message"] == "run has failed units — a re-run is needed" for e in events)
 
 
 def test_an_empty_completion_is_logged(json_logs) -> None:  # noqa: ANN001
