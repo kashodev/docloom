@@ -247,3 +247,29 @@ def test_factory_dynamodb_needs_aws_extra() -> None:
 def test_factory_rejects_an_unknown_scheme() -> None:
     with pytest.raises(ValueError, match="unsupported state scheme"):
         open_state("redis://localhost/0")
+
+
+def test_quarantine_set_unions_and_persists(tmp_path: Path) -> None:
+    """Providers quarantined by one unit are visible to later units, and the
+    union is idempotent — the core of cross-unit quarantine persistence (R1)."""
+    db = tmp_path / "s.db"
+    store = SqliteStateStore(db)
+    make_run(store, "b")
+    assert store.quarantined_providers("b") == set()
+
+    store.quarantine_providers("b", {"deepseek"})
+    store.quarantine_providers("b", {"deepseek", "dashscope"})   # union, dup ok
+    assert store.quarantined_providers("b") == {"deepseek", "dashscope"}
+    store.quarantine_providers("b", set())                       # no-op
+    store.close()
+
+    reopened = SqliteStateStore(db)                              # survives a restart
+    assert reopened.quarantined_providers("b") == {"deepseek", "dashscope"}
+
+
+def test_quarantine_sets_are_per_run(tmp_path: Path) -> None:
+    store = SqliteStateStore(tmp_path / "s.db")
+    make_run(store, "b1")
+    make_run(store, "b2")
+    store.quarantine_providers("b1", {"deepseek"})
+    assert store.quarantined_providers("b2") == set()

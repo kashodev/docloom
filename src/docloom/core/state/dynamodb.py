@@ -435,6 +435,21 @@ class DynamoDbStateStore:
         ).get("Item")
         return from_nano(int(item["cost_nano"])) if item else Decimal(0)
 
+    def quarantine_providers(self, run_id: str, providers: set[str]) -> None:
+        if not providers:
+            return
+        # `ADD` on a String Set is an atomic set-union server-side, so concurrent
+        # workers merge their findings without a read-modify-write race.
+        self._table.update_item(
+            Key={"pk": run_id, "sk": _RUN_SK},
+            UpdateExpression="ADD quarantined :q",
+            ExpressionAttributeValues={":q": set(providers)},
+        )
+
+    def quarantined_providers(self, run_id: str) -> set[str]:
+        item = self._table.get_item(Key={"pk": run_id, "sk": _RUN_SK}).get("Item")
+        return set(item.get("quarantined", set())) if item else set()
+
     def units(self, run_id: str) -> Iterator[WorkUnit]:
         return iter([item_to_unit(item) for item in self._iter_units(run_id)])
 

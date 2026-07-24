@@ -265,6 +265,49 @@ def test_the_llm_build_shards_and_falls_back(tmp_path: Path) -> None:
     assert all(cat.spec_for(c).products for c in cat.roster().companies)
 
 
+def test_quarantine_persists_across_units_and_lands_in_the_manifest(tmp_path: Path) -> None:
+    """R1 + R3 end to end: a provider the first unit finds dead is quarantined in
+    the run state, so later units inherit it and make NO calls to re-learn it
+    (R1), and the root manifest records which shards degraded and from whom (R3).
+    """
+    from decimal import Decimal as D
+
+    from docloom.core.providers.base import CompletionResult, Usage
+    from docloom.core.providers.mix import ProviderMix
+    from docloom.core.providers.pricing import pricing_for
+
+    class Empty:
+        name = "deepseek"; model = "deepseek-v4-flash"; pricing = pricing_for("__local__")
+        calls = 0
+        async def complete(self, request):  # noqa: ANN001
+            type(self).calls += 1
+            return CompletionResult("", Usage(10, 2000), self.model, self.name, D("0.001"))
+        def estimate_cost(self, request):  # noqa: ANN001
+            return D("0.001")
+
+    out = str(tmp_path / "cat")
+    state = _state(tmp_path)
+    stats = build_catalogue_run(
+        state, out=out, build_id="b", catalogue_version="v1",
+        companies=60, products_per_company=6, unit_size=20, seed=2,  # 3 units of 20
+        mix=ProviderMix([Empty()], [1.0]), max_rounds=1,
+    )
+    assert stats.build_complete and stats.units_failed == 0
+    assert stats.procedural_fallback == 360               # all fell back, still complete
+
+    # R1: the dead provider is quarantined at the build level…
+    assert state.quarantined_providers("b") == {"deepseek"}
+    # …and only the FIRST unit paid to discover it — the other two inherited the
+    # quarantine and made zero calls (one unit's 20 items, not three units' 60).
+    assert Empty.calls == 20
+
+    # R3: the manifest records the degraded shards and who was quarantined.
+    fb = load_catalogue(out).manifest.provenance.get("fallback")
+    assert fb is not None
+    assert fb["quarantined_providers"] == ["deepseek"]
+    assert fb["shards_degraded"] == [0, 1, 2]
+
+
 def test_a_budget_too_small_completes_procedurally_it_does_not_fail(tmp_path: Path) -> None:
     """A budget below the build's cost is a spend ceiling, not a failure — the
     cap stops further LLM calls and the rest of the catalogue falls back to

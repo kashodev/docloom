@@ -44,7 +44,7 @@ from docloom.packs.invoice.artifact import (
     write_catalogue_shard,
     write_sharded_manifest,
 )
-from docloom.packs.invoice.llm_build import build_llm_catalogue_sync
+from docloom.packs.invoice.llm_build import BuildReport, build_llm_catalogue_sync
 from docloom.packs.invoice.procedural import generate_company_range
 
 _log = get_logger(__name__)
@@ -58,6 +58,20 @@ _PARTS_DIR = "catalogue-parts"
 
 def _part_key(unit_index: int) -> str:
     return f"{_PARTS_DIR}/unit-{unit_index:06d}.json"
+
+
+def _shard_fallback(report: "BuildReport | None") -> dict | None:
+    """Per-shard fallback record for the manifest (R3): which providers this
+    shard found dead, and how its fill split. ``None`` for a procedural build,
+    or an LLM build where nothing was quarantined — so a clean shard adds no
+    noise, and a corpus stays auditable for which shards degraded and why."""
+    if report is None or not report.quarantined:
+        return None
+    return {
+        "quarantined": sorted(report.quarantined),
+        "llm_filled": report.llm_filled,
+        "procedural_fallback": report.procedural_fallback,
+    }
 
 
 @dataclass(slots=True)
@@ -175,13 +189,24 @@ def _work_unit(
                 # report.products, and log via `_log.info` under this bound `unit`
                 # context. Small–medium effort; the as_completed swap is the only
                 # change to the concurrency hot path (preserve failure isolation).
+                # Seed the breaker from what earlier units already learned, so a
+                # dead provider is not re-discovered (and re-paid) unit by unit;
+                # flush anything this unit newly quarantines back for later ones.
+                known_bad = state.quarantined_providers(build_id)
                 rows, products, report = build_llm_catalogue_sync(
                     mix, companies=unit.count, company_start=unit.start_index,
                     products_per_company=products_per_company, seed=seed,
                     budget=budget, concurrency=concurrency, max_rounds=max_rounds,
+                    quarantined=known_bad,
                 )
+                newly_bad = report.quarantined - known_bad
+                if newly_bad:
+                    state.quarantine_providers(build_id, report.quarantined)
+                    _log.warning("providers quarantined for the build",
+                                 newly=sorted(newly_bad), all=sorted(report.quarantined))
             descriptor = write_catalogue_shard(out, unit.unit_index,
-                                               companies=rows, products=products)
+                                               companies=rows, products=products,
+                                               fallback=_shard_fallback(report))
             # The descriptor part lands before the unit is marked done, so the
             # root — assembled at completion — never reads a done unit with no
             # part. Same ordering guarantee as the run manifest.
@@ -238,6 +263,17 @@ def _finalize_if_complete(
         "companies": sum(s["companies"] for s in shards),
         "products": sum(s["products"] for s in shards),
     }
+    # R3: a build-level summary of where a provider outage bit — which shards
+    # degraded and which providers were quarantined — so the corpus is auditable
+    # from the root alone. Each shard's descriptor keeps its own detail.
+    degraded = [s["unit_index"] for s in shards if s.get("fallback")]
+    if degraded:
+        total_provenance["fallback"] = {
+            "shards_degraded": degraded,
+            "quarantined_providers": sorted(
+                {p for s in shards if s.get("fallback")
+                 for p in s["fallback"]["quarantined"]}),
+        }
     write_sharded_manifest(out, catalogue_version=catalogue_version, shards=shards,
                            provenance=total_provenance)
     _log.info("catalogue build complete", units=len(shards),

@@ -77,6 +77,14 @@ CREATE TABLE IF NOT EXISTS run_spend (
     updated_at    TEXT NOT NULL,
     PRIMARY KEY (run_id, model)
 );
+-- Providers quarantined during a run (the circuit breaker's decision, persisted
+-- across the build's units). (run_id, provider) PK + INSERT OR IGNORE makes the
+-- union atomic and idempotent, so concurrent workers never clobber.
+CREATE TABLE IF NOT EXISTS run_quarantine (
+    run_id   TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    PRIMARY KEY (run_id, provider)
+);
 """
 
 _CLAIMABLE = (WorkUnitState.PENDING.value,)
@@ -293,6 +301,22 @@ class SqliteStateStore:
             (run_id, TOTAL_MODEL),
         ).fetchone()
         return from_nano(int(row["cost_nano"])) if row else Decimal(0)
+
+    # ── Quarantine set ────────────────────────────────────────────────────────
+    def quarantine_providers(self, run_id: str, providers: set[str]) -> None:
+        if not providers:
+            return
+        with self._conn:
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO run_quarantine (run_id, provider) VALUES (?, ?)",
+                [(run_id, p) for p in providers],
+            )
+
+    def quarantined_providers(self, run_id: str) -> set[str]:
+        rows = self._conn.execute(
+            "SELECT provider FROM run_quarantine WHERE run_id=?", (run_id,)
+        ).fetchall()
+        return {r["provider"] for r in rows}
 
     def units(self, run_id: str) -> Iterator[WorkUnit]:
         rows = self._conn.execute(

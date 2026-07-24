@@ -78,6 +78,8 @@ class BuildReport:
     bad_price_bands: int = 0
     total_cost: Decimal = Decimal(0)
     by_provider: dict[str, int] = field(default_factory=dict)
+    #: Providers quarantined by the circuit breaker over this build (all empty).
+    quarantined: set[str] = field(default_factory=set)
 
     @property
     def llm_fraction(self) -> float:
@@ -96,6 +98,7 @@ class BuildReport:
             "bad_price_bands": self.bad_price_bands,
             "total_cost_usd": str(self.total_cost),
             "by_provider": dict(self.by_provider),
+            "quarantined": sorted(self.quarantined),
         }
 
 
@@ -248,6 +251,7 @@ async def build_llm_catalogue(
     concurrency: int = 8,
     use_batch: bool = True,
     progress: Callable[[str], None] | None = None,
+    quarantined: set[str] | None = None,
 ) -> tuple[list[CompanyRow], dict[str, list[ProductTemplate]], BuildReport]:
     """Build a catalogue whose descriptions come from ``mix``.
 
@@ -296,7 +300,7 @@ async def build_llm_catalogue(
     report.procedural_fallback = len(pending)   # updated as slots fill
 
     runner = CatalogueRunner(mix, budget=budget, concurrency=concurrency,
-                             use_batch=use_batch)
+                             use_batch=use_batch, quarantined=quarantined)
     emit = progress or (lambda _msg: None)
     emit(f"skeleton ready: {report.companies:,} companies, {report.products:,} products; "
          f"requesting descriptions in chunks of {CHUNK}")
@@ -331,6 +335,7 @@ async def build_llm_catalogue(
 
     report.procedural_fallback = len(pending)
     report.llm_filled = report.products - report.procedural_fallback
+    report.quarantined = runner.quarantined
     return rows, products, report
 
 

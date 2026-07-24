@@ -72,6 +72,7 @@ class CatalogueRunner:
         use_batch: bool = True,
         usage: UsageSink | None = None,
         empty_streak_limit: int = 10,
+        quarantined: set[str] | None = None,
     ) -> None:
         self._mix = mix
         self._budget = budget
@@ -90,9 +91,16 @@ class CatalogueRunner:
         # (its fallback pool): procedural by default, or a configured pool of
         # models + shares. The runner only detects the failure and reports the
         # quarantined set to `mix.route`.
+        # ``quarantined`` seeds the set from a prior unit's findings (persisted in
+        # the run state) so a build does not re-learn a dead provider unit by unit.
         self._empty_streak_limit = max(empty_streak_limit, 1)
         self._empty_streak: Counter[str] = Counter()
-        self._quarantined: set[str] = set()
+        self._quarantined: set[str] = set(quarantined or ())
+
+    @property
+    def quarantined(self) -> set[str]:
+        """Providers quarantined so far — the seed set plus any this run added."""
+        return set(self._quarantined)
 
     async def run(self, items: list[CatalogueItem]) -> RunReport:
         report = RunReport()
