@@ -346,6 +346,7 @@ class InvoiceSampler:
             recipient=Party(party_id=f"cust_{rng.randint(1000, 9999)}",
                             name=rng.choice(_RECIPIENTS)),
             business_type=company.business_type,
+            product_category=company.product_category,
             locale=company.locale,
             jurisdiction=company.jurisdiction,
             currency=company.currency,

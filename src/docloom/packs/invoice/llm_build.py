@@ -131,10 +131,17 @@ def build_prompt(
     French companies are prompted in French with French examples, because that is
     what prints on their invoices — translating afterwards is what produced the
     half-French strings the procedural build had to fix.
+
+    The **domain** is the company's narrow product family (``product_category``),
+    not its umbrella business type. Prompting on "a retail business" let the model
+    free-associate across every corner of retail — one company's catalogue ended
+    up mixing compression shorts and a motherboard. Naming the family ("an apparel
+    and accessories retailer") and telling the model to stay inside it keeps a
+    company's whole catalogue one coherent line.
     """
     french = _is_french(company.locale)
     currency = str(company.currency)
-    kind = company.business_type.value.replace("_", " ")
+    kind = company.product_category or company.business_type.value.replace("_", " ")
     shots = _few_shot(examples)
     if french:
         system = (
@@ -145,9 +152,11 @@ def build_prompt(
             "par un tableau JSON."
         )
         prompt = (
-            f"Entreprise : {company.name}, secteur « {kind} ».\n"
+            f"Entreprise : {company.name} — vend uniquement : {kind}.\n"
             f"Écris {count} libellés de lignes de facture distincts, chacun avec "
             f"une fourchette de prix plausible en {currency}.\n"
+            f"Chaque article appartient à cette gamme ({kind}) ; n'introduis "
+            "aucune catégorie de produit sans rapport.\n"
             f"Reproduis exactement le style et le format de ces exemples :\n{shots}\n"
             'Chaque « name » est une seule ligne : produit/service + '
             "caractéristique clé, sans phrase ni argumentaire."
@@ -160,9 +169,11 @@ def build_prompt(
             "or 'deliver'. Reply with a JSON array only."
         )
         prompt = (
-            f"Company: {company.name}, a {kind} business.\n"
+            f"Company: {company.name} — sells only: {kind}.\n"
             f"Write {count} distinct invoice line items, each with a plausible "
             f"price range in {currency}.\n"
+            f"Every item belongs to this one product line ({kind}); do not "
+            "introduce any unrelated product category.\n"
             f"Match the style and format of these examples exactly:\n{shots}\n"
             "Each 'name' is one short line: product/service plus a key spec — no "
             "sentence, no marketing."
@@ -280,13 +291,17 @@ async def build_llm_catalogue(
     products: dict[str, list[ProductTemplate]] = {
         cid: list(items) for cid, items in fallback.items()
     }
-    # Two procedural products per company become the prompt's few-shot examples —
-    # the style the LLM must match. Taken from the fallback, in the company's
-    # printed language, with their price bands so the format is shown too.
+    # Several procedural products per company become the prompt's few-shot
+    # examples — they anchor the format AND the product family. Two was enough to
+    # fix the register but too few to pin the domain, so a broad company drifted
+    # off it; a fuller sample of the (now sub-category-coherent) skeleton holds
+    # the model inside the line. In the company's printed language, with price
+    # bands so the format is shown too.
+    _N_SHOTS = 6
     examples: dict[str, list[tuple[str, Decimal, Decimal]]] = {
         cid: [
             (_printed_text(p, _is_french(by_id[cid].locale)), p.price_low, p.price_high)
-            for p in items[:2]
+            for p in items[:_N_SHOTS]
         ]
         for cid, items in fallback.items()
     }

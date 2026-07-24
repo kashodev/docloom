@@ -107,6 +107,10 @@ class CompanyRow:
     locale: Locale
     currency: Currency
     weight: float = 1.0
+    #: The narrow merchant family the company sells (e.g. "apparel and
+    #: accessories"), so its whole catalogue is one coherent line rather than the
+    #: umbrella business type. Empty on legacy artifacts written before this field.
+    product_category: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +180,7 @@ def companies_schema():  # noqa: ANN201
         ("company_id", pa.string()),
         ("name", pa.string()),
         ("business_type", pa.string()),
+        ("product_category", pa.string()),
         ("jurisdiction", pa.string()),
         ("locale", pa.string()),
         ("currency", pa.string()),
@@ -276,6 +281,7 @@ def _companies_table(companies: Sequence[CompanyRow]):  # noqa: ANN202
             "company_id": [c.company_id for c in companies],
             "name": [c.name for c in companies],
             "business_type": [str(c.business_type) for c in companies],
+            "product_category": [c.product_category for c in companies],
             "jurisdiction": [str(c.jurisdiction) for c in companies],
             "locale": [str(c.locale) for c in companies],
             "currency": [str(c.currency) for c in companies],
@@ -451,6 +457,7 @@ def _to_company(row: CompanyRow) -> Company:
         company_id=row.company_id,
         name=row.name,
         business_type=row.business_type,
+        product_category=row.product_category,
         jurisdiction=row.jurisdiction,
         locale=row.locale,
         currency=row.currency,
@@ -465,6 +472,7 @@ def _parse_companies(table) -> list[CompanyRow]:  # noqa: ANN001
         CompanyRow(
             company_id=r["company_id"], name=r["name"],
             business_type=BusinessType(r["business_type"]),
+            product_category=r.get("product_category") or "",
             jurisdiction=Jurisdiction(r["jurisdiction"]),
             locale=Locale(r["locale"]), currency=Currency(r["currency"]),
             weight=float(r["weight"]),

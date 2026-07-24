@@ -264,3 +264,17 @@ def test_the_band_is_rounded_to_a_sensible_precision() -> None:
 def test_a_clean_band_survives_unchanged() -> None:
     from docloom.packs.invoice.llm_build import _coerce_band
     assert _coerce_band(12.50, 40.00) == (D("12.50"), D("40.00"))
+
+
+def test_the_prompt_names_the_narrow_family_not_the_umbrella() -> None:
+    """Prompting on the company's sub-category (its actual product line) with an
+    explicit stay-in-line instruction is the fix for catalogues that drifted
+    across every corner of 'retail'."""
+    from docloom.packs.invoice.llm_build import build_prompt
+    from docloom.packs.invoice.procedural import generate_company
+
+    row, prods = generate_company(0)                       # a retail company
+    req = build_prompt(row, 10, [(p.description, p.price_low, p.price_high) for p in prods[:6]])
+    assert row.product_category and row.product_category in req.prompt
+    assert "unrelated" in req.prompt.lower()               # stay-in-line instruction
+    assert row.business_type.value not in req.prompt       # umbrella not used as the domain

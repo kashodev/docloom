@@ -126,8 +126,8 @@ def test_no_pii_shaped_field_is_written_to_the_artifact(tmp_path: Path) -> None:
     for forbidden in ("address", "address_lines", "phone", "email", "website",
                       "registrations", "city"):
         assert forbidden not in columns, f"{forbidden!r} must not be stored"
-    assert columns == {"company_id", "name", "business_type", "jurisdiction",
-                       "locale", "currency", "weight"}
+    assert columns == {"company_id", "name", "business_type", "product_category",
+                       "jurisdiction", "locale", "currency", "weight"}
 
 
 def test_identity_is_derived_and_stable(tmp_path: Path) -> None:
