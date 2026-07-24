@@ -89,7 +89,12 @@
 
 
 {% macro item_row(line, cols, show_part_number, show_reference, show_quantity, show_unit_price) %}
-<tr class="line-parent{% if line.is_credit %} credit{% endif %}">
+{# `line-parent` carries `break-after: avoid`, to keep a row with the tier
+   sub-rows printed beneath it. Only a row that ACTUALLY has tiers may claim it:
+   applied to every row (the old default) it chains a break-after:avoid across
+   the whole table, so a long table cannot break onto — or even start on — the
+   first page and jumps to page two, leaving page one blank. #}
+<tr class="{{ 'line-parent' if line.tiers else '' }}{{ ' credit' if line.is_credit else '' }}">
   {% if show_reference and cols.reference is defined %}<td>{{ line.sku or "" }}</td>{% endif %}
   {% if show_part_number and cols.part_number is defined %}
   <td>{{ line.part_number or line.code or "" }}</td>

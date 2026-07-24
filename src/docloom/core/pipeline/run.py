@@ -51,11 +51,19 @@ def create_run(
         _log.info("run planned", pack=pack, config_id=config_id,
                   total=total, units=len(units), unit_size=unit_size)
     else:
-        # Another worker won the race to plan this run. It may still be writing
-        # units, and claiming from a half-written plan would look like an empty
-        # run, so wait for it to finish rather than racing ahead.
-        _log.info("another worker is planning this run; waiting")
-        _await_plan(state, run_id, timeout=wait_timeout)
+        # The conditional create lost — the run already exists. Two cases:
+        #   * it is already fully planned (a re-run, or a peer that finished
+        #     planning) — nothing to wait for, and there may be no other worker
+        #     at all, so "another worker is planning" would be misleading;
+        #   * it exists but is not planned yet — a peer is mid-write, and
+        #     claiming from a half-written plan would look like an empty run,
+        #     so wait for it to land.
+        existing = state.get_run(run_id)
+        if existing is not None and existing.planned:
+            _log.info("run already planned; resuming it")
+        else:
+            _log.info("another worker is planning this run; waiting")
+            _await_plan(state, run_id, timeout=wait_timeout)
     return run
 
 

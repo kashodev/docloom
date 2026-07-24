@@ -206,3 +206,21 @@ def test_telecom_invoices_are_grouped_and_render_the_hierarchy() -> None:
     out = render_record(PACK, telecom)
     assert "555-" in out                       # subscriber numbers as group heads
     assert telecom.totals.grand_total > 0      # and it still reconciles (it built)
+
+
+def test_line_parent_class_only_on_rows_that_have_tiers() -> None:
+    """`line-parent` carries `break-after: avoid`, to keep a parent row with the
+    tier sub-rows beneath it. Put on every row (the old default) it chains an
+    unbreakable run across the whole table, so a long invoice's items cannot start
+    on page 1 and jump to page 2, leaving it blank. A row with no tiers must not
+    claim it."""
+    from tests.factories import tiered_line
+
+    plain = _body_only(render_record(
+        PACK, invoice(simple_lines(), render_profile=profile(archetype="meta-sidebar-01"))))
+    assert 'class="line-parent' not in plain          # no tiers → no break-after chain
+
+    tiered = _body_only(render_record(
+        PACK, invoice([tiered_line()], render_profile=profile(archetype="meta-sidebar-01"))))
+    assert 'class="line-parent' in tiered             # a real tier parent keeps it
+    assert 'class="tier"' in tiered
