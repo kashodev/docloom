@@ -136,9 +136,17 @@ def work_run(
             _write_run_manifest(run, blob, source)
             _log.info("run completed", units=run.total_units,
                       documents=progress[WorkUnitState.DONE])
+        else:
+            _log.info("run already complete")   # finalised by a peer
     elif progress[WorkUnitState.FAILED]:
-        _log.warning("run left incomplete", failed=progress[WorkUnitState.FAILED],
-                     pending=outstanding)
+        # Real holes — a re-run is needed. The only case that warrants a warning.
+        _log.warning("run has failed units — a re-run is needed",
+                     failed=progress[WorkUnitState.FAILED], pending=outstanding)
+    else:
+        # Not a failure: this worker drained its share while peers are still
+        # finishing theirs. An INFO, not a warning — the build is simply still in
+        # progress across the fleet.
+        _log.info("run not complete yet; peers still finishing", in_flight=outstanding)
     return stats
 
 
