@@ -320,6 +320,7 @@ def write_catalogue_shard(
     *,
     companies: Sequence[CompanyRow],
     products: Mapping[str, Sequence[ProductTemplate]],
+    fallback: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Write one build unit's shard pair and return its manifest descriptor.
 
@@ -327,6 +328,9 @@ def write_catalogue_shard(
     more than its range in memory and its output lands incrementally. The root
     manifest — written once at completion — indexes the descriptors returned
     here. Idempotent per ``unit_index``: a retried unit overwrites its shard.
+
+    ``fallback`` (when a provider was quarantined for this shard) is recorded in
+    the descriptor so a corpus stays auditable for which shards degraded and why.
     """
     if not companies:
         raise ValueError("a shard needs at least one company")
@@ -339,13 +343,16 @@ def write_catalogue_shard(
     blob = open_store(uri)
     blob.put(c_key, c_bytes, "application/vnd.apache.parquet")
     blob.put(p_key, p_bytes, "application/vnd.apache.parquet")
-    return {
+    descriptor: dict[str, Any] = {
         "unit_index": unit_index,
         "companies_key": c_key, "companies_sha256": _sha256(c_bytes),
         "companies": len(companies),
         "products_key": p_key, "products_sha256": _sha256(p_bytes),
         "products": p_table.num_rows,
     }
+    if fallback:
+        descriptor["fallback"] = fallback
+    return descriptor
 
 
 def write_sharded_manifest(

@@ -356,6 +356,20 @@ class FirestoreStateStore:
         snap = self._spend_col(run_id).document(_doc_id(TOTAL_MODEL)).get()
         return from_nano(int(snap.to_dict().get("cost_nano", 0))) if snap.exists else Decimal(0)
 
+    def quarantine_providers(self, run_id: str, providers: set[str]) -> None:
+        if not providers:
+            return
+        # ArrayUnion is an atomic server-side set-union, so concurrent workers'
+        # additions merge without a read-modify-write race.
+        from google.cloud.firestore_v1 import ArrayUnion
+
+        self._run_ref(run_id).set(
+            {"quarantined": ArrayUnion(sorted(providers))}, merge=True)
+
+    def quarantined_providers(self, run_id: str) -> set[str]:
+        snap = self._run_ref(run_id).get()
+        return set(snap.to_dict().get("quarantined", [])) if snap.exists else set()
+
     def units(self, run_id: str) -> Iterator[WorkUnit]:
         snaps = self._units_col(run_id).order_by("unit_index").stream()
         return iter([doc_to_unit(run_id, s.to_dict()) for s in snaps])

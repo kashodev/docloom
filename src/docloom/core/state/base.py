@@ -255,5 +255,20 @@ class StateStore(Protocol):
         """A run's total spend so far — the ``*`` row, in USD."""
         ...
 
+    def quarantine_providers(self, run_id: str, providers: set[str]) -> None:
+        """Record providers quarantined during this run — an **atomic set union**,
+        so concurrent workers each adding their own findings never clobber.
+
+        This persists the circuit breaker's decision across a build's work units
+        (and its Cloud Run tasks): a provider that one shard found returns nothing
+        but empty completions is quarantined fleet-wide, so later shards do not
+        each re-pay the cost of re-learning it. Empty ``providers`` is a no-op.
+        """
+        ...
+
+    def quarantined_providers(self, run_id: str) -> set[str]:
+        """The set of providers quarantined so far for this run."""
+        ...
+
     def close(self) -> None:
         ...

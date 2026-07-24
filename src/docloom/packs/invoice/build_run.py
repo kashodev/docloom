@@ -44,7 +44,7 @@ from docloom.packs.invoice.artifact import (
     write_catalogue_shard,
     write_sharded_manifest,
 )
-from docloom.packs.invoice.llm_build import build_llm_catalogue_sync
+from docloom.packs.invoice.llm_build import BuildReport, build_llm_catalogue_sync
 from docloom.packs.invoice.procedural import generate_company_range
 
 _log = get_logger(__name__)
@@ -58,6 +58,20 @@ _PARTS_DIR = "catalogue-parts"
 
 def _part_key(unit_index: int) -> str:
     return f"{_PARTS_DIR}/unit-{unit_index:06d}.json"
+
+
+def _shard_fallback(report: "BuildReport | None") -> dict | None:
+    """Per-shard fallback record for the manifest (R3): which providers this
+    shard found dead, and how its fill split. ``None`` for a procedural build,
+    or an LLM build where nothing was quarantined — so a clean shard adds no
+    noise, and a corpus stays auditable for which shards degraded and why."""
+    if report is None or not report.quarantined:
+        return None
+    return {
+        "quarantined": sorted(report.quarantined),
+        "llm_filled": report.llm_filled,
+        "procedural_fallback": report.procedural_fallback,
+    }
 
 
 @dataclass(slots=True)
@@ -128,6 +142,14 @@ def build_catalogue_run(
     requeued = state.reset_failed_units(build_id)
     if requeued:
         _log.info("catalogue build: re-queued failed units", requeued=requeued)
+    # Also reclaim units a *crashed or timed-out* worker abandoned — RUNNING with
+    # a lapsed lease. The Firestore claim does not scan for these (too costly per
+    # claim), so without an explicit reclaim a unit left mid-build by a killed
+    # task is invisible forever: a re-run claims nothing and the build can never
+    # finish. This is the catalogue build's equivalent of `resume_run`.
+    reclaimed = state.reclaim_expired_units(build_id)
+    if reclaimed:
+        _log.info("catalogue build: reclaimed crashed units", reclaimed=reclaimed)
 
     _log.info("catalogue build: worker started", companies=companies, unit_size=unit_size,
               out=out, mode="llm" if mix is not None else "procedural")
@@ -163,25 +185,30 @@ def _work_unit(
             else:
                 # TODO(progress): emit intra-unit progress logs (~every 5% of the
                 # unit's products filled) between "worker started" and "unit
-                # completed". A large unit (e.g. 100 companies × 300 = 30k
-                # products) is ~25 min of silence today. `build_llm_catalogue`
-                # already takes a `progress` callback but only fires it at *round*
-                # boundaries, and a unit is dominated by round 1 — so wiring that
-                # callback to `_log.info` here (small) helps little on its own.
-                # For real 5% granularity: add a per-chunk progress hook to
-                # CatalogueRunner (switch `_run_concurrent`/`_run_batched` from
-                # `gather` to `as_completed` so results report as they land),
-                # thread it through the round loop, throttle to 5% boundaries of
-                # report.products, and log via `_log.info` under this bound `unit`
-                # context. Small–medium effort; the as_completed swap is the only
-                # change to the concurrency hot path (preserve failure isolation).
+                # completed". `_run_concurrent` now consumes results as they land
+                # (the as_completed rework), so the hard part is done — what's left
+                # is to invoke a progress callback in that loop, thread it through
+                # build_llm_catalogue's round loop, throttle to 5% boundaries of
+                # report.products, and log it via `_log.info` under this bound
+                # `unit` context. Small now.
+                # Seed the breaker from what earlier units already learned, so a
+                # dead provider is not re-discovered (and re-paid) unit by unit;
+                # flush anything this unit newly quarantines back for later ones.
+                known_bad = state.quarantined_providers(build_id)
                 rows, products, report = build_llm_catalogue_sync(
                     mix, companies=unit.count, company_start=unit.start_index,
                     products_per_company=products_per_company, seed=seed,
                     budget=budget, concurrency=concurrency, max_rounds=max_rounds,
+                    quarantined=known_bad,
                 )
+                newly_bad = report.quarantined - known_bad
+                if newly_bad:
+                    state.quarantine_providers(build_id, report.quarantined)
+                    _log.warning("providers quarantined for the build",
+                                 newly=sorted(newly_bad), all=sorted(report.quarantined))
             descriptor = write_catalogue_shard(out, unit.unit_index,
-                                               companies=rows, products=products)
+                                               companies=rows, products=products,
+                                               fallback=_shard_fallback(report))
             # The descriptor part lands before the unit is marked done, so the
             # root — assembled at completion — never reads a done unit with no
             # part. Same ordering guarantee as the run manifest.
@@ -218,16 +245,27 @@ def _finalize_if_complete(
     """
     progress = state.progress(build_id)
     outstanding = progress[WorkUnitState.PENDING] + progress[WorkUnitState.RUNNING]
-    if outstanding or progress[WorkUnitState.FAILED]:
-        _log.warning("catalogue build left incomplete",
+    if progress[WorkUnitState.FAILED]:
+        # Real holes — a re-run is needed to retry them. This is the only case
+        # that warrants a warning.
+        _log.warning("catalogue build has failed units — a re-run is needed",
                      failed=progress[WorkUnitState.FAILED], pending=outstanding)
+        return False
+    if outstanding:
+        # Not a failure: this worker drained its share while peers are still
+        # finishing theirs. Whoever finishes the last unit writes the root. An
+        # INFO, not a warning — the old warning read as a broken build when the
+        # build was simply still in progress across the fleet.
+        _log.info("catalogue build not complete yet; peers still finishing",
+                  in_flight=outstanding)
         return False
 
     run = state.get_run(build_id)
     if run is None:
         return False
     if run.state is RunState.COMPLETED:
-        return True   # someone already finalised
+        _log.info("catalogue build already complete")   # finalised by a peer
+        return True
     state.set_run_state(build_id, RunState.COMPLETED)
 
     shards = [json.loads(artifact.get(key))
@@ -238,6 +276,17 @@ def _finalize_if_complete(
         "companies": sum(s["companies"] for s in shards),
         "products": sum(s["products"] for s in shards),
     }
+    # R3: a build-level summary of where a provider outage bit — which shards
+    # degraded and which providers were quarantined — so the corpus is auditable
+    # from the root alone. Each shard's descriptor keeps its own detail.
+    degraded = [s["unit_index"] for s in shards if s.get("fallback")]
+    if degraded:
+        total_provenance["fallback"] = {
+            "shards_degraded": degraded,
+            "quarantined_providers": sorted(
+                {p for s in shards if s.get("fallback")
+                 for p in s["fallback"]["quarantined"]}),
+        }
     write_sharded_manifest(out, catalogue_version=catalogue_version, shards=shards,
                            provenance=total_provenance)
     _log.info("catalogue build complete", units=len(shards),

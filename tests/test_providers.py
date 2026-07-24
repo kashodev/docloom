@@ -257,6 +257,67 @@ def test_mix_rejects_mismatched_weights() -> None:
         ProviderMix([StubProvider("a")], [0.5, 0.5])
 
 
+# ── Fallback routing (quarantine → fallback pool) ────────────────────────────
+def test_route_returns_the_chosen_provider_when_none_are_quarantined() -> None:
+    mix = a_mix()
+    for seed in range(200):
+        assert mix.route(seed) is mix.choose(seed)          # identical to normal
+
+
+def test_a_quarantined_share_goes_to_procedural_with_no_fallback_pool() -> None:
+    from docloom.core.providers.mix import PROCEDURAL
+    mix = a_mix()                                           # no fallback configured
+    # Every item whose chosen provider is quarantined must degrade to procedural.
+    q = frozenset({"deepseek", "dashscope", "anthropic"})
+    assert all(mix.route(seed, quarantined=q) is PROCEDURAL for seed in range(200))
+
+
+def test_route_distributes_a_dead_share_across_the_fallback_pool() -> None:
+    from docloom.core.providers.mix import PROCEDURAL
+    mix = a_mix(fallback=[("anthropic", 60.0), ("procedural", 40.0)])
+    dead = frozenset({"deepseek"})
+    # Look only at the items deepseek WOULD have served; their share splits 60/40.
+    deepseek_seeds = [s for s in range(20_000) if mix.choose(s).name == "deepseek"]
+    to_proc = sum(1 for s in deepseek_seeds
+                  if mix.route(s, quarantined=dead) is PROCEDURAL)
+    assert deepseek_seeds                                   # sanity: some were deepseek's
+    assert abs(to_proc / len(deepseek_seeds) - 0.4) < 0.03  # ~40% → procedural
+    # The rest went to the named fallback model, never back to the dead one.
+    assert all(mix.route(s, quarantined=dead) is PROCEDURAL
+               or mix.route(s, quarantined=dead).name == "anthropic"
+               for s in deepseek_seeds)
+
+
+def test_route_cascades_past_a_quarantined_fallback_member() -> None:
+    from docloom.core.providers.mix import PROCEDURAL
+    # Fallback pool is entirely dashscope; if dashscope is ALSO dead the share
+    # cascades to procedural rather than to a quarantined model.
+    mix = a_mix(fallback=[("dashscope", 100.0)])
+    both_dead = frozenset({"deepseek", "dashscope"})
+    for seed in range(500):
+        if mix.choose(seed).name == "deepseek":
+            assert mix.route(seed, quarantined=both_dead) is PROCEDURAL
+
+
+def test_route_is_deterministic_in_seed_and_quarantined() -> None:
+    mix = a_mix(fallback=[("anthropic", 50.0), ("procedural", 50.0)])
+    dead = frozenset({"deepseek"})
+    for seed in range(300):
+        a = mix.route(seed, quarantined=dead)
+        b = mix.route(seed, quarantined=dead)
+        assert a is b
+
+
+def test_fallback_rejects_an_unknown_target() -> None:
+    with pytest.raises(ValueError, match="neither 'procedural'"):
+        a_mix(fallback=[("nope", 100.0)])
+
+
+def test_fallback_rejects_nonpositive_shares() -> None:
+    with pytest.raises(ValueError, match="sum to a positive"):
+        a_mix(fallback=[("anthropic", 0.0)])
+
+
 def test_mix_complete_routes_by_seed() -> None:
     mix = a_mix()
     result = run(mix.complete(CompletionRequest(system="s", prompt="p"), seed=1))
@@ -319,9 +380,37 @@ def test_build_mix_from_config() -> None:
     assert [p.name for p in mix.providers] == ["deepseek", "dashscope", "ollama"]
 
 
+def test_build_mix_parses_a_fallback_pool() -> None:
+    from docloom.core.providers.mix import PROCEDURAL
+    config = {
+        "text": [
+            {"name": "deepseek", "model": "deepseek-v4-flash", "weight": 0.5},
+            {"name": "dashscope", "model": "qwen3.5-flash", "weight": 0.5},
+        ],
+        "fallback": [{"name": "dashscope", "share": 70}, {"name": "procedural", "share": 30}],
+    }
+    mix = build_mix(config)
+    # A deepseek-routed seed, with deepseek quarantined, lands on dashscope or
+    # procedural — never back on deepseek.
+    dead = frozenset({"deepseek"})
+    for seed in range(300):
+        if mix.choose(seed).name == "deepseek":
+            r = mix.route(seed, quarantined=dead)
+            assert r is PROCEDURAL or r.name == "dashscope"
+
+
 def test_build_provider_rejects_unknown_name() -> None:
     with pytest.raises(ValueError, match="unknown provider"):
         build_provider({"name": "nope", "model": "x"})
+
+
+def test_provider_timeout_defaults_low_and_is_configurable() -> None:
+    """120s was a trap — a hung call ties up a slot until it. Default is short,
+    and an operator can tune it per provider from config."""
+    from docloom.core.providers.openai_compatible import OpenAICompatibleProvider
+    assert OpenAICompatibleProvider(name="x", model="m", base_url="http://h")._timeout_s == 45.0
+    tuned = build_provider({"name": "deepseek", "model": "m", "timeout_s": 20})
+    assert tuned._timeout_s == 20.0
 
 
 # ── Reasoning models (regressions from a real smoke run) ────────────────────

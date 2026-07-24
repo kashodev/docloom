@@ -30,7 +30,7 @@ from decimal import Decimal
 from docloom.core.logging import get_logger
 from docloom.core.providers.base import CompletionRequest, CompletionResult, TextProvider
 from docloom.core.providers.budget import BudgetExceeded, BudgetGuard
-from docloom.core.providers.mix import ProviderMix
+from docloom.core.providers.mix import PROCEDURAL, ProviderMix
 from docloom.core.usage.base import LlmUsage, UsageSink
 
 _log = get_logger(__name__)
@@ -72,7 +72,7 @@ class CatalogueRunner:
         use_batch: bool = True,
         usage: UsageSink | None = None,
         empty_streak_limit: int = 10,
-        reroute_quarantined: bool = False,
+        quarantined: set[str] | None = None,
     ) -> None:
         self._mix = mix
         self._budget = budget
@@ -87,17 +87,20 @@ class CatalogueRunner:
         # whole duration. A single non-empty completion clears the streak, so an
         # occasional blank never trips it.
         #
-        # By default a quarantined provider's share falls back to **procedural**
-        # (free). Rerouting it onto the surviving models is opt-in
-        # (``reroute_quarantined``) and off by default on purpose: silently
-        # moving 40% of a build onto whichever models remain can land it on the
-        # priciest one and drain the whole budget before the target is met. The
-        # safe default degrades to procedural; a caller who would rather pay to
-        # keep the LLM fill high asks for it explicitly.
+        # Where a quarantined provider's share goes is the ProviderMix's decision
+        # (its fallback pool): procedural by default, or a configured pool of
+        # models + shares. The runner only detects the failure and reports the
+        # quarantined set to `mix.route`.
+        # ``quarantined`` seeds the set from a prior unit's findings (persisted in
+        # the run state) so a build does not re-learn a dead provider unit by unit.
         self._empty_streak_limit = max(empty_streak_limit, 1)
-        self._reroute_quarantined = reroute_quarantined
-        self._empty_streak: Counter[str] = Counter()
-        self._quarantined: set[str] = set()
+        self._fail_streak: Counter[str] = Counter()   # empty completions AND errors
+        self._quarantined: set[str] = set(quarantined or ())
+
+    @property
+    def quarantined(self) -> set[str]:
+        """Providers quarantined so far — the seed set plus any this run added."""
+        return set(self._quarantined)
 
     async def run(self, items: list[CatalogueItem]) -> RunReport:
         report = RunReport()
@@ -108,20 +111,13 @@ class CatalogueRunner:
         index_of = {id(p): i for i, p in enumerate(providers)}
         quarantined = frozenset(self._quarantined)
         for item in items:
-            provider = self._mix.choose(item_seed(item.item_id))
-            if provider.name in quarantined:
-                # Reroute only if asked, and only to a genuinely healthy model;
-                # otherwise this item's description stays procedural. Never pay a
-                # surviving (possibly pricier) model for a dead one's share by
-                # default — see the circuit-breaker note in __init__.
-                if self._reroute_quarantined:
-                    provider = self._mix.choose(item_seed(item.item_id), exclude=quarantined)
-                if not self._reroute_quarantined or provider.name in quarantined:
-                    report.failures[item.item_id] = (
-                        f"provider {provider.name} quarantined (all empty) — "
-                        "procedural fallback")
-                    continue
-            groups[index_of[id(provider)]].append(item)
+            target = self._mix.route(item_seed(item.item_id), quarantined=quarantined)
+            if target is PROCEDURAL:
+                # No live model for this item (its provider is quarantined and the
+                # fallback pool sent its share to procedural, or is exhausted).
+                report.failures[item.item_id] = "quarantined — fallback to procedural"
+                continue
+            groups[index_of[id(target)]].append(item)
 
         for idx, group in groups.items():
             provider = providers[idx]
@@ -160,6 +156,8 @@ class CatalogueRunner:
                          items=len(group), error=repr(exc))
             for it in group:
                 report.failures[it.item_id] = repr(exc)
+            # One failed batch = one failed call toward the quarantine streak.
+            self._note_unusable(provider.name, provider.model, repr(exc))
             return
         for it, result in zip(group, results, strict=True):
             self._record_usage(it, result, is_batch=True)
@@ -170,22 +168,51 @@ class CatalogueRunner:
     ) -> None:
         semaphore = asyncio.Semaphore(self._concurrency)
 
-        async def one(item: CatalogueItem) -> tuple[str, CompletionResult | Exception]:
+        async def one(item: CatalogueItem) -> CompletionResult | Exception:
             async with semaphore:
                 try:
                     if self._budget is not None:
                         self._budget.check(provider.estimate_cost(item.request))
-                    return item.item_id, await provider.complete(item.request)
+                    return await provider.complete(item.request)
                 except Exception as exc:  # noqa: BLE001 - collected per item
-                    return item.item_id, exc
+                    return exc
 
-        by_id = {it.item_id: it for it in group}
-        for item_id, outcome in await asyncio.gather(*(one(it) for it in group)):
-            if isinstance(outcome, Exception):
-                report.failures[item_id] = repr(outcome)
-            else:
-                self._record_usage(by_id[item_id], outcome)
-                self._record(report, item_id, outcome)
+        # Results are consumed **as they complete**, not after a `gather` over the
+        # whole group. That is what lets the circuit breaker act mid-round: once
+        # this provider is quarantined we stop waiting on its remaining calls,
+        # cancel them, and let their items fall to the fallback pool next round.
+        # With `gather` a provider that *hangs* (holds the connection to the
+        # per-call timeout) never lets the post-loop run, so the breaker could
+        # never fire and one dead provider could burn a whole task's wall clock.
+        fut_item = {asyncio.ensure_future(one(it)): it for it in group}
+        pending = set(fut_item)
+        try:
+            while pending:
+                done, pending = await asyncio.wait(
+                    pending, return_when=asyncio.FIRST_COMPLETED)
+                for fut in done:
+                    item, outcome = fut_item[fut], fut.result()
+                    if isinstance(outcome, Exception):
+                        report.failures[item.item_id] = repr(outcome)
+                        # A raised call is as "unusable" as an empty answer — a bad
+                        # key, a down endpoint, a hung connection — and counts
+                        # toward the quarantine streak. A budget decline does not:
+                        # that is the cap talking, not the provider failing.
+                        if not isinstance(outcome, BudgetExceeded):
+                            self._note_unusable(provider.name, provider.model, repr(outcome))
+                    else:
+                        self._record_usage(item, outcome)
+                        self._record(report, item.item_id, outcome)
+                if provider.name in self._quarantined:
+                    break   # dead provider — stop paying for the rest of its share
+        finally:
+            for fut in pending:
+                fut.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+                for fut in pending:
+                    report.failures[fut_item[fut].item_id] = (
+                        f"provider {provider.name} quarantined mid-round — not sent")
 
     def _record_usage(
         self, item: CatalogueItem, result: CompletionResult, *, is_batch: bool = False
@@ -244,19 +271,22 @@ class CatalogueRunner:
                 f"({result.usage.output_tokens} output tokens, cost {result.cost}) — "
                 "if this is a reasoning model, disable thinking or raise max_tokens"
             )
-            self._note_empty(result.provider, result.model)
+            self._note_unusable(result.provider, result.model, "empty")
             return
-        self._empty_streak[result.provider] = 0   # a good answer clears the streak
+        self._fail_streak[result.provider] = 0   # a good answer clears the streak
         report.results[item_id] = result
 
-    def _note_empty(self, provider: str, model: str) -> None:
-        """Count a consecutive empty completion and quarantine a provider that has
-        crossed the limit, so the next run routes around it instead of paying it
-        to reason into the void again."""
-        self._empty_streak[provider] += 1
-        if (self._empty_streak[provider] >= self._empty_streak_limit
+    def _note_unusable(self, provider: str, model: str, reason: str) -> None:
+        """Count a consecutive **unusable** outcome from a provider — an empty
+        completion *or* a raised call (a bad key, a down endpoint, a rate limit) —
+        and quarantine it once the streak crosses the limit, so the next run
+        routes its share through the fallback pool instead of paying it to fail
+        again. A single usable answer clears the streak, so a transient blip never
+        trips it."""
+        self._fail_streak[provider] += 1
+        if (self._fail_streak[provider] >= self._empty_streak_limit
                 and provider not in self._quarantined):
             self._quarantined.add(provider)
-            _log.warning("provider quarantined — all empty, routing around it",
-                         provider=provider, model=model,
-                         empty_streak=self._empty_streak[provider])
+            _log.warning("provider quarantined — routing its share through fallback",
+                         provider=provider, model=model, reason=reason,
+                         fail_streak=self._fail_streak[provider])

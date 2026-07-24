@@ -87,9 +87,17 @@ class EmptyStub(SyncStub):
         return CompletionResult("", Usage(50, 2000), self.model, self.name, self._cost)
 
 
-def mix_of(*providers, weights=None):  # noqa: ANN002, ANN003, ANN201
+class ErroringStub(SyncStub):
+    """A provider whose every call raises — a bad API key or a down endpoint."""
+
+    async def complete(self, request: CompletionRequest) -> CompletionResult:
+        self.calls += 1
+        raise RuntimeError("401 Unauthorized")
+
+
+def mix_of(*providers, weights=None, fallback=None):  # noqa: ANN002, ANN003, ANN201
     weights = weights or [1.0] * len(providers)
-    return ProviderMix(list(providers), weights)
+    return ProviderMix(list(providers), weights, fallback=fallback)
 
 
 # ── Routing, results, accounting ────────────────────────────────────────────
@@ -199,12 +207,88 @@ def test_a_quarantined_provider_falls_back_to_procedural_by_default() -> None:
     assert good.calls - good_before == len(second.results)
 
 
-def test_reroute_quarantined_moves_the_share_to_survivors_when_opted_in() -> None:
-    """The opt-in: a caller who would rather keep the LLM fill high can pay the
-    surviving models for the dead one's share."""
+def test_a_consistently_erroring_provider_is_quarantined_and_routed_around() -> None:
+    """A bad API key or a down endpoint (every call raises) is as unusable as an
+    all-empty provider — it too is quarantined, so its share routes through the
+    fallback pool instead of erroring on every item forever. This is what makes a
+    wrong key a valid way to test the fallback behaviour."""
+    bad, good = ErroringStub("bad", D("0.01")), SyncStub("good", D("0.001"))
+    runner = CatalogueRunner(
+        mix_of(bad, good, weights=[1.0, 0.0], fallback=[("good", 100.0)]),
+        empty_streak_limit=3)
+
+    run(runner.run(items(20)))                     # errors quarantine bad
+    assert "bad" in runner._quarantined
+    calls_before = bad.calls
+
+    second = run(runner.run(items(40, start=100)))
+    assert bad.calls == calls_before               # never called again
+    assert len(second.results) == 40               # its share went to the survivor
+    assert all(r.provider == "good" for r in second.results.values())
+
+
+def test_a_hanging_provider_is_quarantined_without_awaiting_every_call() -> None:
+    """The rpqrc fix. A provider whose calls hang (holds the connection to the
+    timeout) is what defeated the old `gather` version: the post-loop that
+    quarantines never ran, so one dead provider burned a whole task's wall clock.
+    Now results are consumed as they complete — after a few fast failures trip
+    the breaker, the remaining hung calls are cancelled and the run returns
+    promptly instead of awaiting a 30s sleep on every one."""
+    import asyncio
+
+    class Hanging(SyncStub):
+        async def complete(self, request: CompletionRequest) -> CompletionResult:
+            self.calls += 1
+            if self.calls <= 3:
+                raise RuntimeError("fast fail to trip the breaker")
+            await asyncio.sleep(30)                 # would hang; must be cancelled
+            raise AssertionError("a cancelled call must never return")
+
+    bad = Hanging("bad", D("0.001"))
+    runner = CatalogueRunner(mix_of(bad), empty_streak_limit=3, concurrency=4)
+    report = run(asyncio.wait_for(runner.run(items(40)), timeout=5))  # << 30s
+    assert "bad" in runner._quarantined
+    assert bad.calls < 40                           # the hung/pending calls were cancelled
+    assert len(report.failures) == 40               # every item still accounted for
+
+
+def test_an_occasional_error_does_not_quarantine() -> None:
+    """One transient error among good answers must not trip the breaker — the
+    streak resets on any usable completion."""
+    class Flaky(SyncStub):
+        async def complete(self, request: CompletionRequest) -> CompletionResult:
+            self.calls += 1
+            if request.prompt in ("p2", "p7"):
+                raise RuntimeError("transient")
+            return await SyncStub.complete(self, request)
+
+    runner = CatalogueRunner(mix_of(Flaky("a")), empty_streak_limit=3)
+    run(runner.run(items(15)))
+    assert runner._quarantined == set()
+
+
+def test_a_budget_decline_is_not_counted_as_a_provider_error() -> None:
+    """Declining an item for budget is not the provider failing — it must never
+    contribute to the quarantine streak, or a tight budget would quarantine a
+    perfectly healthy model. Enforcement is between runs, so the first run spends
+    and the second is fully declined; the healthy provider must survive it."""
+    guard = BudgetGuard(D("0.005"))
+    good = SyncStub("good", D("0.001"))
+    runner = CatalogueRunner(mix_of(good), budget=guard, empty_streak_limit=3)
+    run(runner.run(items(5)))                      # spends 0.005, at the cap
+    second = run(runner.run(items(40, start=100)))  # every item declined for budget
+    assert len(second.failures) == 40 and second.results == {}
+    assert runner._quarantined == set()            # budget declines never quarantine
+
+
+def test_a_fallback_pool_sends_a_dead_providers_share_to_the_named_model() -> None:
+    """A fallback pool naming a survivor keeps the LLM fill high — the dead
+    provider's share is paid to the model the operator chose, not lost to
+    procedural. (This replaces the old reroute_quarantined boolean.)"""
     bad, good = EmptyStub("bad", D("0.01")), SyncStub("good", D("0.001"))
-    runner = CatalogueRunner(mix_of(bad, good, weights=[0.5, 0.5]),
-                             empty_streak_limit=3, reroute_quarantined=True)
+    runner = CatalogueRunner(
+        mix_of(bad, good, weights=[0.5, 0.5], fallback=[("good", 100.0)]),
+        empty_streak_limit=3)
 
     run(runner.run(items(40)))
     assert "bad" in runner._quarantined
@@ -212,9 +296,30 @@ def test_reroute_quarantined_moves_the_share_to_survivors_when_opted_in() -> Non
 
     second = run(runner.run(items(40, start=40)))
     assert bad.calls == calls_before               # never called again
-    assert len(second.results) == 40               # all rerouted to the survivor
+    assert len(second.results) == 40               # all sent to the named survivor
     assert all(r.provider == "good" for r in second.results.values())
     assert second.failures == {}
+
+
+def test_a_fallback_pool_splits_the_dead_share_by_configured_proportion() -> None:
+    """The core of the feature: a dead provider's share is split across the pool
+    in the configured ratio — here 70% to a survivor, 30% to procedural."""
+    # good has weight 0, so everything normally routes to bad; once bad is
+    # quarantined its whole share redistributes 70/30.
+    bad, good = EmptyStub("bad", D("0.01")), SyncStub("good", D("0.001"))
+    runner = CatalogueRunner(
+        mix_of(bad, good, weights=[1.0, 0.0],
+               fallback=[("good", 70.0), ("procedural", 30.0)]),
+        empty_streak_limit=3)
+
+    run(runner.run(items(60)))                     # quarantine bad
+    assert "bad" in runner._quarantined
+
+    second = run(runner.run(items(400, start=100)))
+    filled, proc = len(second.results), len(second.failures)
+    assert filled + proc == 400
+    assert all(r.provider == "good" for r in second.results.values())
+    assert 0.62 < filled / 400 < 0.78              # ~70% to good, ~30% procedural
 
 
 def test_an_occasional_empty_does_not_quarantine() -> None:

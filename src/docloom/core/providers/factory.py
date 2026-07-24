@@ -72,16 +72,25 @@ def build_provider(spec: dict[str, Any], *, client: httpx.AsyncClient | None = N
         else preset.default_base_url
     )
     api_key = os.environ.get(preset.key_env) if preset.key_env else None
+    kwargs: dict[str, Any] = {}
+    if spec.get("timeout_s") is not None:
+        kwargs["timeout_s"] = float(spec["timeout_s"])
     return OpenAICompatibleProvider(
         name=name, model=model, base_url=base_url, api_key=api_key, client=client,
         # Provider-specific request parameters, straight from config — e.g.
         # `extra_body: {enable_thinking: false}` to stop a Qwen model reasoning.
         extra_body=spec.get("extra_body"),
+        **kwargs,
     )
 
 
 def build_mix(config: dict[str, Any], *, client: httpx.AsyncClient | None = None) -> ProviderMix:
-    """Construct a :class:`ProviderMix` from a ``providers`` config block."""
+    """Construct a :class:`ProviderMix` from a ``providers`` config block.
+
+    An optional ``fallback`` list — ``[{name, share}, …]`` where ``name`` is a
+    provider in the mix or the literal ``procedural`` — sets how a quarantined
+    provider's share is redistributed. Omitted ⇒ procedural (the safe default).
+    """
     specs = config["text"]
     providers = [build_provider(spec, client=client) for spec in specs]
     weights = [float(spec.get("weight", 1.0)) for spec in specs]
@@ -92,4 +101,8 @@ def build_mix(config: dict[str, Any], *, client: httpx.AsyncClient | None = None
         budget = BudgetGuard(
             Decimal(str(b["limit_usd"])), abort_on_exceed=b.get("abort_on_exceed", True)
         )
-    return ProviderMix(providers, weights, budget=budget)
+
+    fallback = None
+    if config.get("fallback"):
+        fallback = [(str(f["name"]), float(f["share"])) for f in config["fallback"]]
+    return ProviderMix(providers, weights, budget=budget, fallback=fallback)

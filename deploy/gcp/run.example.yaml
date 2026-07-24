@@ -181,6 +181,19 @@ catalogue:
     - name: anthropic
       model: claude-haiku-4-5
       weight: 20
+  # When a provider is quarantined for returning nothing but empty completions,
+  # its share of the pool is redistributed by this fallback list; shares total
+  # 100, and `procedural` is the free sink. Omit the block entirely and a
+  # quarantined share goes straight to procedural (the safe, no-spend default).
+  #
+  # Bias it toward cheap models and procedural: under a sharded build the whole
+  # fleet can fail over to the same target at once, and a pool that leans on the
+  # priciest survivor can pull the budget crossover forward and starve later
+  # shards. Here a dead provider's work goes mostly to the cheap model, with the
+  # remainder free.
+  fallback:
+    - {name: dashscope, share: 70}   # cheapest survivor takes most of it
+    - {name: procedural, share: 30}  # the rest costs nothing
   # API keys are never written here. They live in Secret Manager and are
   # injected at task start; see docs/deploy-gcp.md § "Where do the API keys go".
   secrets:
