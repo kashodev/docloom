@@ -46,6 +46,12 @@ run:
   config_id: default       # recorded on the run, for your own bookkeeping
   max_line_items: 8000     # hard cap per document; telecom bills are the reason
 
+  # Content catalogue generation draws its descriptions from. Omit for the
+  # built-in seed catalogue (local-first, no artifact). Point it at a published
+  # `catalogue` build to use those descriptions — it is read-only, so every task
+  # and slice shares the one artifact.
+  # catalogue: gs://crawler-rag-data-2026-docloom/catalogues/invoice/v1
+
   # LLM cost telemetry. On by default; `off` disables. A procedural pack makes
   # no LLM calls and so writes nothing either way.
   llm_usage: "shard://"
