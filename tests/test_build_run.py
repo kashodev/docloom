@@ -233,3 +233,48 @@ def test_the_llm_build_shards_and_falls_back(tmp_path: Path) -> None:
     cat = load_catalogue(out)
     assert len(cat.roster()) == 40
     assert all(cat.spec_for(c).products for c in cat.roster().companies)
+
+
+def test_a_budget_too_small_completes_procedurally_it_does_not_fail(tmp_path: Path) -> None:
+    """A budget below the build's cost is a spend ceiling, not a failure — the
+    cap stops further LLM calls and the rest of the catalogue falls back to
+    procedural. This is the production bug behind execution ktwww: hitting the
+    cap raised out of the recording path and failed whole units, so no budget
+    under the full build cost could ever complete.
+
+    A priced fake makes real calls cross a $0.05 cap; the build must still finish
+    with a root manifest, every company populated, and some slots LLM-filled
+    before the ceiling and the remainder procedural."""
+    from decimal import Decimal as D
+
+    from docloom.core.providers.base import CompletionResult, Usage
+    from docloom.core.providers.mix import ProviderMix
+    from docloom.core.providers.pricing import pricing_for
+
+    class Priced:
+        name = "p"; model = "p-1"; pricing = pricing_for("__local__")
+        async def complete(self, request):  # noqa: ANN001
+            # A usable one-line description so filled slots are real, each $0.01.
+            return CompletionResult('[{"description": "Widget, blue, each"}]',
+                                    Usage(50, 20), self.model, self.name, D("0.01"))
+        def estimate_cost(self, request):  # noqa: ANN001
+            return D("0.01")
+
+    out = str(tmp_path / "cat")
+    stats = build_catalogue_run(
+        _state(tmp_path), out=out, build_id="b", catalogue_version="v1",
+        companies=40, products_per_company=10, unit_size=20, seed=2,
+        mix=ProviderMix([Priced()], [1.0]), budget_usd=0.05, max_rounds=2,
+    )
+    assert stats.units_failed == 0                    # the cap must not fail a unit
+    assert stats.build_complete is True               # …the build still completes
+    assert stats.llm_filled > 0                        # some slots filled before the cap
+    assert stats.procedural_fallback > 0               # the rest fell back after it
+    # A soft cap: once crossed, no new work goes out, but a chunk already in
+    # flight still records — so spend lands near the cap, far below the $4.00
+    # (400 × $0.01) an uncapped full build would cost. The point is bounded, not
+    # exact.
+    assert stats.total_cost < D("1.00")
+    cat = load_catalogue(out)
+    assert len(cat.roster()) == 40
+    assert all(cat.spec_for(c).products for c in cat.roster().companies)

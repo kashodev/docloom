@@ -29,7 +29,7 @@ from decimal import Decimal
 
 from docloom.core.logging import get_logger
 from docloom.core.providers.base import CompletionRequest, CompletionResult, TextProvider
-from docloom.core.providers.budget import BudgetGuard
+from docloom.core.providers.budget import BudgetExceeded, BudgetGuard
 from docloom.core.providers.mix import ProviderMix
 from docloom.core.usage.base import LlmUsage, UsageSink
 
@@ -77,6 +77,7 @@ class CatalogueRunner:
         self._concurrency = max(concurrency, 1)
         self._use_batch = use_batch
         self._usage = usage
+        self._budget_exhausted = False   # log the cap being reached only once
 
     async def run(self, items: list[CatalogueItem]) -> RunReport:
         report = RunReport()
@@ -106,7 +107,19 @@ class CatalogueRunner:
             (provider.estimate_batch_cost(it.request) for it in group), Decimal(0)
         )
         if self._budget is not None:
-            self._budget.check(estimate)
+            try:
+                self._budget.check(estimate)
+            except BudgetExceeded as exc:
+                # Over budget before sending: the whole group stays pending and
+                # degrades to procedural, exactly as the concurrent path does per
+                # item. Never abort the unit for it.
+                if not self._budget_exhausted:
+                    self._budget_exhausted = True
+                    _log.info("budget reached; remaining items fall back to procedural",
+                              detail=str(exc))
+                for it in group:
+                    report.failures[it.item_id] = repr(exc)
+                return
         try:
             results = await provider.complete_batch([it.request for it in group])
         except Exception as exc:  # noqa: BLE001 - one batch failing must not abort the rest
@@ -164,7 +177,22 @@ class CatalogueRunner:
         report.by_provider[result.provider] += 1
         report.total_cost += result.cost
         if self._budget is not None:
-            self._budget.add(result.cost)
+            # ``add`` records the spend and *then* raises once the cap is crossed.
+            # That call already happened and is billed, so the raise must not
+            # abort the unit — it only means no *further* calls should go out.
+            # The pre-flight ``check`` in the item paths enforces exactly that
+            # (it declines once spent > cap, so remaining items stay pending and
+            # degrade to the procedural description). Letting this propagate
+            # instead would throw away every LLM result in the unit and fail a
+            # unit the design intends to complete — a budget cap is a spend
+            # ceiling on a complete build, not a reason to abandon one.
+            try:
+                self._budget.add(result.cost)
+            except BudgetExceeded as exc:
+                if not self._budget_exhausted:
+                    self._budget_exhausted = True
+                    _log.info("budget reached; remaining items fall back to procedural",
+                              detail=str(exc))
         _log.debug("completion", item=item_id, provider=result.provider,
                    model=result.model, input_tokens=result.usage.input_tokens,
                    output_tokens=result.usage.output_tokens, cost=str(result.cost))

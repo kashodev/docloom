@@ -13,10 +13,7 @@ from __future__ import annotations
 import asyncio
 from decimal import Decimal as D
 
-import pytest
-
 from docloom.core.providers import (
-    BudgetExceeded,
     BudgetGuard,
     CatalogueItem,
     CatalogueRunner,
@@ -127,11 +124,22 @@ def test_use_batch_false_falls_back_to_per_item_calls() -> None:
 
 
 # ── Budget ──────────────────────────────────────────────────────────────────
-def test_budget_stops_the_run_before_overspending() -> None:
-    guard = BudgetGuard(D("0.005"))            # only ~5 items at 0.001 each
+def test_budget_declines_further_work_once_the_cap_is_reached() -> None:
+    # A budget cap is a spend ceiling, not a reason to abort. The runner never
+    # raises: within one run the whole group is dispatched before any of it is
+    # billed, so enforcement is *between* runs — once spend has crossed the cap a
+    # later run is declined item by item, and those items become failures the
+    # build falls back to procedural. Letting the cap raise instead would throw
+    # away every result and fail a build the design means to complete.
+    # (Regression: prod run ktwww failed four tasks this way.)
+    guard = BudgetGuard(D("0.005"))            # ~5 items at 0.001 each
     runner = CatalogueRunner(mix_of(SyncStub("a", D("0.001"))), budget=guard)
-    with pytest.raises(BudgetExceeded):
-        run(runner.run(items(50)))
+    first = run(runner.run(items(5)))          # 0.005 spent — right at the cap
+    assert len(first.results) == 5 and guard.spent == D("0.005")
+    second = run(runner.run(items(5)))         # now over it
+    assert second.results == {}                # every item declined
+    assert len(second.failures) == 5           # …as failures, nothing raised
+    assert guard.spent == D("0.005")           # declined items are never billed
 
 
 def test_within_budget_completes_and_tracks_spend() -> None:
