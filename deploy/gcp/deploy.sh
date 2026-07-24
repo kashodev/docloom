@@ -126,6 +126,11 @@ emit("FORMAT", get("run.format", "pdf"))
 emit("CONFIG_ID", get("run.config_id", "default"))
 emit("MAX_LINE_ITEMS", int(get("run.max_line_items", 8000)))
 emit("LLM_USAGE", get("run.llm_usage", "shard://"))
+# The content catalogue generation draws from. Empty ⇒ the built-in seed
+# catalogue (local-first, no artifact). A published artifact URI (the output of a
+# `catalogue` build) makes generation use those descriptions; it is read-only
+# here, so every task and every slice can share one.
+emit("CATALOGUE_URI", get("run.catalogue", ""))
 
 emit("JOB", get("job.name", "docloom-generate"))
 emit("SA_NAME", get("job.service_account", "docloom-run"))
@@ -380,6 +385,9 @@ gen_args() {  # name, pack, count, format, composition flags, [extra flag]
   # golden rows — filter documents by run_id, not by this.
   args+="|--config-id=${name}|--max-line-items=${MAX_LINE_ITEMS}"
   args+="|--storage=${STORAGE_URI}|--state=${STATE_URI}|--llm-usage=${LLM_USAGE}"
+  # Draw descriptions from a published catalogue when one is configured; omitted,
+  # the CLI falls back to the seed catalogue exactly as before.
+  [[ -n "${CATALOGUE_URI}" ]] && args+="|--catalogue=${CATALOGUE_URI}"
   # The slice's composition, already formatted by the config parser. An
   # unconstrained slice contributes nothing, so it runs exactly as before.
   [[ -n "${comp}" ]] && args+="|${comp}"
@@ -399,6 +407,7 @@ plan() {
   service account ${SA}
 
   documents       ${TOTAL} total, unit size ${UNIT_SIZE}
+  catalogue       ${CATALOGUE_URI:-<seed (built-in)>}
 EOF
   local units_total=0
   while IFS=$'\x1f' read -r name pack count fmt _ desc; do
