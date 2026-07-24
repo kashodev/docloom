@@ -72,6 +72,7 @@ class CatalogueRunner:
         use_batch: bool = True,
         usage: UsageSink | None = None,
         empty_streak_limit: int = 10,
+        reroute_quarantined: bool = False,
     ) -> None:
         self._mix = mix
         self._budget = budget
@@ -80,12 +81,21 @@ class CatalogueRunner:
         self._usage = usage
         self._budget_exhausted = False   # log the cap being reached only once
         # Circuit breaker: a provider that returns this many empty completions in
-        # a row is quarantined and routed around on the next run. A model that
-        # reasons its whole token budget away and returns `content: ""` — deepseek
-        # and qwen have both done it — otherwise burns real money on every call
-        # for a build's whole duration. A single non-empty completion clears the
-        # streak, so an occasional blank never trips it.
+        # a row is quarantined on the next run. A model that reasons its whole
+        # token budget away and returns `content: ""` — deepseek and qwen have
+        # both done it — otherwise burns real money on every call for a build's
+        # whole duration. A single non-empty completion clears the streak, so an
+        # occasional blank never trips it.
+        #
+        # By default a quarantined provider's share falls back to **procedural**
+        # (free). Rerouting it onto the surviving models is opt-in
+        # (``reroute_quarantined``) and off by default on purpose: silently
+        # moving 40% of a build onto whichever models remain can land it on the
+        # priciest one and drain the whole budget before the target is met. The
+        # safe default degrades to procedural; a caller who would rather pay to
+        # keep the LLM fill high asks for it explicitly.
         self._empty_streak_limit = max(empty_streak_limit, 1)
+        self._reroute_quarantined = reroute_quarantined
         self._empty_streak: Counter[str] = Counter()
         self._quarantined: set[str] = set()
 
@@ -96,9 +106,21 @@ class CatalogueRunner:
         groups: dict[int, list[CatalogueItem]] = defaultdict(list)
         providers: list[TextProvider] = self._mix.providers
         index_of = {id(p): i for i, p in enumerate(providers)}
-        exclude = frozenset(self._quarantined)
+        quarantined = frozenset(self._quarantined)
         for item in items:
-            provider = self._mix.choose(item_seed(item.item_id), exclude=exclude)
+            provider = self._mix.choose(item_seed(item.item_id))
+            if provider.name in quarantined:
+                # Reroute only if asked, and only to a genuinely healthy model;
+                # otherwise this item's description stays procedural. Never pay a
+                # surviving (possibly pricier) model for a dead one's share by
+                # default — see the circuit-breaker note in __init__.
+                if self._reroute_quarantined:
+                    provider = self._mix.choose(item_seed(item.item_id), exclude=quarantined)
+                if not self._reroute_quarantined or provider.name in quarantined:
+                    report.failures[item.item_id] = (
+                        f"provider {provider.name} quarantined (all empty) — "
+                        "procedural fallback")
+                    continue
             groups[index_of[id(provider)]].append(item)
 
         for idx, group in groups.items():

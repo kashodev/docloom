@@ -175,26 +175,46 @@ def test_one_item_failing_does_not_sink_the_rest() -> None:
 
 
 # ── Empty-provider circuit breaker ──────────────────────────────────────────
-def test_an_all_empty_provider_is_quarantined_and_routed_around() -> None:
+def test_a_quarantined_provider_falls_back_to_procedural_by_default() -> None:
     """A model that only ever returns empty text (deepseek/qwen reasoning their
-    token budget away) is quarantined after a streak of empties and routed around
-    on the next run, so it stops being paid to produce nothing — and its share is
-    picked up by the healthy providers rather than lost to procedural."""
+    token budget away) is quarantined after a streak of empties, then its share
+    degrades to procedural — NOT onto the surviving models, which by default must
+    never inherit a dead provider's share and risk draining the budget on the
+    pricier one. It simply stops being paid to produce nothing."""
     bad, good = EmptyStub("bad", D("0.01")), SyncStub("good", D("0.001"))
     runner = CatalogueRunner(mix_of(bad, good, weights=[0.5, 0.5]),
                              empty_streak_limit=3)
 
-    first = run(runner.run(items(40)))
+    run(runner.run(items(40)))
     assert "bad" in runner._quarantined            # crossed the streak limit
-    assert bad.calls > 0                            # it was tried before quarantine
-    calls_before = bad.calls
-    good_before = good.calls
+    calls_before, good_before = bad.calls, good.calls
 
     second = run(runner.run(items(40, start=40)))
     assert bad.calls == calls_before               # never called again
-    assert good.calls > good_before                # its share moved to the healthy one
+    assert len(second.failures) > 0                # bad's share went procedural…
+    assert len(second.results) < 40                # …not to good
+    assert len(second.results) + len(second.failures) == 40
     assert all(r.provider == "good" for r in second.results.values())
-    assert second.failures == {}                   # nothing fell back to procedural
+    # good handled only its own share — it did not inherit bad's.
+    assert good.calls - good_before == len(second.results)
+
+
+def test_reroute_quarantined_moves_the_share_to_survivors_when_opted_in() -> None:
+    """The opt-in: a caller who would rather keep the LLM fill high can pay the
+    surviving models for the dead one's share."""
+    bad, good = EmptyStub("bad", D("0.01")), SyncStub("good", D("0.001"))
+    runner = CatalogueRunner(mix_of(bad, good, weights=[0.5, 0.5]),
+                             empty_streak_limit=3, reroute_quarantined=True)
+
+    run(runner.run(items(40)))
+    assert "bad" in runner._quarantined
+    calls_before = bad.calls
+
+    second = run(runner.run(items(40, start=40)))
+    assert bad.calls == calls_before               # never called again
+    assert len(second.results) == 40               # all rerouted to the survivor
+    assert all(r.provider == "good" for r in second.results.values())
+    assert second.failures == {}
 
 
 def test_an_occasional_empty_does_not_quarantine() -> None:
