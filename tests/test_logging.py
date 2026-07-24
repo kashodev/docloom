@@ -223,3 +223,20 @@ def test_a_traceback_carries_no_frame_locals() -> None:
     assert frames, "the traceback itself must survive"
     assert all("locals" not in f for f in frames)
     assert len(line) < 4000, f"failure record is {len(line)} bytes; locals leaked back in"
+
+
+def test_a_re_run_says_already_planned_not_another_worker(json_logs, tmp_path) -> None:  # noqa: ANN001
+    """create_run on an already-planned run (a re-run, or a retried single task)
+    must not log 'another worker is planning' — there may be no other worker at
+    all. It should say the run is already planned and resume it."""
+    from docloom.core.state import SqliteStateStore
+
+    state = SqliteStateStore(tmp_path / "s.db")
+    kw = dict(run_id="r", pack="invoice", config_id="c", total=6, unit_size=3)
+    create_run(state, **kw)                    # first call plans it
+    json_logs()                                # drain
+    create_run(state, **kw)                    # second call: already planned
+
+    msgs = [e["message"] for e in json_logs()]
+    assert "run already planned; resuming it" in msgs
+    assert "another worker is planning this run; waiting" not in msgs
