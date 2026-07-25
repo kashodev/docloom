@@ -33,9 +33,12 @@ to serve them, and new features are designed against them.
 4. **High throughput.** Concurrency is enabled on *all* job types — document
    generation and catalogue building alike — coordinated without a broker or a
    leader, so one run scales across a fleet.
-5. **Extensible.** Extending generation is simple: a new business type, billing
-   model, or locale is a table/file edit; a new document type is a new pack, no
-   kernel fork.
+5. **Extensible.** Extending generation is simple, at three levels: *within* a
+   pack (a business type, billing model, locale, or template is a table/file
+   edit); a *new document type* is a new pack, no kernel fork; and *variants of a
+   new type* (a passport vs a driver's licence) are an internal axis of one pack,
+   sharing a base by composition. See [Extending](#extending) for the boundary
+   rule.
 
 The sections below are these principles made concrete.
 
@@ -109,13 +112,33 @@ GROUP BY 1, 2
 
 The same query runs against a local DuckDB view and a BigQuery external table.
 
-## Extending
+Extensibility runs at three levels:
 
-- **New business type / billing model / locale** — a table entry or a small
-  file in the invoice pack; no kernel change.
-- **New document type** — a new pack implementing `DocumentPack` +
+- **Within a pack** — a new business type, billing model, locale, sub-category,
+  or template is a table entry or a small file in the pack; no kernel change.
+- **A new document type** — a new pack implementing `DocumentPack` +
   `GoldenRecord`. Register it in-tree or ship it as `docloom-yourpack` via the
   `docloom.packs` entry-point group.
+- **Variants of a document type** — e.g. an `identity` pack producing passports,
+  driver's licences, and national ID cards: one base document with per-variant
+  field overlays, not three packs. Model these as an internal variant axis of a
+  single pack (a base golden record + optional variant fields, shared builders
+  the variants *compose*), the same way the invoice pack carries business types
+  and archetypes under one registry entry.
+
+Two rules keep this from eroding the design:
+
+- **The kernel stays document-agnostic — its power is its ignorance.** Shared
+  logic comes in three tiers: cross-document (seeding, claim/lease, rendering,
+  `GoldenRecord`, money, locale, providers) belongs in the **kernel**;
+  domain-shared (a passport MRZ, an ID portrait, card layout) belongs in the
+  **pack**, *never* hoisted into core to avoid duplication; variant-specific
+  logic is a **variant overlay** in the pack.
+- **Composition over a base pack.** Draw a pack boundary where the contract with
+  the kernel is uniform (one golden-schema shape, one content mode, one renderer
+  family). Split into a second pack only when that contract genuinely diverges —
+  and then share code through a **library dependency, not an inherited base
+  pack** (has-a, not is-a), extracted only when a second pack actually needs it.
 
 See [DESIGN.md](DESIGN.md) for the full architecture and rationale,
 [docs/concurrency.md](docs/concurrency.md) for the sharding + multi-worker model
