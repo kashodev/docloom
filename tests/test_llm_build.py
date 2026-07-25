@@ -278,3 +278,36 @@ def test_the_prompt_names_the_narrow_family_not_the_umbrella() -> None:
     assert row.product_category and row.product_category in req.prompt
     assert "unrelated" in req.prompt.lower()               # stay-in-line instruction
     assert row.business_type.value not in req.prompt       # umbrella not used as the domain
+
+
+def test_the_prompt_lists_placed_items_to_avoid_repeats() -> None:
+    from docloom.packs.invoice.llm_build import build_prompt
+    from docloom.packs.invoice.procedural import generate_company
+
+    row, prods = generate_company(0)
+    shots = [(p.description, p.price_low, p.price_high) for p in prods[:6]]
+    with_avoid = build_prompt(row, 5, shots, avoid=["Copper skillet, large", "Glass bowl, small"])
+    assert "do not repeat" in with_avoid.prompt.lower()
+    assert "Copper skillet, large" in with_avoid.prompt
+    assert "do not repeat" not in build_prompt(row, 5, shots).prompt.lower()  # none → no clause
+
+
+def test_a_later_round_is_told_what_the_first_round_already_placed() -> None:
+    """Cross-round de-dup: round 0's filled names are fed to round 1's prompt so
+    the model produces NEW items instead of repeats that would only be deduped
+    and fall back to procedural."""
+    import asyncio
+
+    from docloom.core.providers.mix import ProviderMix
+    from docloom.packs.invoice.llm_build import build_llm_catalogue
+
+    seen: list[str] = []
+
+    def responder(request):  # noqa: ANN001, ANN202
+        seen.append(request.prompt)
+        return '[{"description": "Alpha gadget, blue"}]'   # one usable item; rest short → pending
+
+    mix = ProviderMix([Fake(responder)], [1.0])
+    asyncio.run(build_llm_catalogue(mix, companies=1, products_per_company=8, seed=1, max_rounds=2))
+    # Round 0 placed "Alpha gadget, blue"; a round-1 prompt must carry it in the avoid list.
+    assert any("Alpha gadget, blue" in p and "do not repeat" in p.lower() for p in seen)
