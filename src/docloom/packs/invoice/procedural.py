@@ -100,6 +100,12 @@ CAT_PET = "pet supplies"
 CAT_SPORTS = "sporting goods"
 CAT_BEAUTY = "health and beauty"
 CAT_TOYS = "toys and games"
+# Service families — the "product" is a professional service, billed as SERVICE
+# / FLAT_RATE like accounting, so a line reads "Commercial contract drafting,
+# fixed fee (engagement)" rather than a stocked good.
+CAT_LEGAL = "legal services"
+CAT_CONSULTING = "consulting services"
+CAT_MARKETING = "marketing services"
 
 # ── Product slots, per sub-category ─────────────────────────────────────────
 # Each entry is (materials, forms, variants, unit-or-pack), combined into
@@ -234,6 +240,37 @@ _SLOTS: dict[str, dict[str, tuple[str, ...]]] = {
         "variant": ("small", "medium", "large", "age 3+", "age 6+", "2-player"),
         "pack": ("each", "set", "pack of 2", "box"),
     },
+    # ── Service families ────────────────────────────────────────────────────
+    # The material is an orthogonal qualifier (scope, seniority, engagement type),
+    # never a repeat of the form noun, so "Commercial contract drafting" reads
+    # cleanly and never "Strategic strategy consultation".
+    CAT_LEGAL: {
+        "material": ("Commercial", "Corporate", "Residential", "Standard",
+                     "Complex", "Preliminary"),
+        "form": ("contract drafting", "legal consultation", "court representation",
+                 "due diligence review", "trademark filing", "will preparation",
+                 "lease agreement", "compliance advice"),
+        "variant": ("standard", "expedited", "fixed fee", "priority"),
+        "pack": ("engagement", "hourly", "monthly retainer"),
+    },
+    CAT_CONSULTING: {
+        "material": ("Strategic", "Operational", "Technical", "Executive",
+                     "Senior", "Digital"),
+        "form": ("process audit", "implementation support", "training workshop",
+                 "market analysis", "change management", "feasibility study",
+                 "advisory session", "roadmap review"),
+        "variant": ("standard", "expedited", "on-site", "remote"),
+        "pack": ("engagement", "day rate", "hourly"),
+    },
+    CAT_MARKETING: {
+        "material": ("Managed", "Full-service", "Advanced", "Standard",
+                     "Bespoke", "Ongoing"),
+        "form": ("SEO campaign", "social media management", "content writing",
+                 "brand identity", "email campaign", "PPC management",
+                 "website design", "video production"),
+        "variant": ("monthly", "one-time", "per campaign", "quarterly"),
+        "pack": ("project", "monthly retainer", "package"),
+    },
 }
 
 _FR_MATERIAL = {
@@ -270,6 +307,12 @@ _FR_MATERIAL = {
     "Volumising": "volumateur", "Wooden": "en bois", "Plush": "en peluche",
     "Educational": "éducatif", "Electronic": "électronique", "Collectible": "de collection",
     "Classic": "classique",
+    # Service qualifiers (legal, consulting, marketing).
+    "Commercial": "commerciale", "Residential": "résidentielle", "Complex": "complexe",
+    "Preliminary": "préliminaire", "Strategic": "stratégique", "Operational": "opérationnel",
+    "Technical": "technique", "Senior": "senior", "Digital": "numérique",
+    "Managed": "géré", "Full-service": "complet", "Advanced": "avancé",
+    "Bespoke": "sur mesure", "Ongoing": "continu",
 }
 _FR_FORM = {
     "hex bolt": "Boulon à tête hexagonale", "washer set": "Jeu de rondelles",
@@ -343,6 +386,23 @@ _FR_FORM = {
     "toy car": "Petite voiture", "card game": "Jeu de cartes",
     "art kit": "Trousse d'art", "remote-control car": "Voiture télécommandée",
     "dollhouse": "Maison de poupée",
+    # Legal services.
+    "contract drafting": "Rédaction de contrat", "legal consultation": "Consultation juridique",
+    "court representation": "Représentation au tribunal",
+    "due diligence review": "Audit de diligence raisonnable",
+    "trademark filing": "Dépôt de marque", "will preparation": "Rédaction de testament",
+    "lease agreement": "Contrat de bail", "compliance advice": "Conseil en conformité",
+    # Consulting services.
+    "process audit": "Audit de processus",
+    "implementation support": "Accompagnement à la mise en œuvre",
+    "training workshop": "Atelier de formation", "market analysis": "Analyse de marché",
+    "change management": "Gestion du changement", "feasibility study": "Étude de faisabilité",
+    "advisory session": "Séance de conseil", "roadmap review": "Revue de feuille de route",
+    # Marketing services.
+    "SEO campaign": "Campagne SEO", "social media management": "Gestion des réseaux sociaux",
+    "content writing": "Rédaction de contenu", "brand identity": "Identité de marque",
+    "email campaign": "Campagne courriel", "PPC management": "Gestion de campagne SEA",
+    "website design": "Conception de site web", "video production": "Production vidéo",
 }
 
 #: Price bands per business type: (low, high) for the cheapest slot, scaled per
@@ -355,6 +415,9 @@ _PRICE_BANDS: dict[BusinessType, tuple[str, str]] = {
     BusinessType.ACCOUNTING: ("90.00", "2400.00"),
     BusinessType.AI_PLATFORM: ("0.0004", "6.00"),
     BusinessType.TELECOM: ("0.01", "0.60"),
+    BusinessType.LEGAL: ("120.00", "3500.00"),
+    BusinessType.CONSULTING: ("180.00", "4500.00"),
+    BusinessType.MARKETING_AGENCY: ("150.00", "6000.00"),
 }
 
 #: Billing shape per business type — what the sampler needs to build a line.
@@ -373,6 +436,12 @@ _BILLING: dict[BusinessType, tuple[LineItemKind, BillingModel, CodeSystem, Usage
                                CodeSystem.NONE, UsageUnit.TOKENS_INPUT),
     BusinessType.TELECOM: (LineItemKind.USAGE, BillingModel.METERED_USAGE,
                            CodeSystem.NONE, UsageUnit.MEGABYTES),
+    BusinessType.LEGAL: (LineItemKind.SERVICE, BillingModel.FLAT_RATE,
+                         CodeSystem.NONE, UsageUnit.NONE),
+    BusinessType.CONSULTING: (LineItemKind.SERVICE, BillingModel.FLAT_RATE,
+                              CodeSystem.NONE, UsageUnit.NONE),
+    BusinessType.MARKETING_AGENCY: (LineItemKind.SERVICE, BillingModel.FLAT_RATE,
+                                    CodeSystem.NONE, UsageUnit.NONE),
 }
 
 # Which sub-categories each business type sells. A company draws exactly one, so
@@ -388,6 +457,9 @@ _SUBCATEGORIES: dict[BusinessType, tuple[str, ...]] = {
     BusinessType.ACCOUNTING: (CAT_ACCOUNTING,),
     BusinessType.AI_PLATFORM: (CAT_AI,),
     BusinessType.TELECOM: (CAT_TELECOM,),
+    BusinessType.LEGAL: (CAT_LEGAL,),
+    BusinessType.CONSULTING: (CAT_CONSULTING,),
+    BusinessType.MARKETING_AGENCY: (CAT_MARKETING,),
 }
 
 #: The business types a catalogue spans (the round-robin the sampler cycles).
@@ -591,6 +663,42 @@ _NICHES: dict[str, tuple[tuple[str, str], ...]] = {
         ("card and trading games", "jeux de cartes et à collectionner"),
         ("baby and toddler toys", "jouets pour bébés et tout-petits"),
     ),
+    CAT_LEGAL: (
+        ("corporate and commercial law", "droit des affaires et commercial"),
+        ("litigation and disputes", "contentieux et litiges"),
+        ("intellectual property", "propriété intellectuelle"),
+        ("real estate and conveyancing", "droit immobilier"),
+        ("employment law", "droit du travail"),
+        ("immigration law", "droit de l'immigration"),
+        ("family law", "droit de la famille"),
+        ("wills and probate", "testaments et successions"),
+        ("tax law", "droit fiscal"),
+        ("contract law", "droit des contrats"),
+    ),
+    CAT_CONSULTING: (
+        ("management consulting", "conseil en management"),
+        ("IT and technology consulting", "conseil en informatique et technologie"),
+        ("HR consulting", "conseil en ressources humaines"),
+        ("strategy consulting", "conseil en stratégie"),
+        ("operations consulting", "conseil en opérations"),
+        ("financial consulting", "conseil financier"),
+        ("change management", "gestion du changement"),
+        ("sustainability consulting", "conseil en développement durable"),
+        ("data and analytics consulting", "conseil en données et analytique"),
+        ("supply chain consulting", "conseil en chaîne d'approvisionnement"),
+    ),
+    CAT_MARKETING: (
+        ("search engine optimisation", "référencement naturel (SEO)"),
+        ("pay-per-click advertising", "publicité au coût par clic"),
+        ("social media marketing", "marketing des réseaux sociaux"),
+        ("content marketing", "marketing de contenu"),
+        ("branding and design", "image de marque et design"),
+        ("email marketing", "marketing par courriel"),
+        ("web design and development", "conception et développement web"),
+        ("public relations", "relations publiques"),
+        ("video and creative production", "production vidéo et créative"),
+        ("marketing analytics", "analytique marketing"),
+    ),
 }
 
 
@@ -644,6 +752,10 @@ _FR_VARIANT = {
     "250ml": "250 ml", "travel size": "format voyage", "sensitive": "peau sensible",
     "SPF 30": "FPS 30", "age 3+": "3 ans et plus", "age 6+": "6 ans et plus",
     "2-player": "2 joueurs",
+    # Service variants (legal, consulting, marketing).
+    "fixed fee": "forfait fixe", "priority": "prioritaire", "on-site": "sur site",
+    "remote": "à distance", "one-time": "ponctuel", "per campaign": "par campagne",
+    "quarterly": "trimestriel",
 }
 _FR_PACK = {
     "pack of 10": "paquet de 10", "pack of 50": "paquet de 50", "box of 100": "boîte de 100",
@@ -659,6 +771,8 @@ _FR_PACK = {
     # Garden, pet, sports, beauty and toys packs.
     "set of 3": "jeu de 3", "bag": "sachet", "pack of 6": "paquet de 6",
     "set of 2": "jeu de 2", "gift set": "coffret cadeau", "box": "boîte",
+    # Service packs (legal, consulting, marketing).
+    "day rate": "tarif journalier", "project": "projet", "package": "forfait",
 }
 
 
