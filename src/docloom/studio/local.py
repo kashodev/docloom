@@ -48,6 +48,11 @@ class LocalTarget:
         (Path(project.root) / "blobs").mkdir(parents=True, exist_ok=True)
         return replace(project, created_at=now_iso())
 
+    def adopt(self, spec: ProjectSpec) -> Project:
+        """A local workspace has nothing to "already exist" remotely, so onboarding
+        one is the same as provisioning it — ensure its directories."""
+        return self.provision(spec)
+
     def is_provisioned(self, project: Project) -> bool:
         return bool(project.root) and (Path(project.root) / "blobs").is_dir()
 

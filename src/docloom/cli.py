@@ -621,6 +621,7 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
                 fmt: str = "pdf", condition: str = "", issue_date_from: str = "",
                 issue_date_to: str = "", version: str = "v1", companies: int = 1000,
                 products_per_company: int = 300, seed: int = 0, sink: str = "",
+                onboard: bool = False, region: str = "", bucket: str = "",
                 yes: bool = False, dry_run: bool = False) -> None:
     """The studio flow with real defaults — the `studio` command and a bare
     interactive `docloom` both call this. Walks target → project → pack → step →
@@ -664,7 +665,8 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
     while True:                               # ── project screen (back returns here) ──
         try:
             proj = wizard.choose_project(prompter, provider_name, target, registry, project_flag,
-                                         interactive=interactive, dry_run=dry_run, allow_back=loop)
+                                         interactive=interactive, dry_run=dry_run, allow_back=loop,
+                                         adopt=onboard, region=region, bucket=bucket)
             pack_name = wizard.choose_pack(prompter, pack, interactive)
         except StudioError as exc:
             raise typer.BadParameter(str(exc)) from exc
@@ -742,6 +744,10 @@ def studio(
                                  help="Deployment target — local (gcp/aws/azure land later)"),
     project: str = typer.Option("", "--project",
                                 help="Project / local workspace; created & saved if new"),
+    onboard: bool = typer.Option(False, "--onboard",
+                                 help="Onboard an existing cloud project (register, no provision)"),
+    region: str = typer.Option("", "--region", help="Cloud region (with a new/onboarded project)"),
+    bucket: str = typer.Option("", "--bucket", help="Cloud bucket (with a new/onboarded project)"),
     step: str = typer.Option("", "--step", help="catalog | pdfs | export"),
     pack: str = typer.Option("", "--pack", help="Document type (pack); '' = sole installed"),
     config: str = typer.Option("", "--config", help="Selection/slice file for the pdfs step"),
@@ -773,7 +779,7 @@ def studio(
                 run_id=run_id, total=total, catalogue=catalogue, fmt=fmt, condition=condition,
                 issue_date_from=issue_date_from, issue_date_to=issue_date_to, version=version,
                 companies=companies, products_per_company=products_per_company, seed=seed,
-                sink=sink, yes=yes, dry_run=dry_run)
+                sink=sink, onboard=onboard, region=region, bucket=bucket, yes=yes, dry_run=dry_run)
 
 
 if __name__ == "__main__":

@@ -19,32 +19,35 @@ from docloom.studio.types import (
 )
 
 
-def spec_for(provider: str, project: str) -> ProjectSpec:
-    """A :class:`ProjectSpec` from the ``--project`` value. For ``local`` the
-    value doubles as the workspace directory; for a cloud target it is the id."""
+def spec_for(provider: str, project: str, *, region: str = "", bucket: str = "") -> ProjectSpec:
+    """A :class:`ProjectSpec` from the ``--project`` value. For ``local`` the value
+    doubles as the workspace directory; for a cloud target it is the project id,
+    with optional ``region``/``bucket`` (for onboarding an existing project)."""
     if provider == "local":
         name = Path(project).name or project
         return ProjectSpec(target="local", id=name, root=project)
-    return ProjectSpec(target=provider, id=project)
+    return ProjectSpec(target=provider, id=project, region=region, bucket=bucket)
 
 
 def resolve_project(
     registry: Registry, target: DeploymentTarget, provider: str, project: str,
-    *, dry_run: bool = False,
+    *, dry_run: bool = False, adopt: bool = False, region: str = "", bucket: str = "",
 ) -> Project:
-    """The saved project named by ``--project``, creating (provisioning) it if new.
+    """The saved project named by ``--project``, creating it if new.
 
     Adopt-and-fill: a ``--project`` that already exists is reused, never an error.
-    A new one is provisioned and saved — except under ``dry_run``, which resolves
-    it without touching the disk or the registry.
+    A new one is **provisioned** (resources created) and saved, or, with ``adopt``,
+    **onboarded** — registered as an already-set-up environment without creating
+    resources. ``dry_run`` resolves it without touching the disk or the registry.
     """
     if project:
-        normalised = target.normalise(spec_for(provider, project))
+        spec = spec_for(provider, project, region=region, bucket=bucket)
+        normalised = target.normalise(spec)
         if (existing := registry.get(normalised.ref)) is not None:
             return existing
         if dry_run:
             return normalised
-        created = target.provision(spec_for(provider, project))
+        created = target.adopt(spec) if adopt else target.provision(spec)
         registry.add(created)
         return created
 

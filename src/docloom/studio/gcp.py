@@ -66,6 +66,14 @@ class GcpTarget:
                        "state": f"firestore://{spec.id}/(default)"},
         )
 
+    def adopt(self, spec: ProjectSpec) -> Project:
+        """Onboard an already-set-up GCP project: register it, create nothing. The
+        operator asserts it exists (docloom-provisioned, or they will provision it
+        themselves), so no APIs/bucket/build are touched — just the region/bucket
+        it should use. A step that then finds it un-provisioned surfaces deploy.sh's
+        own error."""
+        return replace(self.normalise(spec), provisioned_at=now_iso())
+
     def is_provisioned(self, project: Project) -> bool:
         return bool(project.provisioned_at)   # best effort; we don't probe gcloud here
 

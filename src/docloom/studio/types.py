@@ -126,6 +126,7 @@ class DeploymentTarget(Protocol):
 
     def normalise(self, spec: ProjectSpec) -> Project: ...      # fill defaults, no I/O (dry-run)
     def provision(self, spec: ProjectSpec) -> Project: ...      # create resources, return saved
+    def adopt(self, spec: ProjectSpec) -> Project: ...          # register an existing env, no I/O
     def is_provisioned(self, project: Project) -> bool: ...
 
     def run_catalogue(self, project: Project, args: CatalogueArgs, *,

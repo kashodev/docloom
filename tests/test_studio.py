@@ -482,3 +482,43 @@ def test_gcp_studio_dry_run_via_the_command(tmp_path: Path) -> None:
     res = runner.invoke(app, argv, env=env)
     assert res.exit_code == 0, res.output
     assert "deploy.sh" in res.output and "gcp:acme" in res.output
+
+
+# ── onboarding an existing gcp project ──────────────────────────────────────
+def test_gcp_adopt_registers_without_provisioning() -> None:
+    p = GcpTarget().adopt(ProjectSpec(target="gcp", id="acme", region="us-east1", bucket="my-bkt"))
+    assert p.provisioned_at and p.region == "us-east1" and p.bucket == "my-bkt"
+
+
+def test_resolve_adopt_saves_a_gcp_project_without_gcloud(tmp_path: Path) -> None:
+    reg = Registry(tmp_path / "projects.yaml")
+    p = resolve_project(reg, GcpTarget(), "gcp", "acme", adopt=True, region="us-east1", bucket="b1")
+    assert reg.get("gcp:acme") is not None
+    assert p.region == "us-east1" and p.bucket == "b1" and p.provisioned_at
+
+
+def test_wizard_onboards_an_existing_gcp_project(tmp_path: Path) -> None:
+    from docloom.studio.wizard import _ADOPT
+    reg = Registry(tmp_path / "projects.yaml")
+    answers = [_ADOPT, "acme", "us-west1", "acme-bucket"]     # onboard, id, region, bucket
+    proj = wizard.choose_project(ScriptedPrompter(answers), "gcp", GcpTarget(), reg, "",
+                                 interactive=True, dry_run=False)
+    assert proj.region == "us-west1" and proj.bucket == "acme-bucket" and proj.provisioned_at
+    assert reg.get("gcp:acme") is not None                    # saved, no gcloud touched
+
+
+def test_studio_onboard_flag_threads_to_choose_project(monkeypatch, tmp_path: Path) -> None:
+    """The --onboard/--region/--bucket flags reach choose_project as adopt + spec."""
+    from docloom import cli
+    seen = {}
+    monkeypatch.setenv("DOCLOOM_HOME", str(tmp_path / ".docloom"))
+
+    def fake_choose_project(prompter, provider, target, registry, project_flag, **kw):
+        seen.update(adopt=kw.get("adopt"), region=kw.get("region"), bucket=kw.get("bucket"))
+        return GcpTarget().adopt(ProjectSpec(
+            target="gcp", id=project_flag,
+            region=kw.get("region", ""), bucket=kw.get("bucket", "")))
+    monkeypatch.setattr("docloom.studio.wizard.choose_project", fake_choose_project)
+    cli._run_studio(provider="gcp", project="acme", onboard=True, region="eu", bucket="b",
+                    step="export", run_id="r1", dry_run=True)
+    assert seen == {"adopt": True, "region": "eu", "bucket": "b"}
