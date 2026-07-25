@@ -95,6 +95,11 @@ CAT_SAAS = "software subscriptions"
 CAT_ACCOUNTING = "accounting and tax services"
 CAT_AI = "AI platform usage"
 CAT_TELECOM = "telecom services"
+CAT_GARDEN = "garden and outdoor"
+CAT_PET = "pet supplies"
+CAT_SPORTS = "sporting goods"
+CAT_BEAUTY = "health and beauty"
+CAT_TOYS = "toys and games"
 
 # ── Product slots, per sub-category ─────────────────────────────────────────
 # Each entry is (materials, forms, variants, unit-or-pack), combined into
@@ -184,6 +189,51 @@ _SLOTS: dict[str, dict[str, tuple[str, ...]]] = {
         "variant": ("peak", "off-peak", "weekend", "zone 1", "zone 2"),
         "pack": ("per MB", "per minute", "per message"),
     },
+    CAT_GARDEN: {
+        "material": ("Terracotta", "Galvanised", "Plastic", "Cedar", "Powder-coated",
+                     "Teak", "Stone", "Rattan"),
+        "form": ("plant pot", "garden hose", "watering can", "hand trowel",
+                 "planter box", "pruning shears", "garden fork", "trellis",
+                 "compost bin", "raised bed kit"),
+        "variant": ("small", "medium", "large", "green", "40cm", "60cm"),
+        "pack": ("each", "set", "pack of 2", "set of 3"),
+    },
+    CAT_PET: {
+        "material": ("Grain-free", "Stainless steel", "Ceramic", "Nylon",
+                     "Fleece-lined", "Rubber", "Rope"),
+        "form": ("dog food", "cat litter", "chew toy", "pet bed", "food bowl",
+                 "collar", "leash", "scratching post", "grooming brush",
+                 "carrier crate"),
+        "variant": ("small", "medium", "large", "2kg", "5kg", "adult"),
+        "pack": ("each", "bag", "pack of 2", "pack of 6"),
+    },
+    CAT_SPORTS: {
+        "material": ("Neoprene", "Rubber", "Foam", "Carbon", "Leather", "Mesh",
+                     "Aluminium"),
+        "form": ("yoga mat", "dumbbell set", "resistance band", "water bottle",
+                 "tennis racket", "football", "jump rope", "gym gloves",
+                 "foam roller", "kettlebell"),
+        "variant": ("small", "medium", "large", "black", "5kg", "10kg"),
+        "pack": ("each", "pair", "set", "set of 2"),
+    },
+    CAT_BEAUTY: {
+        "material": ("Moisturising", "Exfoliating", "Fragrance-free", "Organic",
+                     "Anti-ageing", "Hydrating", "Volumising"),
+        "form": ("shampoo", "body lotion", "face cream", "lip balm",
+                 "makeup brush set", "nail polish", "hand soap", "sunscreen",
+                 "hair conditioner", "facial cleanser"),
+        "variant": ("50ml", "100ml", "250ml", "travel size", "sensitive", "SPF 30"),
+        "pack": ("each", "pack of 2", "set", "gift set"),
+    },
+    CAT_TOYS: {
+        "material": ("Wooden", "Plush", "Educational", "Electronic", "Plastic",
+                     "Collectible", "Classic"),
+        "form": ("board game", "jigsaw puzzle", "building blocks set",
+                 "action figure", "plush toy", "toy car", "card game", "art kit",
+                 "remote-control car", "dollhouse"),
+        "variant": ("small", "medium", "large", "age 3+", "age 6+", "2-player"),
+        "pack": ("each", "set", "pack of 2", "box"),
+    },
 }
 
 _FR_MATERIAL = {
@@ -209,6 +259,17 @@ _FR_MATERIAL = {
     "Linen": "en lin", "Fleece": "en polaire", "Leather": "en cuir",
     "Cast iron": "en fonte", "Bamboo": "en bambou", "Glass": "en verre",
     "Silicone": "en silicone", "Nonstick": "antiadhésif",
+    # Garden & outdoor, pet, sports, beauty and toys materials.
+    "Terracotta": "en terre cuite", "Plastic": "en plastique", "Cedar": "en cèdre",
+    "Powder-coated": "thermolaqué", "Teak": "en teck", "Stone": "en pierre",
+    "Rattan": "en rotin", "Grain-free": "sans céréales", "Fleece-lined": "doublé polaire",
+    "Rubber": "en caoutchouc", "Rope": "en corde", "Neoprene": "en néoprène",
+    "Foam": "en mousse", "Carbon": "en carbone", "Mesh": "en maille",
+    "Moisturising": "hydratant", "Exfoliating": "exfoliant", "Fragrance-free": "sans parfum",
+    "Organic": "biologique", "Anti-ageing": "anti-âge", "Hydrating": "hydratant",
+    "Volumising": "volumateur", "Wooden": "en bois", "Plush": "en peluche",
+    "Educational": "éducatif", "Electronic": "électronique", "Collectible": "de collection",
+    "Classic": "classique",
 }
 _FR_FORM = {
     "hex bolt": "Boulon à tête hexagonale", "washer set": "Jeu de rondelles",
@@ -251,6 +312,37 @@ _FR_FORM = {
     "measuring cups": "Tasses à mesurer", "baking sheet": "Plaque de cuisson",
     "colander": "Passoire", "utensil set": "Jeu d'ustensiles",
     "food storage jar": "Bocal de conservation",
+    # Garden & outdoor.
+    "plant pot": "Pot de fleurs", "garden hose": "Tuyau d'arrosage",
+    "watering can": "Arrosoir", "hand trowel": "Déplantoir",
+    "planter box": "Jardinière", "pruning shears": "Sécateur",
+    "garden fork": "Fourche de jardin", "trellis": "Treillis",
+    "compost bin": "Composteur", "raised bed kit": "Kit de carré potager",
+    # Pet supplies.
+    "dog food": "Nourriture pour chien", "cat litter": "Litière pour chat",
+    "chew toy": "Jouet à mâcher", "pet bed": "Panier pour animal",
+    "food bowl": "Gamelle", "collar": "Collier", "leash": "Laisse",
+    "scratching post": "Griffoir", "grooming brush": "Brosse de toilettage",
+    "carrier crate": "Caisse de transport",
+    # Sporting goods.
+    "yoga mat": "Tapis de yoga", "dumbbell set": "Jeu d'haltères",
+    "resistance band": "Bande de résistance", "water bottle": "Gourde",
+    "tennis racket": "Raquette de tennis", "football": "Ballon de football",
+    "jump rope": "Corde à sauter", "gym gloves": "Gants de sport",
+    "foam roller": "Rouleau de massage", "kettlebell": "Kettlebell",
+    # Health & beauty.
+    "shampoo": "Shampooing", "body lotion": "Lait corporel",
+    "face cream": "Crème pour le visage", "lip balm": "Baume à lèvres",
+    "makeup brush set": "Jeu de pinceaux de maquillage", "nail polish": "Vernis à ongles",
+    "hand soap": "Savon pour les mains", "sunscreen": "Crème solaire",
+    "hair conditioner": "Après-shampooing", "facial cleanser": "Nettoyant visage",
+    # Toys & games.
+    "board game": "Jeu de société", "jigsaw puzzle": "Casse-tête",
+    "building blocks set": "Jeu de blocs de construction",
+    "action figure": "Figurine d'action", "plush toy": "Peluche",
+    "toy car": "Petite voiture", "card game": "Jeu de cartes",
+    "art kit": "Trousse d'art", "remote-control car": "Voiture télécommandée",
+    "dollhouse": "Maison de poupée",
 }
 
 #: Price bands per business type: (low, high) for the cheapest slot, scaled per
@@ -288,7 +380,8 @@ _BILLING: dict[BusinessType, tuple[LineItemKind, BillingModel, CodeSystem, Usage
 # `retail` is the broad one that otherwise drifts, so it fans out — different
 # retail companies become different kinds of shop, each internally coherent.
 _SUBCATEGORIES: dict[BusinessType, tuple[str, ...]] = {
-    BusinessType.RETAIL: (CAT_HARDWARE, CAT_OFFICE, CAT_APPAREL, CAT_KITCHEN),
+    BusinessType.RETAIL: (CAT_HARDWARE, CAT_OFFICE, CAT_APPAREL, CAT_KITCHEN,
+                          CAT_GARDEN, CAT_PET, CAT_SPORTS, CAT_BEAUTY, CAT_TOYS),
     BusinessType.WHOLESALE: (CAT_PACKAGING,),
     BusinessType.AUTO_REPAIR: (CAT_AUTO,),
     BusinessType.B2B_SAAS: (CAT_SAAS,),
@@ -438,6 +531,66 @@ _NICHES: dict[str, tuple[tuple[str, str], ...]] = {
         ("dedicated leased lines", "lignes louées dédiées"),
         ("data-centre colocation", "hébergement en centre de données"),
     ),
+    CAT_GARDEN: (
+        ("potted plants and planters", "plantes en pot et jardinières"),
+        ("garden hand tools", "outils de jardinage à main"),
+        ("watering and irrigation", "arrosage et irrigation"),
+        ("outdoor furniture", "mobilier de jardin"),
+        ("barbecues and grills", "barbecues et grils"),
+        ("lawn care", "entretien de la pelouse"),
+        ("seeds and bulbs", "graines et bulbes"),
+        ("fencing and trellis", "clôtures et treillis"),
+        ("garden lighting", "éclairage de jardin"),
+        ("composting and soil", "compostage et terreau"),
+    ),
+    CAT_PET: (
+        ("dog food and treats", "nourriture et friandises pour chiens"),
+        ("cat food and litter", "nourriture et litière pour chats"),
+        ("pet toys", "jouets pour animaux"),
+        ("beds and bedding", "paniers et couchages"),
+        ("collars and leashes", "colliers et laisses"),
+        ("grooming supplies", "produits de toilettage"),
+        ("aquarium supplies", "accessoires d'aquarium"),
+        ("small animal supplies", "accessoires pour petits animaux"),
+        ("bowls and feeders", "gamelles et distributeurs"),
+        ("pet health and hygiene", "santé et hygiène animale"),
+    ),
+    CAT_SPORTS: (
+        ("fitness and gym equipment", "équipement de fitness et de musculation"),
+        ("yoga and pilates gear", "matériel de yoga et pilates"),
+        ("team sports equipment", "équipement de sports collectifs"),
+        ("racket sports", "sports de raquette"),
+        ("cycling accessories", "accessoires de cyclisme"),
+        ("running gear", "matériel de course"),
+        ("water sports equipment", "équipement de sports nautiques"),
+        ("camping and hiking gear", "matériel de camping et de randonnée"),
+        ("sports nutrition", "nutrition sportive"),
+        ("sports activewear and footwear", "vêtements et chaussures de sport"),
+    ),
+    CAT_BEAUTY: (
+        ("skincare", "soins de la peau"),
+        ("haircare", "soins capillaires"),
+        ("cosmetics and makeup", "cosmétiques et maquillage"),
+        ("fragrances", "parfums"),
+        ("bath and body", "bain et corps"),
+        ("nail care", "soins des ongles"),
+        ("men's grooming", "soins pour hommes"),
+        ("sun care", "protection solaire"),
+        ("vitamins and supplements", "vitamines et compléments"),
+        ("oral care", "soins bucco-dentaires"),
+    ),
+    CAT_TOYS: (
+        ("board games and puzzles", "jeux de société et casse-tête"),
+        ("building toys", "jeux de construction"),
+        ("dolls and figures", "poupées et figurines"),
+        ("plush toys", "peluches"),
+        ("educational toys", "jouets éducatifs"),
+        ("outdoor toys", "jouets de plein air"),
+        ("arts and crafts", "arts et loisirs créatifs"),
+        ("remote-control toys", "jouets télécommandés"),
+        ("card and trading games", "jeux de cartes et à collectionner"),
+        ("baby and toddler toys", "jouets pour bébés et tout-petits"),
+    ),
 }
 
 
@@ -485,6 +638,12 @@ _FR_VARIANT = {
     "black": "noir", "grey": "gris", "silver": "argent", "white": "blanc",
     "navy": "bleu marine", "small": "petit", "medium": "moyen", "large": "grand",
     "10 inch": "10 pouces", "12 inch": "12 pouces", "set of 4": "jeu de 4",
+    # Garden, pet, sports, beauty and toys variants.
+    "green": "vert", "40cm": "40 cm", "60cm": "60 cm", "2kg": "2 kg", "5kg": "5 kg",
+    "adult": "adulte", "10kg": "10 kg", "50ml": "50 ml", "100ml": "100 ml",
+    "250ml": "250 ml", "travel size": "format voyage", "sensitive": "peau sensible",
+    "SPF 30": "FPS 30", "age 3+": "3 ans et plus", "age 6+": "6 ans et plus",
+    "2-player": "2 joueurs",
 }
 _FR_PACK = {
     "pack of 10": "paquet de 10", "pack of 50": "paquet de 50", "box of 100": "boîte de 100",
@@ -497,6 +656,9 @@ _FR_PACK = {
     "per thousand": "par millier", "per hour": "par heure", "per MB": "par Mo",
     "per minute": "par minute", "per message": "par message",
     "unit": "unité", "set": "jeu", "pack of 2": "paquet de 2", "pack of 3": "paquet de 3",
+    # Garden, pet, sports, beauty and toys packs.
+    "set of 3": "jeu de 3", "bag": "sachet", "pack of 6": "paquet de 6",
+    "set of 2": "jeu de 2", "gift set": "coffret cadeau", "box": "boîte",
 }
 
 
