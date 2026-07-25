@@ -287,6 +287,14 @@ class GoldenInvoice(_Base):
     issuer: Party
     recipient: Party
     business_type: BusinessType
+    #: The issuer's narrow merchant family (e.g. "apparel and accessories"), so a
+    #: corpus is queryable by what a company actually sells, not just the umbrella
+    #: business type. Empty for the seed catalogue.
+    product_category: str = ""
+    #: The issuer's finer specialty (e.g. "women's activewear"), a sub-slice of
+    #: ``product_category``, so a corpus is queryable by niche. Empty for the seed
+    #: catalogue and procedural-only corpora that record no niche.
+    llm_niche: str = ""
 
     # ── Localisation ───────────────────────────────────────────────────────
     # ``locale`` fixes number/date shape; the label vocabulary is derived from
@@ -464,6 +472,8 @@ class GoldenInvoice(_Base):
             "invoice_index": self.invoice_index,
             "company_id": self.company_id,
             "business_type": str(self.business_type),
+            "product_category": self.product_category,
+            "llm_niche": self.llm_niche,
             "template_id": self.render_profile.archetype,
             "invoice_number": self.invoice_number,
             "issue_date": self.issue_date,

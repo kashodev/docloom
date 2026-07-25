@@ -37,7 +37,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 
@@ -116,7 +116,8 @@ def _few_shot(examples: list[tuple[str, Decimal, Decimal]]) -> str:
 
 
 def build_prompt(
-    company: CompanyRow, count: int, examples: list[tuple[str, Decimal, Decimal]]
+    company: CompanyRow, count: int, examples: list[tuple[str, Decimal, Decimal]],
+    avoid: Sequence[str] = (),
 ) -> CompletionRequest:
     """One chunk request: ``count`` line items for one company, in its language.
 
@@ -131,11 +132,35 @@ def build_prompt(
     French companies are prompted in French with French examples, because that is
     what prints on their invoices — translating afterwards is what produced the
     half-French strings the procedural build had to fix.
+
+    The **domain** is the company's finest specialty — its ``llm_niche`` ("women's
+    activewear") if set, else the coarse ``product_category`` ("apparel and
+    accessories"), never the umbrella business type. Prompting on "a retail
+    business" let the model free-associate across every corner of retail — one
+    company's catalogue ended up mixing compression shorts and a motherboard.
+    Naming the niche and telling the model to stay inside it keeps a company's
+    whole catalogue one coherent line, and — because each family fans out into ~10
+    niches — makes different companies genuinely different shops. The few-shot
+    examples still come from the coarse-family skeleton, so they anchor the
+    register and keep the model inside the family even where the niche is finer
+    than the procedural slots can express.
+
+    ``avoid`` lists items already placed for this company in earlier rounds, so a
+    later round deepens the line instead of re-proposing names that would only be
+    rejected as duplicates and fall back to procedural. Capped so the prompt does
+    not balloon; the apply step is still the backstop that guarantees no repeat.
     """
     french = _is_french(company.locale)
     currency = str(company.currency)
-    kind = company.business_type.value.replace("_", " ")
+    kind = (company.llm_niche or company.product_category
+            or company.business_type.value.replace("_", " "))
     shots = _few_shot(examples)
+    avoid_en = avoid_fr = ""
+    if avoid:
+        sample = "; ".join(list(avoid)[-40:])
+        avoid_en = f"\nAlready listed for this company — do not repeat: {sample}."
+        avoid_fr = ("\nDéjà listés pour cette entreprise — ne les répète pas : "
+                    f"{sample}.")
     if french:
         system = (
             "Tu génères des libellés de lignes de facture : un nom de produit ou "
@@ -145,10 +170,13 @@ def build_prompt(
             "par un tableau JSON."
         )
         prompt = (
-            f"Entreprise : {company.name}, secteur « {kind} ».\n"
+            f"Entreprise : {company.name} — vend uniquement : {kind}.\n"
             f"Écris {count} libellés de lignes de facture distincts, chacun avec "
             f"une fourchette de prix plausible en {currency}.\n"
-            f"Reproduis exactement le style et le format de ces exemples :\n{shots}\n"
+            f"Chaque article appartient à cette gamme ({kind}) ; n'introduis "
+            "aucune catégorie de produit sans rapport.\n"
+            f"Reproduis exactement le style et le format de ces exemples :\n{shots}"
+            f"{avoid_fr}\n"
             'Chaque « name » est une seule ligne : produit/service + '
             "caractéristique clé, sans phrase ni argumentaire."
         )
@@ -160,10 +188,13 @@ def build_prompt(
             "or 'deliver'. Reply with a JSON array only."
         )
         prompt = (
-            f"Company: {company.name}, a {kind} business.\n"
+            f"Company: {company.name} — sells only: {kind}.\n"
             f"Write {count} distinct invoice line items, each with a plausible "
             f"price range in {currency}.\n"
-            f"Match the style and format of these examples exactly:\n{shots}\n"
+            f"Every item belongs to this one product line ({kind}); do not "
+            "introduce any unrelated product category.\n"
+            f"Match the style and format of these examples exactly:\n{shots}"
+            f"{avoid_en}\n"
             "Each 'name' is one short line: product/service plus a key spec — no "
             "sentence, no marketing."
         )
@@ -280,13 +311,17 @@ async def build_llm_catalogue(
     products: dict[str, list[ProductTemplate]] = {
         cid: list(items) for cid, items in fallback.items()
     }
-    # Two procedural products per company become the prompt's few-shot examples —
-    # the style the LLM must match. Taken from the fallback, in the company's
-    # printed language, with their price bands so the format is shown too.
+    # Several procedural products per company become the prompt's few-shot
+    # examples — they anchor the format AND the product family. Two was enough to
+    # fix the register but too few to pin the domain, so a broad company drifted
+    # off it; a fuller sample of the (now sub-category-coherent) skeleton holds
+    # the model inside the line. In the company's printed language, with price
+    # bands so the format is shown too.
+    _N_SHOTS = 6
     examples: dict[str, list[tuple[str, Decimal, Decimal]]] = {
         cid: [
             (_printed_text(p, _is_french(by_id[cid].locale)), p.price_low, p.price_high)
-            for p in items[:2]
+            for p in items[:_N_SHOTS]
         ]
         for cid, items in fallback.items()
     }
@@ -309,7 +344,19 @@ async def build_llm_catalogue(
         if not pending:
             break
         report.rounds = round_no + 1
-        items, slot_map = _chunk_items(pending, by_id, examples, round_no)
+        # Names already filled per company (a filled slot is one no longer
+        # pending), so a later round asks the model for *new* items rather than
+        # re-proposing ones it already gave — which would only be deduped and fall
+        # back to procedural. Empty on round 0, where nothing is filled yet.
+        pending_by_cid: dict[str, set[int]] = {}
+        for cid, i in pending:
+            pending_by_cid.setdefault(cid, set()).add(i)
+        placed = {
+            cid: [_printed_text(products[cid][i], _is_french(by_id[cid].locale))
+                  for i in range(len(products[cid])) if i not in idx]
+            for cid, idx in pending_by_cid.items()
+        }
+        items, slot_map = _chunk_items(pending, by_id, examples, round_no, placed)
         emit(f"round {round_no + 1}: {len(items):,} chunk(s) for {len(pending):,} "
              f"pending slot(s)…")
         outcome = await runner.run(items)
@@ -344,12 +391,16 @@ def _chunk_items(
     by_id: dict[str, CompanyRow],
     examples: dict[str, list[tuple[str, Decimal, Decimal]]],
     round_no: int,
+    placed: dict[str, list[str]] | None = None,
 ) -> tuple[list[CatalogueItem], dict[str, list[tuple[str, int]]]]:
     """Group pending slots into per-company chunk requests.
 
     Item ids embed the round so a regeneration routes independently of the first
     attempt — a chunk that a weak model fumbled can land on a different one.
+    ``placed`` carries the names already filled for each company, so a later
+    round's prompt can tell the model not to repeat them.
     """
+    placed = placed or {}
     by_company: dict[str, list[tuple[str, int]]] = {}
     for cid, i in pending:
         by_company.setdefault(cid, []).append((cid, i))
@@ -357,11 +408,12 @@ def _chunk_items(
     items: list[CatalogueItem] = []
     slot_map: dict[str, list[tuple[str, int]]] = {}
     for cid, slots in by_company.items():
+        avoid = placed.get(cid, ())
         for offset in range(0, len(slots), CHUNK):
             chunk = slots[offset:offset + CHUNK]
             item_id = f"{cid}:r{round_no}:{offset // CHUNK}"
             items.append(CatalogueItem(
-                item_id, build_prompt(by_id[cid], len(chunk), examples[cid])))
+                item_id, build_prompt(by_id[cid], len(chunk), examples[cid], avoid)))
             slot_map[item_id] = chunk
     return items, slot_map
 

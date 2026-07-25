@@ -94,6 +94,12 @@ class Company:
     party: Party
     render_profile: RenderProfile
     weight: float = 1.0
+    #: The narrow merchant family this issuer sells (from the catalogue). Empty on
+    #: the seed catalogue and legacy artifacts.
+    product_category: str = ""
+    #: The finer specialty within that family, in the issuer's language — what the
+    #: LLM catalogue was prompted with. Empty on the seed catalogue.
+    llm_niche: str = ""
 
 
 class CompanyRoster:

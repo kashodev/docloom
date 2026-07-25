@@ -19,7 +19,7 @@ import pytest
 
 from docloom.packs.invoice.artifact import load_catalogue, write_catalogue
 from docloom.packs.invoice.procedural import (
-    BUSINESS_TYPES,
+    _SUBCATEGORIES,
     combination_space,
     company_name_space,
     generate_catalogue,
@@ -28,36 +28,41 @@ from docloom.packs.invoice.procedural import (
 )
 from docloom.packs.invoice.sampler import InvoiceSampler
 
+#: Every (business_type, sub-category) pair — a company draws one sub-category,
+#: and its billing shape follows the business type.
+_FAMILIES = [(bt, cat) for bt, cats in _SUBCATEGORIES.items() for cat in cats]
+_CATEGORIES = [cat for _, cat in _FAMILIES]
+
 
 # ── The pool itself ─────────────────────────────────────────────────────────
 def test_a_companys_own_catalogue_never_repeats_a_sku() -> None:
     """Distinct *within a company* is the property that matters — a vendor's
     catalogue listing the same SKU twice is simply wrong."""
-    for business_type in BUSINESS_TYPES:
-        products = generate_products(Random(0), business_type, 120)
-        assert len({p.description for p in products}) == 120, business_type
+    for business_type, category in _FAMILIES:
+        products = generate_products(Random(0), category, business_type, 120)
+        assert len({p.description for p in products}) == 120, category
 
 
 def test_asking_for_more_than_the_slots_express_raises() -> None:
     """Silently returning duplicates would put the defect into a published
     artifact, where it is expensive to notice."""
-    smallest = min(BUSINESS_TYPES, key=combination_space)
+    business_type, category = min(_FAMILIES, key=lambda f: combination_space(f[1]))
     with pytest.raises(ValueError, match="distinct products"):
-        generate_products(Random(0), smallest, combination_space(smallest) + 1)
+        generate_products(Random(0), category, business_type,
+                          combination_space(category) + 1)
 
 
-def test_every_business_type_can_fill_a_realistic_company_catalogue() -> None:
+def test_every_subcategory_can_fill_a_realistic_company_catalogue() -> None:
     """300 SKUs per company is the sizing the 1M-invoice design calls for, so
-    every type must be able to express at least that many."""
-    for business_type in BUSINESS_TYPES:
-        assert combination_space(business_type) >= 300, business_type
+    every sub-category must be able to express at least that many."""
+    for category in _CATEGORIES:
+        assert combination_space(category) >= 300, category
 
 
 def test_the_combinatorial_space_is_large_but_finite() -> None:
     """Recorded deliberately: combinatorics have a ceiling, and that ceiling is
-    the argument for the LLM step. ~8k distinct descriptions is 300x the seed
-    catalogue's 25, and still far short of a 300k pool."""
-    total = sum(combination_space(b) for b in BUSINESS_TYPES)
+    the argument for the LLM step. Still far short of a 300k pool."""
+    total = sum(combination_space(c) for c in _CATEGORIES)
     assert total > 5_000
     assert company_name_space() > 500
 
@@ -102,8 +107,8 @@ def test_weights_form_a_long_tail() -> None:
 
 
 def test_prices_are_exact_decimals() -> None:
-    for business_type in BUSINESS_TYPES:
-        for product in generate_products(Random(0), business_type, 20):
+    for business_type, category in _FAMILIES:
+        for product in generate_products(Random(0), category, business_type, 20):
             assert isinstance(product.price_low, Decimal)
             assert product.price_high > product.price_low > 0
 
@@ -177,3 +182,65 @@ def test_a_procedural_corpus_is_far_more_varied_than_the_seed_pool(tmp_path: Pat
 
     from_artifact, from_seed = distinct(artifact), distinct(seed_pool)
     assert from_artifact > from_seed * 10, (from_artifact, from_seed)
+
+
+def test_a_companys_catalogue_is_one_coherent_family() -> None:
+    """The realism fix: a company sells ONE narrow product line, so its whole
+    catalogue draws from that sub-category's forms — no invoice can mix
+    compression shorts and a motherboard, because no company stocks both."""
+    from docloom.packs.invoice.procedural import _SLOTS, generate_company
+    seen_categories = set()
+    for i in range(60):
+        row, prods = generate_company(i, products_per_company=50)
+        assert row.product_category, "every company gets a sub-category"
+        forms = _SLOTS[row.product_category]["form"]
+        assert all(any(f in p.description for f in forms) for p in prods), row.product_category
+        seen_categories.add(row.product_category)
+    # And retail actually fans out — different retail companies are different shops.
+    assert len(seen_categories) >= 8
+
+
+def test_retail_companies_span_several_shop_types() -> None:
+    from docloom.packs.invoice.enums import BusinessType
+    from docloom.packs.invoice.procedural import generate_company
+    retail = {generate_company(i)[0].product_category
+              for i in range(60)
+              if generate_company(i)[0].business_type is BusinessType.RETAIL}
+    assert len(retail) >= 3, retail        # not all the same kind of shop
+
+
+def test_every_family_fans_out_into_about_ten_llm_niches() -> None:
+    """The LLM catalogue's variety comes from a niche layer ~10x the coarse family
+    set — each family fans into a specific kind of shop, so companies differ far
+    more without authoring a procedural slot table for each niche."""
+    from docloom.packs.invoice.procedural import _NICHES, niche_space
+    families = set(_CATEGORIES)
+    assert set(_NICHES) == families                    # every family has niches
+    assert all(len(v) >= 8 for v in _NICHES.values())  # a real fan-out, not one or two
+    assert niche_space() >= 10 * len(families)         # order-of-10x more than families
+
+
+def test_a_company_niche_is_deterministic_and_lies_in_its_family() -> None:
+    """A niche is a fixed sub-slice of the company's coarse family, so the
+    procedural skeleton stays a valid anchor and fallback for it."""
+    from docloom.packs.invoice.procedural import _NICHES, generate_company
+    for i in range(80):
+        row, _ = generate_company(i)
+        assert row.llm_niche and generate_company(i)[0].llm_niche == row.llm_niche
+        family_labels = {label for pair in _NICHES[row.product_category] for label in pair}
+        assert row.llm_niche in family_labels, (row.product_category, row.llm_niche)
+
+
+def test_a_french_company_gets_a_french_niche() -> None:
+    """The stored niche is already localised, so a French company is prompted with
+    a French label rather than an English one dropped into a French sentence."""
+    from docloom.packs.invoice.procedural import _NICHES, generate_company
+    french_labels = {fr for pairs in _NICHES.values() for _, fr in pairs}
+    seen_fr = 0
+    for i in range(120):
+        row, _ = generate_company(i)
+        if not str(row.locale).startswith("fr"):
+            continue
+        seen_fr += 1
+        assert row.llm_niche in french_labels, row.llm_niche
+    assert seen_fr, "expected some French companies in the first 120 indices"
