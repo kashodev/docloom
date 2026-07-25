@@ -347,6 +347,7 @@ class InvoiceSampler:
                             name=rng.choice(_RECIPIENTS)),
             business_type=company.business_type,
             product_category=company.product_category,
+            llm_niche=company.llm_niche,
             locale=company.locale,
             jurisdiction=company.jurisdiction,
             currency=company.currency,

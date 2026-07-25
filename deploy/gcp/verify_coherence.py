@@ -52,8 +52,9 @@ def main() -> None:
     for c in sorted(companies, key=lambda c: c["company_id"]):
         descs = by_company.get(c["company_id"], [])
         cat = c.get("product_category") or "(none)"
-        print(f"\n{c['company_id']}  {c['business_type']:<12} family={cat!r}  "
-              f"({len(descs)} products)")
+        niche = c.get("llm_niche") or "(none)"
+        print(f"\n{c['company_id']}  {c['business_type']:<12} family={cat!r} "
+              f"niche={niche!r}  ({len(descs)} products)")
         for d in descs[:SAMPLE]:
             print(f"    - {d}")
     print(f"\n{len(companies)} companies. Each block above should read as one "

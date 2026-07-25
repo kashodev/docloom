@@ -207,3 +207,40 @@ def test_retail_companies_span_several_shop_types() -> None:
               for i in range(60)
               if generate_company(i)[0].business_type is BusinessType.RETAIL}
     assert len(retail) >= 3, retail        # not all the same kind of shop
+
+
+def test_every_family_fans_out_into_about_ten_llm_niches() -> None:
+    """The LLM catalogue's variety comes from a niche layer ~10x the coarse family
+    set — each family fans into a specific kind of shop, so companies differ far
+    more without authoring a procedural slot table for each niche."""
+    from docloom.packs.invoice.procedural import _NICHES, niche_space
+    families = set(_CATEGORIES)
+    assert set(_NICHES) == families                    # every family has niches
+    assert all(len(v) >= 8 for v in _NICHES.values())  # a real fan-out, not one or two
+    assert niche_space() >= 10 * len(families)         # order-of-10x more than families
+
+
+def test_a_company_niche_is_deterministic_and_lies_in_its_family() -> None:
+    """A niche is a fixed sub-slice of the company's coarse family, so the
+    procedural skeleton stays a valid anchor and fallback for it."""
+    from docloom.packs.invoice.procedural import _NICHES, generate_company
+    for i in range(80):
+        row, _ = generate_company(i)
+        assert row.llm_niche and generate_company(i)[0].llm_niche == row.llm_niche
+        family_labels = {label for pair in _NICHES[row.product_category] for label in pair}
+        assert row.llm_niche in family_labels, (row.product_category, row.llm_niche)
+
+
+def test_a_french_company_gets_a_french_niche() -> None:
+    """The stored niche is already localised, so a French company is prompted with
+    a French label rather than an English one dropped into a French sentence."""
+    from docloom.packs.invoice.procedural import _NICHES, generate_company
+    french_labels = {fr for pairs in _NICHES.values() for _, fr in pairs}
+    seen_fr = 0
+    for i in range(120):
+        row, _ = generate_company(i)
+        if not str(row.locale).startswith("fr"):
+            continue
+        seen_fr += 1
+        assert row.llm_niche in french_labels, row.llm_niche
+    assert seen_fr, "expected some French companies in the first 120 indices"

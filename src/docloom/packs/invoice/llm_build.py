@@ -133,12 +133,17 @@ def build_prompt(
     what prints on their invoices — translating afterwards is what produced the
     half-French strings the procedural build had to fix.
 
-    The **domain** is the company's narrow product family (``product_category``),
-    not its umbrella business type. Prompting on "a retail business" let the model
-    free-associate across every corner of retail — one company's catalogue ended
-    up mixing compression shorts and a motherboard. Naming the family ("an apparel
-    and accessories retailer") and telling the model to stay inside it keeps a
-    company's whole catalogue one coherent line.
+    The **domain** is the company's finest specialty — its ``llm_niche`` ("women's
+    activewear") if set, else the coarse ``product_category`` ("apparel and
+    accessories"), never the umbrella business type. Prompting on "a retail
+    business" let the model free-associate across every corner of retail — one
+    company's catalogue ended up mixing compression shorts and a motherboard.
+    Naming the niche and telling the model to stay inside it keeps a company's
+    whole catalogue one coherent line, and — because each family fans out into ~10
+    niches — makes different companies genuinely different shops. The few-shot
+    examples still come from the coarse-family skeleton, so they anchor the
+    register and keep the model inside the family even where the niche is finer
+    than the procedural slots can express.
 
     ``avoid`` lists items already placed for this company in earlier rounds, so a
     later round deepens the line instead of re-proposing names that would only be
@@ -147,7 +152,8 @@ def build_prompt(
     """
     french = _is_french(company.locale)
     currency = str(company.currency)
-    kind = company.product_category or company.business_type.value.replace("_", " ")
+    kind = (company.llm_niche or company.product_category
+            or company.business_type.value.replace("_", " "))
     shots = _few_shot(examples)
     avoid_en = avoid_fr = ""
     if avoid:

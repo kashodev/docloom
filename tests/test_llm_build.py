@@ -266,18 +266,40 @@ def test_a_clean_band_survives_unchanged() -> None:
     assert _coerce_band(12.50, 40.00) == (D("12.50"), D("40.00"))
 
 
-def test_the_prompt_names_the_narrow_family_not_the_umbrella() -> None:
-    """Prompting on the company's sub-category (its actual product line) with an
-    explicit stay-in-line instruction is the fix for catalogues that drifted
-    across every corner of 'retail'."""
+def test_the_prompt_names_the_fine_niche_not_the_family_or_umbrella() -> None:
+    """Prompting on the company's finest specialty — its niche, a sub-slice of the
+    coarse family — with an explicit stay-in-line instruction is the fix for
+    catalogues that drifted across every corner of 'retail', and the niche layer
+    is what makes different companies genuinely different shops."""
     from docloom.packs.invoice.llm_build import build_prompt
     from docloom.packs.invoice.procedural import generate_company
 
     row, prods = generate_company(0)                       # a retail company
     req = build_prompt(row, 10, [(p.description, p.price_low, p.price_high) for p in prods[:6]])
-    assert row.product_category and row.product_category in req.prompt
+    assert row.llm_niche and row.llm_niche in req.prompt   # the fine niche is named
+    assert row.product_category not in req.prompt          # not just the coarse family
     assert "unrelated" in req.prompt.lower()               # stay-in-line instruction
     assert row.business_type.value not in req.prompt       # umbrella not used as the domain
+
+
+def test_the_prompt_falls_back_to_the_family_then_the_umbrella() -> None:
+    """A company with no niche is prompted on its coarse family; one with neither
+    still gets a domain (the umbrella), never an empty one."""
+    from decimal import Decimal
+
+    from docloom.core.locale.enums import Currency, Locale
+    from docloom.packs.invoice.artifact import CompanyRow
+    from docloom.packs.invoice.enums import BusinessType
+    from docloom.packs.invoice.jurisdictions import Jurisdiction
+    from docloom.packs.invoice.llm_build import build_prompt
+
+    shots = [("Widget", Decimal("1"), Decimal("2"))]
+    base = dict(company_id="c0", name="Acme", business_type=BusinessType.RETAIL,
+                jurisdiction=Jurisdiction.US, locale=Locale.EN_US, currency=Currency.USD)
+    family_only = CompanyRow(**base, product_category="apparel and accessories")
+    assert "apparel and accessories" in build_prompt(family_only, 5, shots).prompt
+    bare = CompanyRow(**base)                               # neither niche nor family
+    assert "retail" in build_prompt(bare, 5, shots).prompt
 
 
 def test_the_prompt_lists_placed_items_to_avoid_repeats() -> None:

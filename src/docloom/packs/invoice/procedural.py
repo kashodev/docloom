@@ -300,6 +300,151 @@ _SUBCATEGORIES: dict[BusinessType, tuple[str, ...]] = {
 #: The business types a catalogue spans (the round-robin the sampler cycles).
 BUSINESS_TYPES: tuple[BusinessType, ...] = tuple(_SUBCATEGORIES)
 
+# ── LLM niches: a finer specialty layer, LLM-catalogue only ──────────────────
+# A coarse family (above) is the unit the *procedural* builder can express — it
+# is what the slot tables, the few-shot skeleton and the fallback are drawn from.
+# The LLM needs none of that machinery to go finer, so each family fans out into
+# ~10 niches: a specific kind of shop *within* the family (apparel → activewear,
+# footwear, workwear …). The LLM prompt names the niche (see build_prompt), which
+# multiplies the distinct kinds of company ~10x without authoring a procedural
+# slot table and its French rendering for each one.
+#
+# Because a niche lies inside exactly one coarse family, the procedural skeleton
+# and fallback for that family stay valid — a company assigned "women's
+# activewear" still has an apparel skeleton to anchor and fall back to. The
+# procedural / offline build ignores the niche entirely and stays at family
+# granularity, so nothing new is required for offline runs.
+#
+# Each niche is an (English, French) pair; a company is prompted in its own
+# language, so the stored label is already localised (see generate_company).
+_NICHES: dict[str, tuple[tuple[str, str], ...]] = {
+    CAT_HARDWARE: (
+        ("threaded fasteners and fixings", "visserie et fixations filetées"),
+        ("power tools and accessories", "outils électriques et accessoires"),
+        ("hand tools", "outils à main"),
+        ("plumbing fittings and valves", "raccords et robinetterie de plomberie"),
+        ("electrical fittings and conduit", "appareillage et conduits électriques"),
+        ("abrasives and cutting discs", "abrasifs et disques de coupe"),
+        ("adhesives and sealants", "adhésifs et mastics"),
+        ("site safety equipment", "équipements de sécurité de chantier"),
+        ("wall anchors and fixings", "chevilles et fixations murales"),
+        ("door and window hardware", "quincaillerie de porte et fenêtre"),
+    ),
+    CAT_OFFICE: (
+        ("stationery and desk supplies", "papeterie et fournitures de bureau"),
+        ("office furniture", "mobilier de bureau"),
+        ("printers and consumables", "imprimantes et consommables"),
+        ("computer peripherals", "périphériques informatiques"),
+        ("networking equipment", "équipement réseau"),
+        ("filing and storage", "classement et rangement"),
+        ("presentation equipment", "matériel de présentation"),
+        ("ergonomic accessories", "accessoires ergonomiques"),
+        ("cables and adapters", "câbles et adaptateurs"),
+        ("paper products", "produits papier"),
+    ),
+    CAT_APPAREL: (
+        ("men's casual clothing", "vêtements décontractés pour hommes"),
+        ("women's activewear", "vêtements de sport pour femmes"),
+        ("children's clothing", "vêtements pour enfants"),
+        ("outerwear and coats", "manteaux et vestes"),
+        ("footwear", "chaussures"),
+        ("formalwear and suits", "tenues de cérémonie et costumes"),
+        ("workwear and uniforms", "vêtements de travail et uniformes"),
+        ("fashion accessories", "accessoires de mode"),
+        ("socks and underwear", "chaussettes et sous-vêtements"),
+        ("knitwear and sweaters", "tricots et pulls"),
+    ),
+    CAT_KITCHEN: (
+        ("cookware and pans", "batterie de cuisine et poêles"),
+        ("bakeware", "moules et ustensiles de pâtisserie"),
+        ("knives and cutlery", "couteaux et coutellerie"),
+        ("food storage containers", "boîtes de conservation"),
+        ("small kitchen appliances", "petit électroménager de cuisine"),
+        ("tableware and dinnerware", "vaisselle et arts de la table"),
+        ("kitchen utensils and gadgets", "ustensiles et accessoires de cuisine"),
+        ("glassware and drinkware", "verrerie et verres"),
+        ("home textiles and linens", "linge de maison"),
+        ("home cleaning and organisation", "nettoyage et rangement de la maison"),
+    ),
+    CAT_PACKAGING: (
+        ("corrugated boxes", "boîtes en carton ondulé"),
+        ("mailing envelopes and mailers", "enveloppes et pochettes d'expédition"),
+        ("protective packaging", "emballage de protection"),
+        ("tapes and strapping", "rubans et cerclage"),
+        ("labels and stickers", "étiquettes et autocollants"),
+        ("poly bags and film", "sacs et films plastique"),
+        ("void fill and cushioning", "calage et rembourrage"),
+        ("pallets and crates", "palettes et caisses"),
+        ("food packaging", "emballage alimentaire"),
+        ("warehouse shipping supplies", "fournitures d'expédition d'entrepôt"),
+    ),
+    CAT_AUTO: (
+        ("brake components", "composants de freinage"),
+        ("engine parts", "pièces moteur"),
+        ("filters and fluids", "filtres et fluides"),
+        ("suspension and steering", "suspension et direction"),
+        ("batteries and electrical", "batteries et électricité"),
+        ("belts and hoses", "courroies et durites"),
+        ("body panels and trim", "carrosserie et garnitures"),
+        ("tyres and wheels", "pneus et roues"),
+        ("vehicle lighting", "éclairage automobile"),
+        ("workshop consumables", "consommables d'atelier"),
+    ),
+    CAT_SAAS: (
+        ("project management software", "logiciel de gestion de projet"),
+        ("CRM software", "logiciel CRM"),
+        ("analytics and BI platforms", "plateformes d'analytique et BI"),
+        ("team communication tools", "outils de communication d'équipe"),
+        ("security and identity software", "logiciel de sécurité et d'identité"),
+        ("developer tooling", "outils pour développeurs"),
+        ("HR and payroll software", "logiciel RH et de paie"),
+        ("marketing automation", "automatisation du marketing"),
+        ("design and creative tools", "outils de conception et de création"),
+        ("cloud storage and backup", "stockage et sauvegarde cloud"),
+    ),
+    CAT_ACCOUNTING: (
+        ("bookkeeping services", "services de tenue de comptes"),
+        ("tax preparation", "préparation fiscale"),
+        ("payroll services", "services de paie"),
+        ("audit and assurance", "audit et certification"),
+        ("financial advisory", "conseil financier"),
+        ("company formation", "création d'entreprise"),
+        ("VAT and sales-tax filing", "déclaration de TVA"),
+        ("management accounts", "comptabilité de gestion"),
+        ("R&D tax credit claims", "crédit d'impôt recherche"),
+        ("financial forecasting", "prévisions financières"),
+    ),
+    CAT_AI: (
+        ("LLM text inference", "inférence de texte LLM"),
+        ("image generation", "génération d'images"),
+        ("speech-to-text", "transcription vocale"),
+        ("text-to-speech", "synthèse vocale"),
+        ("text embeddings", "plongements de texte"),
+        ("model fine-tuning", "réglage fin de modèles"),
+        ("vector search", "recherche vectorielle"),
+        ("content moderation", "modération de contenu"),
+        ("machine translation", "traduction automatique"),
+        ("document extraction", "extraction documentaire"),
+    ),
+    CAT_TELECOM: (
+        ("mobile data plans", "forfaits de données mobiles"),
+        ("voice call minutes", "minutes d'appel vocal"),
+        ("SMS and messaging", "SMS et messagerie"),
+        ("broadband internet", "internet haut débit"),
+        ("VoIP and SIP trunking", "VoIP et lignes SIP"),
+        ("IoT connectivity", "connectivité IoT"),
+        ("international roaming", "itinérance internationale"),
+        ("cloud PBX", "standard téléphonique cloud"),
+        ("dedicated leased lines", "lignes louées dédiées"),
+        ("data-centre colocation", "hébergement en centre de données"),
+    ),
+}
+
+
+def niche_space() -> int:
+    """Distinct LLM niches across every family — the count the LLM prompt can name."""
+    return sum(len(v) for v in _NICHES.values())
+
 
 def combination_space(category: str) -> int:
     """How many distinct descriptions the slots can express for a sub-category."""
@@ -471,12 +616,23 @@ def generate_company(
     # family choice does not correlate with jurisdiction or business type.
     subcats = _SUBCATEGORIES[business_type]
     category = subcats[stable_seed(f"{seed}:category", index) % len(subcats)]
+    # A finer specialty inside the family, for the LLM prompt only. Hashed
+    # independently again so the niche does not correlate with market, type or the
+    # family draw. Stored already localised — the label the company is prompted
+    # with is the one that prints, so a French company gets a French niche.
+    niches = _NICHES.get(category, ())
+    if niches:
+        en, fr = niches[stable_seed(f"{seed}:niche", index) % len(niches)]
+        llm_niche = fr if str(locale).startswith("fr") else en
+    else:
+        llm_niche = ""
     name = f"{rng.choice(_STEM_A)}{rng.choice(_STEM_B)} {rng.choice(_SUFFIX[juris])}"
     row = CompanyRow(
         company_id=f"c{index:06d}",
         name=name,
         business_type=business_type,
         product_category=category,
+        llm_niche=llm_niche,
         jurisdiction=juris,
         locale=locale,
         currency=currency,
