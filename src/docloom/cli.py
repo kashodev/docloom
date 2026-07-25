@@ -77,6 +77,10 @@ _CONDITION = typer.Option([], "--condition", help="Capture condition to draw fro
 _WEAR = typer.Option("", "--wear", help="crisp | varied | worn | 0.4 | 0.2:0.8")
 _GOODS_RECEIPT = typer.Option(False, "--goods-receipt", help="Delivery notes with a receiver's signature")
 _SELECTION_FILE = typer.Option("", "--selection-file", help="YAML file holding one slice's composition")
+_ISSUE_DATE_FROM = typer.Option("", "--issue-date-from",
+                                help="Earliest issue date YYYY-MM-DD (with --issue-date-to)")
+_ISSUE_DATE_TO = typer.Option("", "--issue-date-to",
+                              help="Latest issue date YYYY-MM-DD (with --issue-date-from)")
 # A published content artifact. Not required — a pack's built-in pool keeps the
 # default path key-free and offline — but it is how a run gets the large, varied
 # corpus without shipping hundreds of megabytes in the wheel.
@@ -130,6 +134,11 @@ def _selection_from(selection_file: str, **flags: object) -> Selection:
         overrides["wear"] = _parse_wear(str(flags["wear"]))
     if flags["goods_receipt"]:
         overrides["goods_receipt"] = True
+    if flags.get("issue_date_from") or flags.get("issue_date_to"):
+        if not (flags.get("issue_date_from") and flags.get("issue_date_to")):
+            raise typer.BadParameter(
+                "give both --issue-date-from and --issue-date-to, or neither")
+        overrides["date_range"] = [flags["issue_date_from"], flags["issue_date_to"]]
 
     try:
         return Selection.from_mapping({**base, **overrides})
@@ -160,6 +169,8 @@ def generate(
     wear: str = _WEAR,
     goods_receipt: bool = _GOODS_RECEIPT,
     selection_file: str = _SELECTION_FILE,
+    issue_date_from: str = _ISSUE_DATE_FROM,
+    issue_date_to: str = _ISSUE_DATE_TO,
     catalogue: str = _CATALOGUE,
 ) -> None:
     """Generate documents and golden shards for a run."""
@@ -170,6 +181,7 @@ def generate(
         selection_file, locale=locale, company=company, company_count=company_count,
         archetype=archetype, archetype_count=archetype_count, business_type=business_type,
         condition=condition, wear=wear, goods_receipt=goods_receipt,
+        issue_date_from=issue_date_from, issue_date_to=issue_date_to,
     )
     doc_pack = get_pack(pack)
     blob = open_store(storage)

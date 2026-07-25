@@ -48,7 +48,11 @@ from docloom.packs.invoice.record import (
 )
 from docloom.packs.invoice.labels import LABEL_REGISTRY
 
-_BASE_DATE = date(2026, 1, 1)
+# Default issue-date window when a slice does not pin one. Kept as the range the
+# sampler used before issue dates were configurable (2026-01-01 plus up to 330
+# days), so an unconfigured run behaves exactly as it did.
+_DEFAULT_ISSUE_START = date(2026, 1, 1)
+_DEFAULT_ISSUE_END = _DEFAULT_ISSUE_START + timedelta(days=330)
 _RECIPIENTS = ("Acme Industrial", "Blue Harbor Trading", "Nexa Logistics",
                "Pemberton & Rowe", "Crestline Holdings", "Vireo Labs", "Tidewater Group")
 
@@ -65,9 +69,13 @@ def _price(rng: Random, low: Decimal, high: Decimal) -> Decimal:
     return value.quantize(q, rounding=ROUND_HALF_UP)
 
 
-def _period(rng: Random) -> tuple[date, date]:
-    start = _BASE_DATE + timedelta(days=rng.randint(0, 300))
-    return start, start + timedelta(days=29)
+def _period(rng: Random, as_of: date) -> tuple[date, date]:
+    """A ~monthly billing period the invoice bills in arrears: it ends on or just
+    before ``as_of`` (the issue date), so the document is always issued at or after
+    the period it covers and every period date stays on or before the issue date —
+    logically bound to whatever issue-date window the run asked for."""
+    end = as_of - timedelta(days=rng.randint(0, 5))
+    return end - timedelta(days=29), end
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -101,7 +109,8 @@ def _draw_products(
     return drawn
 
 
-def _build_line(rng: Random, line_no: int, product: ProductTemplate, language: object) -> LineItem:
+def _build_line(rng: Random, line_no: int, product: ProductTemplate, language: object,
+                as_of: date) -> LineItem:
     unit_price = _price(rng, product.price_low, product.price_high)
     code = f"{product.code_prefix}-{rng.randint(1000, 99999)}" if product.code_prefix else None
     common = {
@@ -118,7 +127,7 @@ def _build_line(rng: Random, line_no: int, product: ProductTemplate, language: o
                         extended_amount=money(unit_price))
 
     if model is BillingModel.SUBSCRIPTION:
-        start, end = _period(rng)
+        start, end = _period(rng, as_of)
         return LineItem(**common, quantity=Decimal(1), unit_price=unit_price,
                         extended_amount=money(unit_price), period_start=start, period_end=end)
 
@@ -298,6 +307,12 @@ class InvoiceSampler:
         stops the run instead of failing every unit in turn."""
         self.composition(run_id)
 
+    def _draw_issue_date(self, rng: Random) -> date:
+        """Uniform over the slice's issue-date range, or the default window."""
+        start, end = self._selection.issue_date_range or (
+            _DEFAULT_ISSUE_START, _DEFAULT_ISSUE_END)
+        return start + timedelta(days=rng.randint(0, (end - start).days))
+
     def generate(self, run_id: str, index: int) -> GoldenInvoice:
         rng = Random(stable_seed(run_id, index))
         composition = self.composition(run_id)
@@ -311,9 +326,13 @@ class InvoiceSampler:
             products = tuple(p for p in spec.products if p.kind in GOODS_KINDS) or spec.products
 
         language = company.locale.language
+        # Drawn before the lines so a subscription's billing period can be bound to
+        # it (arrears — the period ends on/before issue). Every other date on the
+        # document derives from this one, so the run's date range governs them all.
+        issue = self._draw_issue_date(rng)
         n = min(rng.randint(spec.line_count_low, spec.line_count_high), self._max_line_items)
         lines = tuple(
-            _build_line(rng, i + 1, product, language)
+            _build_line(rng, i + 1, product, language, issue)
             for i, product in enumerate(_draw_products(rng, products, n))
         )
         if company.business_type is BusinessType.TELECOM:
@@ -333,7 +352,6 @@ class InvoiceSampler:
         tax_total = sum_money([b.amount for b in buckets])
         grand = money(subtotal - discount + shipping + tax_total - deposit)
 
-        issue = _BASE_DATE + timedelta(days=rng.randint(0, 330))
         return GoldenInvoice(
             invoice_id=f"inv_{index:08d}",
             run_id=run_id,

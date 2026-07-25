@@ -46,6 +46,13 @@ run:
   config_id: default       # recorded on the run, for your own bookkeeping
   max_line_items: 8000     # hard cap per document; telecom bills are the reason
 
+  # Run-wide default issue-date window: every invoice's issue date is drawn
+  # uniformly from [from, to] (inclusive). Due date, payment received and billing
+  # periods are all derived from the drawn issue date, so they stay logically
+  # consistent with it. A slice may override this with its own `date_range`.
+  # Omit entirely to keep the built-in default window (2026).
+  date_range: ["2024-01-01", "2024-12-31"]
+
   # Content catalogue generation draws its descriptions from. Omit for the
   # built-in seed catalogue (local-first, no artifact). Point it at a published
   # `catalogue` build to use those descriptions — it is read-only, so every task
@@ -116,9 +123,12 @@ documents:
 
   # 2,500 French, both variants — Québec's two tax buckets differ from France's
   # TVA, so this is a genuinely different extraction problem, not a translation.
+  # This slice pins its own issue-date window, overriding the run-wide default —
+  # e.g. a batch of older invoices for testing date extraction across years.
   - name: french
     count: 2500
     locales: [fr-CA, fr-FR]
+    date_range: ["2022-06-01", "2022-08-31"]
 
   # 2,500 hand-filled pads, drawn from a deliberately small pool so the same
   # hands and layouts recur the way one office's paperwork would.

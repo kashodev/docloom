@@ -63,6 +63,7 @@ load_config() {
   local overrides_joined=""
   [[ ${#OVERRIDES[@]} -gt 0 ]] && overrides_joined="$(printf '%s\n' "${OVERRIDES[@]}")"
   "${PYTHON}" - "${CONFIG}" "${overrides_joined}" <<'PYEOF'
+import datetime as _dt
 import shlex, sys
 
 try:
@@ -212,6 +213,29 @@ def as_list(value, field, allowed=None):
             sys.exit(f"unknown {field}: {', '.join(bad)} (known: {', '.join(sorted(allowed))})")
     return ",".join(names), ""
 
+def iso_date(value, field):
+    """A YAML date (parsed to a date) or a YYYY-MM-DD string, as an ISO string."""
+    if isinstance(value, _dt.date):
+        return value.isoformat()
+    try:
+        _dt.date.fromisoformat(str(value))
+    except ValueError:
+        sys.exit(f"{field}: {value!r} is not a date (use YYYY-MM-DD)")
+    return str(value)
+
+def date_range_flags(s, name):
+    """Slice-level `date_range: [from, to]`, else run-level `run.date_range`."""
+    dr = s.get("date_range", get("run.date_range"))
+    if dr is None:
+        return []
+    if not isinstance(dr, (list, tuple)) or len(dr) != 2:
+        sys.exit(f"slice {name!r}: date_range must be [from, to]")
+    lo = iso_date(dr[0], f"slice {name!r} date_range from")
+    hi = iso_date(dr[1], f"slice {name!r} date_range to")
+    if lo > hi:                                    # ISO strings sort chronologically
+        sys.exit(f"slice {name!r}: date_range is [from, to]; got [{lo}, {hi}]")
+    return [f"--issue-date-from={lo}", f"--issue-date-to={hi}"]
+
 emit("TOTAL", total)
 rows = []
 for i, (s, count) in enumerate(zip(slices, counts), start=1):
@@ -256,6 +280,7 @@ for i, (s, count) in enumerate(zip(slices, counts), start=1):
         flags.append(f"--wear={wear}")
     if goods:
         flags.append("--goods-receipt")
+    flags += date_range_flags(s, name)
 
     description = " ".join(flags).replace("--", "") or "unconstrained"
     # \x1f (ASCII Unit Separator), NOT tab: `read` collapses runs of *whitespace*
