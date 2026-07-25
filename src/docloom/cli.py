@@ -594,6 +594,28 @@ def _print_status(store, run_id: str) -> None:
     )
 
 
+def _pdfs_progress(project, step, args):
+    """A poll for the spinner's ``x/total`` on a local pdfs run — reads the run's
+    unit progress from the workspace state store. None for other steps/targets."""
+    from docloom.studio import Step
+    if step is not Step.PDFS:
+        return None
+    state_uri = project.resources.get("state") or str(Path(project.root, "runs.db"))
+    run_id = args.run_id
+
+    def poll() -> str:
+        try:
+            store = open_state(state_uri)
+            run = store.get_run(run_id)
+            if run is None or not run.total_units:
+                return ""
+            done = store.progress(run_id).get(WorkUnitState.DONE, 0)
+            return f"{done}/{run.total_units} units"
+        except Exception:
+            return ""
+    return poll
+
+
 def _run_studio(*, provider: str = "local", project: str = "", step: str = "", pack: str = "",
                 config: str = "", run_id: str = "", total: int = 0, catalogue: str = "",
                 fmt: str = "pdf", condition: str = "", issue_date_from: str = "",
@@ -602,30 +624,24 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
                 yes: bool = False, dry_run: bool = False) -> None:
     """The studio flow with real defaults — the `studio` command and a bare
     interactive `docloom` both call this. Walks target → project → pack → step →
-    args, prompting only for what a flag left unset, and confirms before running."""
+    args, prompting only for what a flag left unset, with back/exit navigation."""
     from functools import partial
 
     from docloom.studio import Registry, Step, StudioError, get_target, wizard
     from docloom.studio.app import run_step
-    from docloom.studio.progress import run_with_spinner
-    from docloom.studio.prompts import get_prompter, is_interactive
+    from docloom.studio.progress import drain_stdin, run_with_spinner
+    from docloom.studio.prompts import BACK, EXIT, get_prompter, is_interactive
 
     interactive = is_interactive()
     prompter = get_prompter() if interactive else None
+    loop = interactive and not dry_run       # loop back to the menu; back/exit offered
+
     try:
         provider_name = wizard.choose_target(prompter, provider, interactive)
         target = get_target(provider_name)
-        registry = Registry()
-        proj = wizard.choose_project(prompter, provider_name, target, registry, project,
-                                     interactive=interactive, dry_run=dry_run)
-        pack_name = wizard.choose_pack(prompter, pack, interactive)
     except StudioError as exc:
         raise typer.BadParameter(str(exc)) from exc
-
-    typer.echo(f"\n  project  {proj.ref}" + (f"   ({proj.root})" if proj.root else ""))
-    # Interactive runs loop back to the step menu until the operator exits; a
-    # flagged/piped or --dry-run invocation runs a single step and returns.
-    loop = interactive and not dry_run
+    registry = Registry()
 
     def _args(step_enum: Step, one_shot: bool) -> object:
         # The first pass honours the per-run flags; later passes prompt afresh, so
@@ -644,55 +660,80 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
                                               date_from=df, date_to=dt, selection_file=cfg)
         return wizard.build_export_args(prompter, interactive, run_id=rid, sink=snk)
 
-    step_flag, first = step, True
-    while True:
+    project_flag = project
+    while True:                               # ── project screen (back returns here) ──
         try:
-            step_enum = wizard.choose_step(prompter, step_flag, interactive, allow_exit=loop)
+            proj = wizard.choose_project(prompter, provider_name, target, registry, project_flag,
+                                         interactive=interactive, dry_run=dry_run, allow_back=loop)
+            pack_name = wizard.choose_pack(prompter, pack, interactive)
         except StudioError as exc:
             raise typer.BadParameter(str(exc)) from exc
-        if step_enum is None:                     # exit chosen
-            typer.echo("  done.")
+        if proj == BACK:                      # nothing precedes this (single target) → leave
+            typer.echo("  bye.")
             return
-        step_flag = ""
-        try:
-            args = _args(step_enum, first)
-        except StudioError as exc:
-            if loop:
-                typer.echo(f"  {exc}\n")
-                continue
-            raise typer.BadParameter(str(exc)) from exc
-        first = False
+        project_flag = ""                     # a re-selection prompts rather than reusing the flag
+        typer.echo(f"\n  project  {proj.ref}" + (f"   ({proj.root})" if proj.root else ""))
 
-        preview = run_step(target, proj, step_enum, args, dry_run=True)
-        typer.echo(f"\n  step     {step_enum.value}")
-        typer.echo(f"  summary  {preview.summary}")
-        typer.echo("  plan\n    docloom " + " ".join(preview.argv))
-        if dry_run:
-            typer.echo("\n  (dry run — nothing executed)")
-            return
-        if interactive and not yes and prompter is not None and not prompter.confirm(
-                "\n  Proceed?", default=True):
-            typer.echo("  skipped.\n" if loop else "  aborted.")
-            if loop:
+        step_flag, first, back = step, True, False
+        while True:                           # ── step menu (returns here after each run) ──
+            try:
+                step_enum = wizard.choose_step(prompter, step_flag, interactive,
+                                               allow_exit=loop, allow_back=loop)
+            except StudioError as exc:
+                raise typer.BadParameter(str(exc)) from exc
+            step_flag = ""
+            if step_enum == EXIT:
+                typer.echo("  bye.")
+                return
+            if step_enum == BACK:
+                back = True
+                break
+            try:
+                args = _args(step_enum, first)
+            except StudioError as exc:
+                if loop:
+                    typer.echo(f"  {exc}\n")
+                    continue
+                raise typer.BadParameter(str(exc)) from exc
+            if args == BACK:                  # backed out of the args → step menu
+                typer.echo("")
                 continue
-            raise typer.Exit(0)
+            first = False
 
-        do = partial(run_step, target, proj, step_enum, args, dry_run=False, capture=interactive)
-        result = run_with_spinner("working...", do) if interactive else do()
-        typer.echo(f"\n  {'✔' if result.ok else '✗'} {result.summary}")
-        for line in result.detail.splitlines():
-            typer.echo(f"    {line}")
-        if result.links:
-            typer.echo("  links")
-            for link in result.links:
-                typer.echo(f"    {link.label:<10} {link.href}")
-        if result.ok and result.run_id:
-            registry.set_last_run(proj.ref, result.run_id)
-        if not loop:
-            if not result.ok:
-                raise typer.Exit(1)
+            preview = run_step(target, proj, step_enum, args, dry_run=True)
+            typer.echo(f"\n  step     {step_enum.value}")
+            typer.echo(f"  summary  {preview.summary}")
+            typer.echo("  plan\n    docloom " + " ".join(preview.argv))
+            if dry_run:
+                typer.echo("\n  (dry run — nothing executed)")
+                return
+            if interactive and not yes and prompter is not None and not prompter.confirm(
+                    "\n  Proceed?", default=True):
+                typer.echo("  skipped.\n")
+                continue
+
+            prog = (_pdfs_progress(proj, step_enum, args)
+                    if interactive and provider_name == "local" else None)
+            do = partial(run_step, target, proj, step_enum, args, dry_run=False,
+                         capture=interactive)
+            result = run_with_spinner("working...", do, progress=prog) if interactive else do()
+            drain_stdin()                     # drop keys typed during the (captured) run
+            typer.echo(f"\n  {'✔' if result.ok else '✗'} {result.summary}")
+            for line in result.detail.splitlines():
+                typer.echo(f"    {line}")
+            if result.links:
+                typer.echo("  links")
+                for link in result.links:
+                    typer.echo(f"    {link.label:<10} {link.href}")
+            if result.ok and result.run_id:
+                registry.set_last_run(proj.ref, result.run_id)
+            if not loop:
+                if not result.ok:
+                    raise typer.Exit(1)
+                return
+            typer.echo("")                    # spacing before the step menu returns
+        if not back:                          # step loop only exits via return; guard anyway
             return
-        typer.echo("")                            # spacing before the menu returns
 
 
 @app.command()

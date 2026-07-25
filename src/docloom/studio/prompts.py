@@ -18,6 +18,11 @@ from typing import Protocol
 
 from docloom.studio.types import StudioError
 
+#: Sentinels a prompt can return instead of a value: the operator chose to go back
+#: a screen, or to leave the studio. Unprintable so they never collide with input.
+BACK = "\x00back"
+EXIT = "\x00exit"
+
 
 @dataclass(frozen=True)
 class Choice:
@@ -31,7 +36,7 @@ class Choice:
 
 class Prompter(Protocol):
     def select(self, message: str, choices: Sequence[Choice], *, default: str = "") -> str: ...
-    def text(self, message: str, *, default: str = "") -> str: ...
+    def text(self, message: str, *, default: str = "", allow_back: bool = False) -> str: ...
     def confirm(self, message: str, *, default: bool = False) -> bool: ...
 
 
@@ -56,8 +61,10 @@ class QuestionaryPrompter:
             (o for o, c in zip(opts, choices, strict=True) if c.value == default), None)
         return _abort_if_cancelled(self._q.select(message, choices=opts, default=default_opt).ask())
 
-    def text(self, message: str, *, default: str = "") -> str:
-        return _abort_if_cancelled(self._q.text(message, default=default).ask())
+    def text(self, message: str, *, default: str = "", allow_back: bool = False) -> str:
+        prompt = message + ("  (< to go back)" if allow_back else "")
+        answer = _abort_if_cancelled(self._q.text(prompt, default=default).ask())
+        return BACK if allow_back and answer == "<" else answer
 
     def confirm(self, message: str, *, default: bool = False) -> bool:
         return _abort_if_cancelled(self._q.confirm(message, default=default).ask())
@@ -80,8 +87,11 @@ class FallbackPrompter:
                 return choices[int(raw) - 1].value
             print("  not a valid choice")
 
-    def text(self, message: str, *, default: str = "") -> str:
-        raw = input(f"{message}" + (f" [{default}]: " if default else ": ")).strip()
+    def text(self, message: str, *, default: str = "", allow_back: bool = False) -> str:
+        hint = "  (< to go back)" if allow_back else ""
+        raw = input(f"{message}{hint}" + (f" [{default}]: " if default else ": ")).strip()
+        if allow_back and raw == "<":
+            return BACK
         return raw or default
 
     def confirm(self, message: str, *, default: bool = False) -> bool:
@@ -105,7 +115,7 @@ class ScriptedPrompter:
     def select(self, message: str, choices: Sequence[Choice], *, default: str = "") -> str:
         return str(self._next(message))
 
-    def text(self, message: str, *, default: str = "") -> str:
+    def text(self, message: str, *, default: str = "", allow_back: bool = False) -> str:
         value = self._next(message)
         return default if value == "" else str(value)
 

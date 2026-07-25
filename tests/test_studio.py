@@ -27,7 +27,14 @@ from docloom.studio import (
     wizard,
 )
 from docloom.studio.app import resolve_project, run_step
-from docloom.studio.prompts import Choice, FallbackPrompter, ScriptedPrompter, get_prompter
+from docloom.studio.prompts import (
+    BACK,
+    EXIT,
+    Choice,
+    FallbackPrompter,
+    ScriptedPrompter,
+    get_prompter,
+)
 
 runner = CliRunner()
 
@@ -299,7 +306,8 @@ def test_run_with_spinner_threaded_path(monkeypatch) -> None:
 
 # ── exit option ─────────────────────────────────────────────────────────────
 def test_choose_step_offers_exit_only_when_allowed() -> None:
-    assert wizard.choose_step(ScriptedPrompter([wizard._EXIT]), "", True, allow_exit=True) is None
+    assert wizard.choose_step(ScriptedPrompter([EXIT]), "", True, allow_exit=True) == EXIT
+    assert wizard.choose_step(ScriptedPrompter([BACK]), "", True, allow_back=True) == BACK
     assert wizard.choose_step(ScriptedPrompter(["pdfs"]), "", True, allow_exit=True) is Step.PDFS
 
 
@@ -348,14 +356,14 @@ def test_interactive_loop_runs_a_step_then_returns_and_exits(monkeypatch, tmp_pa
     monkeypatch.setenv("DOCLOOM_HOME", str(tmp_path / ".docloom"))
     monkeypatch.setattr("docloom.studio.prompts.is_interactive", lambda: True)
     # step=export, run_id, sink(blank), confirm=yes, then step=exit
-    answers = ["export", "run-a", "", True, wizard._EXIT]
+    answers = ["export", "run-a", "", True, EXIT]
     monkeypatch.setattr("docloom.studio.prompts.get_prompter", lambda: ScriptedPrompter(answers))
     monkeypatch.setattr("docloom.studio.get_target", lambda name: fake)
 
     cli._run_studio(provider="local", project=str(tmp_path / "ws"))
     out = capsys.readouterr().out
     assert fake.calls.count("export") == 2         # preview (dry) + the real run
-    assert "fake export" in out and "done." in out  # ran the step, then exited on the menu
+    assert "fake export" in out and "bye." in out   # ran the step, then exited on the menu
 
 
 def test_generate_links_match_the_real_local_layout(tmp_path: Path) -> None:
@@ -365,3 +373,47 @@ def test_generate_links_match_the_real_local_layout(tmp_path: Path) -> None:
     r = t.run_generate(p, GenerateArgs(run_id="rid", total=1), dry_run=True)
     docs = next(link.href for link in r.links if link.label == "documents")
     assert docs == str(tmp_path / "blobs" / "rid" / "documents")
+
+
+def _drive(monkeypatch, tmp_path, answers, fake):
+    from docloom import cli
+    monkeypatch.setenv("DOCLOOM_HOME", str(tmp_path / ".docloom"))
+    monkeypatch.setattr("docloom.studio.prompts.is_interactive", lambda: True)
+    monkeypatch.setattr("docloom.studio.prompts.get_prompter", lambda: ScriptedPrompter(answers))
+    monkeypatch.setattr("docloom.studio.get_target", lambda name: fake)
+    cli._run_studio(provider="local", project=str(tmp_path / "ws"))
+
+
+def test_backing_out_of_args_returns_to_the_step_menu(monkeypatch, tmp_path, capsys) -> None:
+    fake = _FakeTarget()
+    # pick catalog, then BACK at its first arg → step menu → exit. No run happens.
+    _drive(monkeypatch, tmp_path, ["catalog", BACK, EXIT], fake)
+    assert fake.calls == []                        # backed out before running
+    assert "bye." in capsys.readouterr().out
+
+
+def test_step_menu_back_returns_to_project_selection(monkeypatch, tmp_path, capsys) -> None:
+    fake = _FakeTarget()
+    # at the step menu pick BACK → project screen again → BACK there → leave.
+    _drive(monkeypatch, tmp_path, [BACK, BACK], fake)
+    assert fake.calls == []
+    assert "bye." in capsys.readouterr().out
+
+
+# ── progress + drain ────────────────────────────────────────────────────────
+def test_pdfs_progress_is_none_for_non_pdfs(tmp_path: Path) -> None:
+    from docloom.cli import _pdfs_progress
+    proj = LocalTarget().provision(ProjectSpec(target="local", id="ws", root=str(tmp_path / "ws")))
+    assert _pdfs_progress(proj, Step.CATALOG, CatalogueArgs()) is None
+    poll = _pdfs_progress(proj, Step.PDFS, GenerateArgs(run_id="none", total=1))
+    assert callable(poll) and poll() == ""         # no run yet → empty, never crashes
+
+
+def test_drain_stdin_is_safe_without_a_tty() -> None:
+    from docloom.studio.progress import drain_stdin
+    drain_stdin()                                  # no TTY under pytest → a clean no-op
+
+
+def test_spinner_accepts_a_progress_callback() -> None:
+    from docloom.studio.progress import run_with_spinner
+    assert run_with_spinner("x", lambda: 5, progress=lambda: "1/2") == 5
