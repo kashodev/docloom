@@ -13,6 +13,32 @@ handwritten). The architecture is not invoice-shaped, though — a
 document-agnostic **kernel** does the weaving and a **pack** supplies one
 document type. Contracts and legal documents are additional packs, not forks.
 
+## Core principles
+
+Five principles are the spine of the project; every part of the system is meant
+to serve them, and new features are designed against them.
+
+1. **Realistic — but no PII.** Generated documents look real, so a corpus is
+   worth testing against; they never carry personally identifiable information.
+   Identity (addresses, phones, tax IDs) is *derived* deterministically at
+   generation and never stored, and catalogue content is screened — so there is
+   no PII-shaped field to leak.
+2. **Provider-agnostic.** LLMs, cloud providers, and infrastructure backends are
+   pluggable — storage, run-state, and export are chosen by URI scheme; models
+   are a weighted, config-driven provider mix — with no change to calling code.
+3. **Locally capable when possible.** Seed data generates documents offline — no
+   cloud account, no API key — whenever the document type allows. It is a
+   capability each pack *declares* (`ContentMode` / `local_first`), not a blanket
+   promise.
+4. **High throughput.** Concurrency is enabled on *all* job types — document
+   generation and catalogue building alike — coordinated without a broker or a
+   leader, so one run scales across a fleet.
+5. **Extensible.** Extending generation is simple: a new business type, billing
+   model, or locale is a table/file edit; a new document type is a new pack, no
+   kernel fork.
+
+The sections below are these principles made concrete.
+
 ## Running it
 
 ```bash
