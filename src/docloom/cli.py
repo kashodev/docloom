@@ -81,6 +81,9 @@ _ISSUE_DATE_FROM = typer.Option("", "--issue-date-from",
                                 help="Earliest issue date YYYY-MM-DD (with --issue-date-to)")
 _ISSUE_DATE_TO = typer.Option("", "--issue-date-to",
                               help="Latest issue date YYYY-MM-DD (with --issue-date-from)")
+_DATE_ERA = typer.Option(None, "--date-era-floor/--no-date-era-floor",
+                         help="Floor issue dates to each business type's era (default on); "
+                              "--no-date-era-floor allows anachronistic dates")
 # A published content artifact. Not required — a pack's built-in pool keeps the
 # default path key-free and offline — but it is how a run gets the large, varied
 # corpus without shipping hundreds of megabytes in the wheel.
@@ -139,6 +142,8 @@ def _selection_from(selection_file: str, **flags: object) -> Selection:
             raise typer.BadParameter(
                 "give both --issue-date-from and --issue-date-to, or neither")
         overrides["date_range"] = [flags["issue_date_from"], flags["issue_date_to"]]
+    if flags.get("date_era_floor") is not None:      # tri-state: unset leaves the file's value
+        overrides["enforce_date_era"] = flags["date_era_floor"]
 
     try:
         return Selection.from_mapping({**base, **overrides})
@@ -171,6 +176,7 @@ def generate(
     selection_file: str = _SELECTION_FILE,
     issue_date_from: str = _ISSUE_DATE_FROM,
     issue_date_to: str = _ISSUE_DATE_TO,
+    date_era_floor: bool | None = _DATE_ERA,
     catalogue: str = _CATALOGUE,
 ) -> None:
     """Generate documents and golden shards for a run."""
@@ -182,6 +188,7 @@ def generate(
         archetype=archetype, archetype_count=archetype_count, business_type=business_type,
         condition=condition, wear=wear, goods_receipt=goods_receipt,
         issue_date_from=issue_date_from, issue_date_to=issue_date_to,
+        date_era_floor=date_era_floor,
     )
     doc_pack = get_pack(pack)
     blob = open_store(storage)

@@ -309,16 +309,21 @@ class InvoiceSampler:
         self.composition(run_id)
 
     def _draw_issue_date(self, rng: Random, business_type: BusinessType) -> date:
-        """Uniform over the slice's issue-date range, or the default window, but
-        never before the business type's era: an AI-platform vendor has no 2019
-        invoices, so its window floor rises to EARLIEST_ISSUE_DATE. A window that
-        ends before that era can't produce the type at all — composition.resolve
-        drops it up front, so here the floor never exceeds the window end."""
+        """Uniform over the slice's issue-date range, or the default window.
+
+        When ``enforce_date_era`` (the default), the window floor rises to the
+        business type's era so e.g. an AI-platform vendor gets no pre-2025 invoice.
+        This is a *soft* realism default: it only ever moves the floor up within
+        the window, never blocks a run, and is switched off for a slice that
+        deliberately wants anachronistic dates (the whole window is then honoured
+        as-is). If the window ends before the era, the floor caps at the window end
+        rather than erroring — as recent as the window allows."""
         start, end = self._selection.issue_date_range or (
             _DEFAULT_ISSUE_START, _DEFAULT_ISSUE_END)
-        floor = EARLIEST_ISSUE_DATE.get(business_type)
-        if floor is not None and floor > start:
-            start = min(floor, end)
+        if self._selection.enforce_date_era:
+            floor = EARLIEST_ISSUE_DATE.get(business_type)
+            if floor is not None and floor > start:
+                start = min(floor, end)
         return start + timedelta(days=rng.randint(0, (end - start).days))
 
     def generate(self, run_id: str, index: int) -> GoldenInvoice:

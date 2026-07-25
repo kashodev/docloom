@@ -151,6 +151,12 @@ class Selection:
     #: document — due date, payment received, billing period — is derived from the
     #: drawn issue date, so the whole document stays logically consistent with it.
     issue_date_range: tuple[date, date] | None = None
+    #: Apply the per-business-type era floor when drawing issue dates — a *soft*
+    #: realism default, not a hard rule. True (default) keeps e.g. an AI-platform
+    #: issuer at or after its era even inside an older window; set False to let a
+    #: run deliberately produce anachronistic dates. It never blocks a run either
+    #: way — the pack has no idea what an "era" is; only the invoice sampler does.
+    enforce_date_era: bool = True
 
     def __post_init__(self) -> None:
         if self.companies and self.company_count is not None:
@@ -211,6 +217,7 @@ class Selection:
             wear=_wear(data.get("wear")),
             goods_receipt=bool(data.get("goods_receipt", False)),
             issue_date_range=_date_range(data.get("date_range", data.get("issue_dates"))),
+            enforce_date_era=bool(data.get("enforce_date_era", True)),
         )
 
     def merged(self, **overrides: Any) -> Selection:
@@ -243,6 +250,8 @@ class Selection:
         if self.issue_date_range:
             start, end = self.issue_date_range
             parts.append(f"dates={start}..{end}")
+        if not self.enforce_date_era:
+            parts.append("date-era=off")
         return " ".join(parts)
 
 

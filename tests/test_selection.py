@@ -375,12 +375,21 @@ def test_ai_platform_issue_dates_are_floored_to_its_era() -> None:
         min(i.issue_date for i in invoices)
 
 
-def test_a_window_before_the_ai_era_leaves_no_issuer() -> None:
-    """A slice whose whole window predates the era can't produce the type; pinning
-    exactly that type is then a contradiction, raised up front."""
-    with pytest.raises(UnsupportedConstraint, match="era"):
-        docs(Selection(business_types=("ai_platform",),
-                       issue_date_range=(date(2019, 1, 1), date(2021, 12, 31))), n=1)
+def test_the_era_floor_is_a_soft_default_that_can_be_switched_off() -> None:
+    """Realism here is opt-out, never a hard stop: with the floor off, an AI-platform
+    issuer is allowed a deliberately anachronistic pre-era date, and the run is not
+    blocked."""
+    lo, hi = date(2019, 1, 1), date(2021, 12, 31)
+    invoices = docs(Selection(business_types=("ai_platform",),
+                              issue_date_range=(lo, hi), enforce_date_era=False), n=40)
+    assert invoices, "a pre-era window must still produce AI invoices, not raise"
+    assert all(lo <= i.issue_date <= hi for i in invoices)
+    assert any(i.issue_date < date(2025, 1, 1) for i in invoices)   # actually anachronistic
+
+
+def test_enforce_date_era_defaults_on_and_parses_off() -> None:
+    assert Selection.from_mapping({}).enforce_date_era is True
+    assert Selection.from_mapping({"enforce_date_era": False}).enforce_date_era is False
 
 
 def test_a_non_born_digital_type_ignores_the_era_floor() -> None:
