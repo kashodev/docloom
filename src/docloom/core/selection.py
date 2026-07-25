@@ -29,6 +29,7 @@ Two things are deliberately not here:
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from datetime import date, datetime
 from typing import Any
 
 from docloom.core.enums import DocumentCondition
@@ -86,6 +87,37 @@ def _wear(value: Any) -> tuple[float, float] | None:
     return (low, high)
 
 
+def _as_date(value: Any) -> date:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):        # YAML parses a bare `2026-01-01` to a date
+        return value
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError as exc:
+        raise ValueError(f"invalid date {value!r}; use YYYY-MM-DD") from exc
+
+
+def _date_range(value: Any) -> tuple[date, date] | None:
+    """A ``[from, to]`` issue-date range — two ISO dates, or a {from, to} mapping."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        pair = [value.get("from", value.get("start")), value.get("to", value.get("end"))]
+        if None in pair:
+            raise ValueError("a date range needs both `from` and `to`")
+    elif isinstance(value, str | date):
+        raise ValueError(f"a date range is [from, to], not a single value: {value!r}")
+    else:
+        pair = list(value)
+    if len(pair) != 2:
+        raise ValueError(f"a date range is [from, to]; got {value!r}")
+    start, end = (_as_date(v) for v in pair)
+    if start > end:
+        raise ValueError(f"date range is [from, to]; got [{start}, {end}]")
+    return (start, end)
+
+
 @dataclass(frozen=True, slots=True)
 class Selection:
     """Constraints on the population one slice of a run draws from.
@@ -114,12 +146,21 @@ class Selection:
     wear: tuple[float, float] | None = None
     #: Delivery notes with a receiver's signature. Implies handwritten.
     goods_receipt: bool = False
+    #: Draw each invoice's issue date uniformly from this ``(from, to)`` range
+    #: (inclusive). None keeps the pack's default window. Every other date on the
+    #: document — due date, payment received, billing period — is derived from the
+    #: drawn issue date, so the whole document stays logically consistent with it.
+    issue_date_range: tuple[date, date] | None = None
 
     def __post_init__(self) -> None:
         if self.companies and self.company_count is not None:
             raise ValueError("give `companies` a list or a count, not both")
         if self.archetypes and self.archetype_count is not None:
             raise ValueError("give `archetypes` a list or a count, not both")
+        if self.issue_date_range is not None:
+            start, end = self.issue_date_range
+            if start > end:
+                raise ValueError(f"issue_date_range is (from, to); got ({start}, {end})")
         if self.goods_receipt and self.conditions not in ((), (DocumentCondition.HANDWRITTEN,)):
             raise ValueError(
                 "a goods receipt is a handwritten delivery note, so it cannot also "
@@ -169,6 +210,7 @@ class Selection:
             conditions=conditions,
             wear=_wear(data.get("wear")),
             goods_receipt=bool(data.get("goods_receipt", False)),
+            issue_date_range=_date_range(data.get("date_range", data.get("issue_dates"))),
         )
 
     def merged(self, **overrides: Any) -> Selection:
@@ -198,6 +240,9 @@ class Selection:
             parts.append(f"wear={self.wear[0]:g}-{self.wear[1]:g}")
         if self.goods_receipt:
             parts.append("goods_receipt")
+        if self.issue_date_range:
+            start, end = self.issue_date_range
+            parts.append(f"dates={start}..{end}")
         return " ".join(parts)
 
 

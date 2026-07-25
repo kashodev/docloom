@@ -13,6 +13,8 @@ satisfied raises instead of quietly falling back to an unconstrained draw.
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from docloom.core.enums import DocumentCondition
@@ -290,3 +292,73 @@ def test_born_digital_asked_for_explicitly_with_a_scan_is_an_error() -> None:
     with pytest.raises(UnsupportedConstraint, match="born-digital"):
         docs(Selection(conditions=(DocumentCondition.HEAVY_SCAN,),
                        business_types=("b2b_saas",)), n=1)
+
+
+# ── Issue-date range ────────────────────────────────────────────────────────
+def test_a_date_range_parses_to_an_issue_window() -> None:
+    sel = Selection.from_mapping({"date_range": ["2023-01-01", "2023-06-30"]})
+    assert sel.issue_date_range == (date(2023, 1, 1), date(2023, 6, 30))
+
+
+def test_issue_dates_is_an_accepted_alias_and_takes_a_mapping() -> None:
+    sel = Selection.from_mapping({"issue_dates": {"from": "2023-01-01", "to": "2023-02-01"}})
+    assert sel.issue_date_range == (date(2023, 1, 1), date(2023, 2, 1))
+
+
+def test_a_backwards_date_range_is_rejected() -> None:
+    with pytest.raises(ValueError, match="from, to"):
+        Selection.from_mapping({"date_range": ["2023-12-31", "2023-01-01"]})
+
+
+def test_a_single_date_is_not_a_range() -> None:
+    with pytest.raises(ValueError, match="from, to"):
+        Selection.from_mapping({"date_range": "2023-01-01"})
+
+
+def test_a_malformed_date_is_rejected() -> None:
+    with pytest.raises(ValueError, match="invalid date"):
+        Selection.from_mapping({"date_range": ["2023-13-01", "2023-12-31"]})
+
+
+def test_describe_includes_the_date_window() -> None:
+    sel = Selection(issue_date_range=(date(2023, 1, 1), date(2023, 6, 30)))
+    assert "dates=2023-01-01..2023-06-30" in sel.describe()
+
+
+def test_issue_dates_fall_within_the_configured_range() -> None:
+    """Each invoice's issue date is drawn uniformly from the range — inside it, and
+    actually varying across the range rather than pinned to one day."""
+    lo, hi = date(2021, 3, 1), date(2021, 3, 31)
+    issued = [i.issue_date for i in docs(Selection(issue_date_range=(lo, hi)), n=40)]
+    assert all(lo <= d <= hi for d in issued), issued
+    assert len(set(issued)) > 1
+
+
+def test_other_dates_stay_logically_bound_to_the_issue_date() -> None:
+    """Due date and payment-received never precede issue; a billing period ends on
+    or before issue (the invoice is issued for a period it already covers)."""
+    lo, hi = date(2021, 1, 1), date(2021, 12, 31)
+    for inv in docs(Selection(issue_date_range=(lo, hi)), n=40):
+        assert inv.due_date is None or inv.due_date >= inv.issue_date
+        assert inv.received_date is None or inv.received_date >= inv.issue_date
+        for li in inv.line_items:
+            if li.period_end is not None:
+                assert li.period_start <= li.period_end <= inv.issue_date, inv.invoice_id
+
+
+def test_a_subscription_billing_period_is_bound_to_the_issue_date() -> None:
+    """A b2b_saas issuer bills subscription lines with an explicit period; it must
+    fall on or before the (ranged) issue date, not float free of it."""
+    lo, hi = date(2021, 1, 1), date(2021, 1, 31)
+    invoices = docs(Selection(business_types=("b2b_saas",), issue_date_range=(lo, hi)), n=20)
+    periods = [(li.period_start, li.period_end, inv.issue_date)
+               for inv in invoices for li in inv.line_items if li.period_end is not None]
+    assert periods, "expected subscription lines carrying billing periods"
+    assert all(ps <= pe <= issue for ps, pe, issue in periods)
+
+
+def test_the_default_issue_window_is_unchanged_when_unset() -> None:
+    """No range configured keeps the pack's prior default window (2026), so an
+    unconfigured run behaves exactly as it did before the knob existed."""
+    issued = [i.issue_date for i in docs(Selection(), n=40)]
+    assert all(date(2026, 1, 1) <= d <= date(2026, 11, 27) for d in issued), issued
