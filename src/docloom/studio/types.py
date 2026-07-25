@@ -38,7 +38,8 @@ class Result:
 
     ok: bool
     summary: str
-    argv: tuple[str, ...] = ()      # the `docloom …` command run (or, on --dry-run, would run)
+    argv: tuple[str, ...] = ()      # the underlying CLI tokens (local: the `docloom` verb + flags)
+    command: str = ""               # the full command line to display (any target)
     links: tuple[Link, ...] = ()
     run_id: str = ""
     detail: str = ""                # captured output tail, shown on failure

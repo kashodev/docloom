@@ -703,7 +703,7 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
             preview = run_step(target, proj, step_enum, args, dry_run=True)
             typer.echo(f"\n  step     {step_enum.value}")
             typer.echo(f"  summary  {preview.summary}")
-            typer.echo("  plan\n    docloom " + " ".join(preview.argv))
+            typer.echo("  plan\n    " + (preview.command or "docloom " + " ".join(preview.argv)))
             if dry_run:
                 typer.echo("\n  (dry run — nothing executed)")
                 return

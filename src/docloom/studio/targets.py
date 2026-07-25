@@ -1,21 +1,22 @@
 """Deployment-target lookup — the studio's equivalent of the pack registry.
 
-Phase 1 ships ``local``. ``gcp`` (Cloud Run Jobs via deploy.sh) lands in phase 3,
-``aws``/``azure`` later; naming them here lets the error message say "not yet"
-rather than "unknown".
+``local`` (this machine) and ``gcp`` (Cloud Run Jobs via deploy.sh) ship;
+``aws``/``azure`` are named so the error message says "not yet" rather than
+"unknown".
 """
 from __future__ import annotations
 
+from docloom.studio.gcp import GcpTarget
 from docloom.studio.local import LocalTarget
 from docloom.studio.types import DeploymentTarget, StudioError
 
 _TARGETS: dict[str, type] = {
     "local": LocalTarget,
+    "gcp": GcpTarget,
 }
 
 #: Targets named but not yet built — for a helpful "coming later" message.
 _PLANNED = {
-    "gcp": "phase 3 (Cloud Run Jobs)",
     "aws": "a later phase",
     "azure": "a later phase",
 }
