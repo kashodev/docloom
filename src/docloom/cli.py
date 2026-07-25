@@ -39,15 +39,26 @@ from docloom.core.storage import open_store
 from docloom.core.usage import DEFAULT_USAGE_URI, open_usage_sink
 
 _log = get_logger(__name__)
-app = typer.Typer(add_completion=False, help="Generate synthetic documents with a golden dataset.")
+app = typer.Typer(add_completion=False, no_args_is_help=False,
+                  help="Generate synthetic documents with a golden dataset.")
 
 
-@app.callback()
-def _init() -> None:
+@app.callback(invoke_without_command=True)
+def _init(ctx: typer.Context) -> None:
     """Configure logging before any command runs. Console at a terminal, JSON to
-    a pipe/Cloud Run; DOCLOOM_LOG_LEVEL / DOCLOOM_LOG_FORMAT override."""
+    a pipe/Cloud Run; DOCLOOM_LOG_LEVEL / DOCLOOM_LOG_FORMAT override.
+
+    A bare ``docloom`` in a terminal launches the studio wizard; piped (no TTY) it
+    prints help, the conventional no-args behaviour for a script."""
     from docloom.core.logging import configure
     configure()
+    if ctx.invoked_subcommand is not None:
+        return
+    from docloom.studio.prompts import is_interactive
+    if is_interactive():
+        _run_studio()
+    else:
+        typer.echo(ctx.get_help())
 
 _STORAGE = typer.Option("./out/blobs", envvar="DOCLOOM_STORAGE", help="Blob store URI for documents + shards")
 _STATE = typer.Option("./out/runs.db", envvar="DOCLOOM_STATE", help="Run-state store URI")
@@ -583,6 +594,148 @@ def _print_status(store, run_id: str) -> None:
     )
 
 
+def _pdfs_progress(project, step, args):
+    """A poll for the spinner's ``x/total`` on a local pdfs run — reads the run's
+    unit progress from the workspace state store. None for other steps/targets."""
+    from docloom.studio import Step
+    if step is not Step.PDFS:
+        return None
+    state_uri = project.resources.get("state") or str(Path(project.root, "runs.db"))
+    run_id = args.run_id
+
+    def poll() -> str:
+        try:
+            store = open_state(state_uri)
+            run = store.get_run(run_id)
+            if run is None or not run.total_units:
+                return ""
+            done = store.progress(run_id).get(WorkUnitState.DONE, 0)
+            return f"{done}/{run.total_units} units"
+        except Exception:
+            return ""
+    return poll
+
+
+def _run_studio(*, provider: str = "local", project: str = "", step: str = "", pack: str = "",
+                config: str = "", run_id: str = "", total: int = 0, catalogue: str = "",
+                fmt: str = "pdf", condition: str = "", issue_date_from: str = "",
+                issue_date_to: str = "", version: str = "v1", companies: int = 1000,
+                products_per_company: int = 300, seed: int = 0, sink: str = "",
+                yes: bool = False, dry_run: bool = False) -> None:
+    """The studio flow with real defaults — the `studio` command and a bare
+    interactive `docloom` both call this. Walks target → project → pack → step →
+    args, prompting only for what a flag left unset, with back/exit navigation."""
+    from functools import partial
+
+    from docloom.studio import Registry, Step, StudioError, get_target, wizard
+    from docloom.studio.app import run_step
+    from docloom.studio.progress import drain_stdin, run_with_spinner
+    from docloom.studio.prompts import BACK, EXIT, get_prompter, is_interactive
+
+    interactive = is_interactive()
+    prompter = get_prompter() if interactive else None
+    loop = interactive and not dry_run       # loop back to the menu; back/exit offered
+
+    try:
+        provider_name = wizard.choose_target(prompter, provider, interactive)
+        target = get_target(provider_name)
+    except StudioError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    registry = Registry()
+
+    def _args(step_enum: Step, one_shot: bool) -> object:
+        # The first pass honours the per-run flags; later passes prompt afresh, so
+        # a looped run can't silently reuse the same run id.
+        rid, tot = (run_id, total) if one_shot else ("", 0)
+        cat, cond = (catalogue, condition) if one_shot else ("", "")
+        df, dt, cfg, snk = ((issue_date_from, issue_date_to, config, sink) if one_shot
+                            else ("", "", "", ""))
+        if step_enum is Step.CATALOG:
+            return wizard.build_catalogue_args(prompter, interactive, pack=pack_name,
+                                               version=version, companies=companies,
+                                               products_per_company=products_per_company, seed=seed)
+        if step_enum is Step.PDFS:
+            return wizard.build_generate_args(prompter, interactive, pack=pack_name, run_id=rid,
+                                              total=tot, catalogue=cat, fmt=fmt, condition=cond,
+                                              date_from=df, date_to=dt, selection_file=cfg)
+        return wizard.build_export_args(prompter, interactive, run_id=rid, sink=snk)
+
+    project_flag = project
+    while True:                               # ── project screen (back returns here) ──
+        try:
+            proj = wizard.choose_project(prompter, provider_name, target, registry, project_flag,
+                                         interactive=interactive, dry_run=dry_run, allow_back=loop)
+            pack_name = wizard.choose_pack(prompter, pack, interactive)
+        except StudioError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        if proj == BACK:                      # nothing precedes this (single target) → leave
+            typer.echo("  bye.")
+            return
+        project_flag = ""                     # a re-selection prompts rather than reusing the flag
+        typer.echo(f"\n  project  {proj.ref}" + (f"   ({proj.root})" if proj.root else ""))
+
+        step_flag, first, back = step, True, False
+        while True:                           # ── step menu (returns here after each run) ──
+            try:
+                step_enum = wizard.choose_step(prompter, step_flag, interactive,
+                                               allow_exit=loop, allow_back=loop)
+            except StudioError as exc:
+                raise typer.BadParameter(str(exc)) from exc
+            step_flag = ""
+            if step_enum == EXIT:
+                typer.echo("  bye.")
+                return
+            if step_enum == BACK:
+                back = True
+                break
+            try:
+                args = _args(step_enum, first)
+            except StudioError as exc:
+                if loop:
+                    typer.echo(f"  {exc}\n")
+                    continue
+                raise typer.BadParameter(str(exc)) from exc
+            if args == BACK:                  # backed out of the args → step menu
+                typer.echo("")
+                continue
+            first = False
+
+            preview = run_step(target, proj, step_enum, args, dry_run=True)
+            typer.echo(f"\n  step     {step_enum.value}")
+            typer.echo(f"  summary  {preview.summary}")
+            typer.echo("  plan\n    docloom " + " ".join(preview.argv))
+            if dry_run:
+                typer.echo("\n  (dry run — nothing executed)")
+                return
+            if interactive and not yes and prompter is not None and not prompter.confirm(
+                    "\n  Proceed?", default=True):
+                typer.echo("  skipped.\n")
+                continue
+
+            prog = (_pdfs_progress(proj, step_enum, args)
+                    if interactive and provider_name == "local" else None)
+            do = partial(run_step, target, proj, step_enum, args, dry_run=False,
+                         capture=interactive)
+            result = run_with_spinner("working...", do, progress=prog) if interactive else do()
+            drain_stdin()                     # drop keys typed during the (captured) run
+            typer.echo(f"\n  {'✔' if result.ok else '✗'} {result.summary}")
+            for line in result.detail.splitlines():
+                typer.echo(f"    {line}")
+            if result.links:
+                typer.echo("  links")
+                for link in result.links:
+                    typer.echo(f"    {link.label:<10} {link.href}")
+            if result.ok and result.run_id:
+                registry.set_last_run(proj.ref, result.run_id)
+            if not loop:
+                if not result.ok:
+                    raise typer.Exit(1)
+                return
+            typer.echo("")                    # spacing before the step menu returns
+        if not back:                          # step loop only exits via return; guard anyway
+            return
+
+
 @app.command()
 def studio(
     provider: str = typer.Option("local", "--provider", "-p",
@@ -590,7 +743,7 @@ def studio(
     project: str = typer.Option("", "--project",
                                 help="Project / local workspace; created & saved if new"),
     step: str = typer.Option("", "--step", help="catalog | pdfs | export"),
-    pack: str = typer.Option("invoice", "--pack", help="Document type (pack)"),
+    pack: str = typer.Option("", "--pack", help="Document type (pack); '' = sole installed"),
     config: str = typer.Option("", "--config", help="Selection/slice file for the pdfs step"),
     run_id: str = typer.Option("", "--run-id", help="Run id (pdfs, export)"),
     total: int = typer.Option(0, "--total", help="How many documents (pdfs)"),
@@ -605,65 +758,22 @@ def studio(
                                               help="SKUs each (catalog)"),
     seed: int = typer.Option(0, "--seed", help="Build seed (catalog)"),
     sink: str = typer.Option("", "--sink", help="Golden sink uri (export); '' = local DuckDB"),
-    yes: bool = typer.Option(False, "--yes",
-                             help="Skip confirmation (reserved; phase 1 runs directly)"),
+    yes: bool = typer.Option(False, "--yes", help="Skip the interactive confirmation"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the plan; run nothing"),
 ) -> None:
-    """Orchestrate catalog / pdfs / export on a chosen deployment target.
+    """Orchestrate catalog / pdfs / export — interactively, or fully by flags.
 
-    Phase 1 is flag-driven and local-only: it resolves (and provisions, if new) a
-    workspace, then shells into the same `docloom` CLI a hand-run would. The
-    interactive wizard and cloud targets arrive in later phases — see
+    In a terminal it walks target → project → pack → step → args, prompting only
+    for what a flag did not already supply, and confirms before running. Fully
+    flagged (or piped) it runs non-interactively. Local-only for now; cloud
+    targets arrive in later phases — see
     `feature_explorations/interactive-cli-studio.md`.
     """
-    from docloom.studio import Registry, Step, StudioError, get_target
-    from docloom.studio.app import resolve_project, run_step
-    from docloom.studio.types import CatalogueArgs, ExportArgs, GenerateArgs
-
-    try:
-        if not step:
-            raise StudioError("pass --step catalog|pdfs|export")
-        try:
-            step_enum = Step(step)
-        except ValueError:
-            raise StudioError(f"unknown step {step!r}; use catalog | pdfs | export") from None
-
-        target = get_target(provider)
-        registry = Registry()
-        proj = resolve_project(registry, target, provider, project, dry_run=dry_run)
-
-        if step_enum is Step.CATALOG:
-            args: object = CatalogueArgs(version=version, pack=pack, companies=companies,
-                                         products_per_company=products_per_company, seed=seed)
-        elif step_enum is Step.PDFS:
-            if not run_id or total <= 0:
-                raise StudioError("the pdfs step needs --run-id and --total greater than 0")
-            args = GenerateArgs(run_id=run_id, total=total, pack=pack, fmt=fmt,
-                                catalogue=catalogue, selection_file=config, condition=condition,
-                                date_from=issue_date_from, date_to=issue_date_to)
-        else:  # EXPORT
-            if not run_id:
-                raise StudioError("the export step needs --run-id")
-            args = ExportArgs(run_id=run_id, sink=sink)
-    except StudioError as exc:
-        raise typer.BadParameter(str(exc)) from exc
-
-    typer.echo(f"  target   {proj.ref}" + (f"   ({proj.root})" if proj.root else ""))
-    typer.echo(f"  step     {step_enum.value}")
-    result = run_step(target, proj, step_enum, args, dry_run=dry_run)
-    typer.echo("\n  plan\n    docloom " + " ".join(result.argv))
-    if dry_run:
-        typer.echo("\n  (dry run — nothing executed)")
-        return
-    typer.echo(f"\n  {'✔' if result.ok else '✗'} {result.summary}")
-    if result.links:
-        typer.echo("  links")
-        for link in result.links:
-            typer.echo(f"    {link.label:<10} {link.href}")
-    if result.ok and result.run_id:
-        registry.set_last_run(proj.ref, result.run_id)
-    if not result.ok:
-        raise typer.Exit(1)
+    _run_studio(provider=provider, project=project, step=step, pack=pack, config=config,
+                run_id=run_id, total=total, catalogue=catalogue, fmt=fmt, condition=condition,
+                issue_date_from=issue_date_from, issue_date_to=issue_date_to, version=version,
+                companies=companies, products_per_company=products_per_company, seed=seed,
+                sink=sink, yes=yes, dry_run=dry_run)
 
 
 if __name__ == "__main__":

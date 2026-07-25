@@ -20,11 +20,21 @@ from docloom.studio import (
     Project,
     ProjectSpec,
     Registry,
+    Result,
     Step,
     StudioError,
     get_target,
+    wizard,
 )
 from docloom.studio.app import resolve_project, run_step
+from docloom.studio.prompts import (
+    BACK,
+    EXIT,
+    Choice,
+    FallbackPrompter,
+    ScriptedPrompter,
+    get_prompter,
+)
 
 runner = CliRunner()
 
@@ -177,3 +187,233 @@ def test_studio_export_needs_a_run_id(tmp_path: Path) -> None:
                               "--step", "export", "--dry-run"], env=env)
     assert res.exit_code != 0
     assert "run-id" in res.output
+
+
+# ── prompts ─────────────────────────────────────────────────────────────────
+def test_fallback_prompter_reads_input(monkeypatch) -> None:
+    answers = iter(["2", "y", "hello"])
+    monkeypatch.setattr("builtins.input", lambda *a, **k: next(answers))
+    p = FallbackPrompter()
+    assert p.select("pick", [Choice("a", "A"), Choice("b", "B")]) == "b"
+    assert p.confirm("ok?") is True
+    assert p.text("name?") == "hello"
+
+
+def test_fallback_prompter_uses_defaults_on_empty(monkeypatch) -> None:
+    monkeypatch.setattr("builtins.input", lambda *a, **k: "")
+    p = FallbackPrompter()
+    assert p.select("pick", [Choice("a", "A")], default="a") == "a"
+    assert p.text("name?", default="d") == "d"
+    assert p.confirm("ok?", default=True) is True
+
+
+def test_scripted_prompter_pops_in_order() -> None:
+    p = ScriptedPrompter(["x", True])
+    assert p.text("a") == "x"
+    assert p.confirm("b") is True
+    assert p.asked == ["a", "b"]
+
+
+def test_get_prompter_returns_a_prompter() -> None:
+    assert get_prompter() is not None
+
+
+# ── wizard stages ───────────────────────────────────────────────────────────
+def test_choose_target_flag_wins_else_sole_local() -> None:
+    assert wizard.choose_target(None, "gcp", False) == "gcp"      # flag as given
+    assert wizard.choose_target(None, "", True) == "local"        # sole available, no prompt
+
+
+def test_choose_step_flag_unknown_and_prompt() -> None:
+    assert wizard.choose_step(None, "pdfs", False) is Step.PDFS
+    with pytest.raises(StudioError, match="unknown step"):
+        wizard.choose_step(None, "nope", False)
+    with pytest.raises(StudioError, match="pass --step"):
+        wizard.choose_step(None, "", False)                       # non-interactive, no flag
+    assert wizard.choose_step(ScriptedPrompter(["export"]), "", True) is Step.EXPORT
+
+
+def test_choose_pack_sole_pack_auto_and_flag() -> None:
+    assert wizard.choose_pack(None, "", False) == "invoice"       # the only installed pack
+    assert wizard.choose_pack(None, "contract", False) == "contract"
+
+
+def test_build_generate_args_flags_bypass_prompts() -> None:
+    a = wizard.build_generate_args(None, False, pack="invoice", run_id="r", total=3,
+                                   catalogue="", fmt="pdf", condition="", date_from="", date_to="")
+    assert isinstance(a, GenerateArgs) and a.run_id == "r" and a.total == 3
+
+
+def test_build_generate_args_missing_required_is_an_error() -> None:
+    with pytest.raises(StudioError, match="run-id"):
+        wizard.build_generate_args(None, False, pack="invoice", run_id="", total=3,
+                                   catalogue="", fmt="pdf", condition="", date_from="", date_to="")
+    with pytest.raises(StudioError, match="total"):
+        wizard.build_generate_args(None, False, pack="invoice", run_id="r", total=0,
+                                   catalogue="", fmt="pdf", condition="", date_from="", date_to="")
+
+
+def test_build_generate_args_prompts_when_interactive() -> None:
+    p = ScriptedPrompter(["demo", "5", "", "clean", ""])   # run_id/total/catalogue/condition/from
+    a = wizard.build_generate_args(p, True, pack="invoice", run_id="", total=0,
+                                   catalogue="", fmt="pdf", condition="", date_from="", date_to="")
+    assert a.run_id == "demo" and a.total == 5 and a.condition == "clean"
+
+
+def test_build_catalogue_args_prompts_with_defaults() -> None:
+    p = ScriptedPrompter(["v2", "50", "20"])
+    a = wizard.build_catalogue_args(p, True, pack="invoice", version="v1", companies=1000,
+                                    products_per_company=300, seed=0)
+    assert a.version == "v2" and a.companies == 50 and a.products_per_company == 20
+
+
+def test_choose_project_interactive_creates_when_none_saved(tmp_path: Path) -> None:
+    reg = Registry(tmp_path / "projects.yaml")
+    p = ScriptedPrompter([str(tmp_path / "ws")])          # just the workspace dir
+    proj = wizard.choose_project(p, "local", LocalTarget(), reg, "",
+                                 interactive=True, dry_run=False)
+    assert (Path(proj.root) / "blobs").is_dir() and reg.get(proj.ref) is not None
+
+
+def test_choose_project_interactive_picks_an_existing(tmp_path: Path) -> None:
+    reg = Registry(tmp_path / "projects.yaml")
+    reg.add(Project(target="local", id="ws", root=str(tmp_path / "ws"), last_run="old"))
+    p = ScriptedPrompter(["ws"])                          # select the saved one by id
+    proj = wizard.choose_project(p, "local", LocalTarget(), reg, "",
+                                 interactive=True, dry_run=False)
+    assert proj.last_run == "old"
+
+
+# ── spinner ─────────────────────────────────────────────────────────────────
+def test_run_with_spinner_returns_and_propagates() -> None:
+    from docloom.studio.progress import run_with_spinner
+    assert run_with_spinner("x", lambda: 42) == 42        # non-tty in pytest → direct call
+    with pytest.raises(ValueError, match="boom"):
+        run_with_spinner("x", lambda: (_ for _ in ()).throw(ValueError("boom")))
+
+
+def test_run_with_spinner_threaded_path(monkeypatch) -> None:
+    import io
+    import sys
+
+    class _TTY(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+    monkeypatch.setattr(sys, "stderr", _TTY())
+    from docloom.studio.progress import run_with_spinner
+    assert run_with_spinner("work", lambda: 7) == 7        # exercises the worker thread
+
+
+# ── exit option ─────────────────────────────────────────────────────────────
+def test_choose_step_offers_exit_only_when_allowed() -> None:
+    assert wizard.choose_step(ScriptedPrompter([EXIT]), "", True, allow_exit=True) == EXIT
+    assert wizard.choose_step(ScriptedPrompter([BACK]), "", True, allow_back=True) == BACK
+    assert wizard.choose_step(ScriptedPrompter(["pdfs"]), "", True, allow_exit=True) is Step.PDFS
+
+
+# ── capture ─────────────────────────────────────────────────────────────────
+def test_capture_puts_the_error_tail_in_detail(tmp_path: Path) -> None:
+    t = LocalTarget()
+    p = t.provision(ProjectSpec(target="local", id="ws", root=str(tmp_path / "ws")))
+    r = t.run_export(p, ExportArgs(run_id="nope"), capture=True)   # no such run → exits non-zero
+    assert not r.ok and r.detail                                    # stderr/stdout tail captured
+
+
+# ── the interactive loop ────────────────────────────────────────────────────
+class _FakeTarget:
+    name = "local"
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def normalise(self, spec: ProjectSpec):
+        return Project(target="local", id=spec.id, root=spec.root)
+
+    def provision(self, spec: ProjectSpec):
+        return self.normalise(spec)
+
+    def is_provisioned(self, project) -> bool:
+        return True
+
+    def _result(self, kind: str, args):
+        self.calls.append(kind)
+        return Result(ok=True, summary=f"fake {kind}", argv=(kind,),
+                      run_id=getattr(args, "run_id", ""))
+
+    def run_catalogue(self, p, a, *, dry_run=False, capture=False):
+        return self._result("catalog", a)
+
+    def run_generate(self, p, a, *, dry_run=False, capture=False):
+        return self._result("pdfs", a)
+
+    def run_export(self, p, a, *, dry_run=False, capture=False):
+        return self._result("export", a)
+
+
+def test_interactive_loop_runs_a_step_then_returns_and_exits(monkeypatch, tmp_path, capsys) -> None:
+    from docloom import cli
+    fake = _FakeTarget()
+    monkeypatch.setenv("DOCLOOM_HOME", str(tmp_path / ".docloom"))
+    monkeypatch.setattr("docloom.studio.prompts.is_interactive", lambda: True)
+    # step=export, run_id, sink(blank), confirm=yes, then step=exit
+    answers = ["export", "run-a", "", True, EXIT]
+    monkeypatch.setattr("docloom.studio.prompts.get_prompter", lambda: ScriptedPrompter(answers))
+    monkeypatch.setattr("docloom.studio.get_target", lambda name: fake)
+
+    cli._run_studio(provider="local", project=str(tmp_path / "ws"))
+    out = capsys.readouterr().out
+    assert fake.calls.count("export") == 2         # preview (dry) + the real run
+    assert "fake export" in out and "bye." in out   # ran the step, then exited on the menu
+
+
+def test_generate_links_match_the_real_local_layout(tmp_path: Path) -> None:
+    """Regression: local docs land at blobs/<run_id>/…, not blobs/runs/<run_id>/…."""
+    t = LocalTarget()
+    p = t.normalise(ProjectSpec(target="local", id="ws", root=str(tmp_path)))
+    r = t.run_generate(p, GenerateArgs(run_id="rid", total=1), dry_run=True)
+    docs = next(link.href for link in r.links if link.label == "documents")
+    assert docs == str(tmp_path / "blobs" / "rid" / "documents")
+
+
+def _drive(monkeypatch, tmp_path, answers, fake):
+    from docloom import cli
+    monkeypatch.setenv("DOCLOOM_HOME", str(tmp_path / ".docloom"))
+    monkeypatch.setattr("docloom.studio.prompts.is_interactive", lambda: True)
+    monkeypatch.setattr("docloom.studio.prompts.get_prompter", lambda: ScriptedPrompter(answers))
+    monkeypatch.setattr("docloom.studio.get_target", lambda name: fake)
+    cli._run_studio(provider="local", project=str(tmp_path / "ws"))
+
+
+def test_backing_out_of_args_returns_to_the_step_menu(monkeypatch, tmp_path, capsys) -> None:
+    fake = _FakeTarget()
+    # pick catalog, then BACK at its first arg → step menu → exit. No run happens.
+    _drive(monkeypatch, tmp_path, ["catalog", BACK, EXIT], fake)
+    assert fake.calls == []                        # backed out before running
+    assert "bye." in capsys.readouterr().out
+
+
+def test_step_menu_back_returns_to_project_selection(monkeypatch, tmp_path, capsys) -> None:
+    fake = _FakeTarget()
+    # at the step menu pick BACK → project screen again → BACK there → leave.
+    _drive(monkeypatch, tmp_path, [BACK, BACK], fake)
+    assert fake.calls == []
+    assert "bye." in capsys.readouterr().out
+
+
+# ── progress + drain ────────────────────────────────────────────────────────
+def test_pdfs_progress_is_none_for_non_pdfs(tmp_path: Path) -> None:
+    from docloom.cli import _pdfs_progress
+    proj = LocalTarget().provision(ProjectSpec(target="local", id="ws", root=str(tmp_path / "ws")))
+    assert _pdfs_progress(proj, Step.CATALOG, CatalogueArgs()) is None
+    poll = _pdfs_progress(proj, Step.PDFS, GenerateArgs(run_id="none", total=1))
+    assert callable(poll) and poll() == ""         # no run yet → empty, never crashes
+
+
+def test_drain_stdin_is_safe_without_a_tty() -> None:
+    from docloom.studio.progress import drain_stdin
+    drain_stdin()                                  # no TTY under pytest → a clean no-op
+
+
+def test_spinner_accepts_a_progress_callback() -> None:
+    from docloom.studio.progress import run_with_spinner
+    assert run_with_spinner("x", lambda: 5, progress=lambda: "1/2") == 5

@@ -60,12 +60,12 @@ def resolve_project(
 
 def run_step(
     target: DeploymentTarget, project: Project, step: Step, args: object,
-    *, dry_run: bool = False,
+    *, dry_run: bool = False, capture: bool = False,
 ) -> Result:
     if step is Step.CATALOG:
-        return target.run_catalogue(project, args, dry_run=dry_run)  # type: ignore[arg-type]
+        return target.run_catalogue(project, args, dry_run=dry_run, capture=capture)  # type: ignore[arg-type]
     if step is Step.PDFS:
-        return target.run_generate(project, args, dry_run=dry_run)   # type: ignore[arg-type]
+        return target.run_generate(project, args, dry_run=dry_run, capture=capture)   # type: ignore[arg-type]
     if step is Step.EXPORT:
-        return target.run_export(project, args, dry_run=dry_run)     # type: ignore[arg-type]
+        return target.run_export(project, args, dry_run=dry_run, capture=capture)     # type: ignore[arg-type]
     raise StudioError(f"unknown step {step!r}")
