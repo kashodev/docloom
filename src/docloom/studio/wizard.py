@@ -25,6 +25,7 @@ from docloom.studio.types import (
 )
 
 _NEW = "\x00new"
+_ADOPT = "\x00adopt"
 
 
 # ── small resolvers ─────────────────────────────────────────────────────────
@@ -74,34 +75,50 @@ def choose_target(prompter: Prompter | None, provider_flag: str, interactive: bo
 def choose_project(
     prompter: Prompter | None, provider: str, target: DeploymentTarget, registry: Registry,
     project_flag: str, *, interactive: bool, dry_run: bool, allow_back: bool = False,
+    adopt: bool = False, region: str = "", bucket: str = "",
 ) -> Project | str:
-    """A saved project, a freshly created one, or :data:`BACK`."""
+    """A saved project, a newly provisioned or onboarded one, or :data:`BACK`."""
     if project_flag:
-        return resolve_project(registry, target, provider, project_flag, dry_run=dry_run)
+        return resolve_project(registry, target, provider, project_flag, dry_run=dry_run,
+                               adopt=adopt, region=region, bucket=bucket)
     if not (interactive and prompter is not None):
         return resolve_project(registry, target, provider, "", dry_run=dry_run)  # default or error
 
+    cloud = provider != "local"
     saved = [p for p in registry.projects() if p.target == provider]
     choices = [Choice(p.id, p.id, p.root or p.bucket) for p in saved]
-    choices.append(Choice(_NEW, "+ create a new project"))
+    choices.append(Choice(_NEW, "+ provision a new project" if cloud else "+ create a new project"))
+    if cloud:
+        choices.append(Choice(_ADOPT, "+ onboard an existing project"))
     if allow_back:
         choices.append(Choice(BACK, "← back"))
     default_ref = registry.default_ref()
     default = default_ref.split(":", 1)[1] if default_ref.startswith(f"{provider}:") else ""
-    picked = prompter.select("Project", choices, default=default) if (saved or allow_back) else _NEW
+    # Always show the menu for a cloud target so "onboard existing" is reachable.
+    show = bool(saved) or allow_back or cloud
+    picked = prompter.select("Project", choices, default=default) if show else _NEW
     if picked == BACK:
         return BACK
-    if picked != _NEW:
+    if picked not in (_NEW, _ADOPT):
         return next(p for p in saved if p.id == picked)
 
-    where = "Workspace directory" if provider == "local" else "Project id"
+    onboarding = picked == _ADOPT
+    where = "Workspace directory" if provider == "local" else "GCP project id"
     name = prompter.text(where, default="./corpus" if provider == "local" else "",
                          allow_back=allow_back)
     if name == BACK:
         return BACK
     if not name:
         raise StudioError("a project name is required")
-    return resolve_project(registry, target, provider, name, dry_run=dry_run)
+    if cloud:      # let an existing project point at its real region/bucket
+        region = prompter.text("Region", default=region or "us-central1", allow_back=allow_back)
+        if region == BACK:
+            return BACK
+        bucket = prompter.text("Bucket", default=bucket or f"{name}-docloom", allow_back=allow_back)
+        if bucket == BACK:
+            return BACK
+    return resolve_project(registry, target, provider, name, dry_run=dry_run,
+                           adopt=onboarding, region=region, bucket=bucket)
 
 
 def choose_pack(prompter: Prompter | None, pack_flag: str, interactive: bool) -> str:

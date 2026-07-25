@@ -6,6 +6,7 @@ no generation machinery — every step shells into the existing ``docloom`` CLI.
 The interactive wizard and cloud targets land in later phases; see
 ``feature_explorations/interactive-cli-studio.md`` for the full design.
 """
+from docloom.studio.gcp import GcpTarget
 from docloom.studio.local import LocalTarget
 from docloom.studio.registry import Registry
 from docloom.studio.targets import available_targets, get_target
@@ -26,6 +27,7 @@ __all__ = [
     "CatalogueArgs",
     "DeploymentTarget",
     "ExportArgs",
+    "GcpTarget",
     "GenerateArgs",
     "Link",
     "LocalTarget",

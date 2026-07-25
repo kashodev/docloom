@@ -48,6 +48,11 @@ class LocalTarget:
         (Path(project.root) / "blobs").mkdir(parents=True, exist_ok=True)
         return replace(project, created_at=now_iso())
 
+    def adopt(self, spec: ProjectSpec) -> Project:
+        """A local workspace has nothing to "already exist" remotely, so onboarding
+        one is the same as provisioning it — ensure its directories."""
+        return self.provision(spec)
+
     def is_provisioned(self, project: Project) -> bool:
         return bool(project.root) and (Path(project.root) / "blobs").is_dir()
 
@@ -120,8 +125,10 @@ class LocalTarget:
 
     def _invoke(self, argv: list[str], dry_run: bool, *, summary: str,
                 links: tuple[Link, ...] = (), run_id: str = "", capture: bool = False) -> Result:
+        command = "docloom " + " ".join(argv)
         if dry_run:
-            return Result(ok=True, summary=summary, argv=tuple(argv), links=links, run_id=run_id)
+            return Result(ok=True, summary=summary, argv=tuple(argv), command=command,
+                          links=links, run_id=run_id)
         # Capture only when a spinner is covering the run (interactive), so the
         # animation stays clean; otherwise inherit the terminal and stream logs.
         proc = subprocess.run([sys.executable, "-m", "docloom", *argv],
@@ -134,5 +141,6 @@ class LocalTarget:
         return Result(
             ok=ok,
             summary=summary if ok else f"failed (exit {proc.returncode}): {summary}",
-            argv=tuple(argv), links=links if ok else (), run_id=run_id, detail=detail,
+            argv=tuple(argv), command=command, links=links if ok else (),
+            run_id=run_id, detail=detail,
         )

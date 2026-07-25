@@ -38,7 +38,8 @@ class Result:
 
     ok: bool
     summary: str
-    argv: tuple[str, ...] = ()      # the `docloom …` command run (or, on --dry-run, would run)
+    argv: tuple[str, ...] = ()      # the underlying CLI tokens (local: the `docloom` verb + flags)
+    command: str = ""               # the full command line to display (any target)
     links: tuple[Link, ...] = ()
     run_id: str = ""
     detail: str = ""                # captured output tail, shown on failure
@@ -125,6 +126,7 @@ class DeploymentTarget(Protocol):
 
     def normalise(self, spec: ProjectSpec) -> Project: ...      # fill defaults, no I/O (dry-run)
     def provision(self, spec: ProjectSpec) -> Project: ...      # create resources, return saved
+    def adopt(self, spec: ProjectSpec) -> Project: ...          # register an existing env, no I/O
     def is_provisioned(self, project: Project) -> bool: ...
 
     def run_catalogue(self, project: Project, args: CatalogueArgs, *,
