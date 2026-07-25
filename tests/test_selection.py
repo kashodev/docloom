@@ -259,3 +259,34 @@ def test_handwritten_telecom_asked_for_explicitly_is_an_error() -> None:
     with pytest.raises(UnsupportedConstraint, match="cannot be an itemised telecom bill"):
         docs(Selection(conditions=(DocumentCondition.HANDWRITTEN,),
                        business_types=("telecom",)), n=1)
+
+
+def test_a_handwritten_slice_never_draws_a_born_digital_issuer() -> None:
+    """A software or AI-platform business is too new to have hand-filled an invoice
+    on a pad, so a handwritten slice must never draw one."""
+    kinds = {str(i.business_type)
+             for i in docs(Selection(conditions=(DocumentCondition.HANDWRITTEN,)), n=40)}
+    assert "b2b_saas" not in kinds and "ai_platform" not in kinds, kinds
+
+
+def test_a_scanned_slice_never_draws_a_born_digital_issuer() -> None:
+    """Born-digital issuers have no paper original old enough to survive as a
+    degraded scan, so light and heavy scans exclude them too."""
+    for cond in (DocumentCondition.LIGHT_SCAN, DocumentCondition.HEAVY_SCAN):
+        kinds = {str(i.business_type) for i in docs(Selection(conditions=(cond,)), n=40)}
+        assert "b2b_saas" not in kinds and "ai_platform" not in kinds, (cond, kinds)
+
+
+def test_a_clean_slice_still_allows_a_born_digital_issuer() -> None:
+    """The exclusion is scoped to non-CLEAN conditions — a clean digital PDF from a
+    SaaS company is exactly right, so the filter must leave it alone."""
+    invoices = docs(Selection(business_types=("b2b_saas",)), n=8)  # default is CLEAN
+    assert {str(i.business_type) for i in invoices} == {"b2b_saas"}
+
+
+def test_born_digital_asked_for_explicitly_with_a_scan_is_an_error() -> None:
+    """Filtering is right when the operator did not name a born-digital type; when
+    they pinned one against a scan, the two constraints genuinely contradict."""
+    with pytest.raises(UnsupportedConstraint, match="born-digital"):
+        docs(Selection(conditions=(DocumentCondition.HEAVY_SCAN,),
+                       business_types=("b2b_saas",)), n=1)

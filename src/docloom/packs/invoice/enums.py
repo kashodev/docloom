@@ -246,3 +246,14 @@ GOODS_BUSINESS_TYPES: frozenset[BusinessType] = frozenset({
     BusinessType.MANUFACTURING,
     BusinessType.PHARMACY,
 })
+
+#: Born-digital business types: they exist only in the software era and deliver
+#: invoices as digital PDFs, so they never produced a hand-filled invoice or one
+#: old enough to survive as a degraded scan. Excluded from every non-CLEAN capture
+#: condition (see ``composition.resolve``). Distinct from the telecom handwritten
+#: rule, which is about line count, not age. Add CLOUD_INFRA / PAYMENTS /
+#: MEDIA_SUBSCRIPTION here too if they are ever wired into the catalogue roster.
+DIGITAL_NATIVE_BUSINESS_TYPES: frozenset[BusinessType] = frozenset({
+    BusinessType.B2B_SAAS,
+    BusinessType.AI_PLATFORM,
+})
