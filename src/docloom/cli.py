@@ -23,6 +23,7 @@ import typer
 
 import docloom.packs  # noqa: F401  — registers the built-in packs
 from docloom.core import RunState, WorkUnitState, available_packs, get_pack
+from docloom.core.logging import get_logger
 from docloom.core.pipeline import (
     HtmlRenderer,
     PdfRenderer,
@@ -31,7 +32,6 @@ from docloom.core.pipeline import (
     resume_run,
     work_run,
 )
-from docloom.core.logging import get_logger
 from docloom.core.selection import Selection
 from docloom.core.sinks import open_sink
 from docloom.core.state import open_state
@@ -276,7 +276,7 @@ def plan(
 
 
 def _llm_build(providers: str, *, companies: int, products_per_company: int,
-               seed: int, budget_usd: float, concurrency: int, use_batch: bool):  # noqa: ANN202
+               seed: int, budget_usd: float, concurrency: int, use_batch: bool):
     """Load a provider mix and build descriptions with it.
 
     ``providers`` is either a file path or the mix YAML inline. Inline is what
@@ -333,7 +333,7 @@ def _llm_build(providers: str, *, companies: int, products_per_company: int,
     )
 
 
-def _dec(value: float):  # noqa: ANN202
+def _dec(value: float):
     from decimal import Decimal
     return Decimal(str(value))
 
@@ -344,7 +344,6 @@ def _sharded_catalogue(*, out: str, version: str, companies: int, products_per_c
     """A sharded, resumable build coordinated through a StateStore. Safe to run
     from many tasks at once — the atomic claim splits the company units between
     them, and whoever finishes last writes the root manifest."""
-    from docloom.core.providers.factory import build_mix
     from docloom.core.state import open_state
     from docloom.packs.invoice.build_run import build_catalogue_run
 
@@ -378,7 +377,7 @@ def _sharded_catalogue(*, out: str, version: str, companies: int, products_per_c
         raise typer.Exit(1)
 
 
-def _resolve_mix(providers: str):  # noqa: ANN202
+def _resolve_mix(providers: str):
     """Build a ProviderMix from a file or inline YAML, returning (mix, provenance
     hint). Shared by the single-file and sharded LLM paths."""
     import yaml
@@ -496,7 +495,7 @@ def catalogue(
     # the English `description` would let a bad French string through.
     locale_of = {r.company_id: str(r.locale) for r in rows}
 
-    def _printed(cid: str, product) -> str:  # noqa: ANN001
+    def _printed(cid: str, product) -> str:
         return product.fr if locale_of[cid].startswith("fr") and product.fr else product.description
 
     report = validate(
@@ -570,7 +569,7 @@ def cancel(run_id: str = typer.Option(...), state: str = _STATE) -> None:
     typer.echo(f"cancelled {run_id}")
 
 
-def _print_status(store, run_id: str) -> None:  # noqa: ANN001
+def _print_status(store, run_id: str) -> None:
     run = store.get_run(run_id)
     if run is None:
         typer.echo(f"run {run_id!r} not found")
@@ -582,6 +581,89 @@ def _print_status(store, run_id: str) -> None:  # noqa: ANN001
         f"{p[WorkUnitState.RUNNING]} running, {p[WorkUnitState.FAILED]} failed "
         f"of {run.total_units} unit(s)"
     )
+
+
+@app.command()
+def studio(
+    provider: str = typer.Option("local", "--provider", "-p",
+                                 help="Deployment target — local (gcp/aws/azure land later)"),
+    project: str = typer.Option("", "--project",
+                                help="Project / local workspace; created & saved if new"),
+    step: str = typer.Option("", "--step", help="catalog | pdfs | export"),
+    pack: str = typer.Option("invoice", "--pack", help="Document type (pack)"),
+    config: str = typer.Option("", "--config", help="Selection/slice file for the pdfs step"),
+    run_id: str = typer.Option("", "--run-id", help="Run id (pdfs, export)"),
+    total: int = typer.Option(0, "--total", help="How many documents (pdfs)"),
+    catalogue: str = typer.Option("", "--catalogue", help="Catalogue uri (pdfs); '' = seed"),
+    fmt: str = typer.Option("pdf", "--format", help="pdf | html (pdfs)"),
+    condition: str = typer.Option("", "--condition", help="Capture condition (pdfs)"),
+    issue_date_from: str = typer.Option("", "--issue-date-from", help="Issue-date start (pdfs)"),
+    issue_date_to: str = typer.Option("", "--issue-date-to", help="Issue-date end (pdfs)"),
+    version: str = typer.Option("v1", "--version", help="Catalogue version (catalog)"),
+    companies: int = typer.Option(1000, "--companies", help="Issuers (catalog)"),
+    products_per_company: int = typer.Option(300, "--products-per-company",
+                                              help="SKUs each (catalog)"),
+    seed: int = typer.Option(0, "--seed", help="Build seed (catalog)"),
+    sink: str = typer.Option("", "--sink", help="Golden sink uri (export); '' = local DuckDB"),
+    yes: bool = typer.Option(False, "--yes",
+                             help="Skip confirmation (reserved; phase 1 runs directly)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the plan; run nothing"),
+) -> None:
+    """Orchestrate catalog / pdfs / export on a chosen deployment target.
+
+    Phase 1 is flag-driven and local-only: it resolves (and provisions, if new) a
+    workspace, then shells into the same `docloom` CLI a hand-run would. The
+    interactive wizard and cloud targets arrive in later phases — see
+    `feature_explorations/interactive-cli-studio.md`.
+    """
+    from docloom.studio import Registry, Step, StudioError, get_target
+    from docloom.studio.app import resolve_project, run_step
+    from docloom.studio.types import CatalogueArgs, ExportArgs, GenerateArgs
+
+    try:
+        if not step:
+            raise StudioError("pass --step catalog|pdfs|export")
+        try:
+            step_enum = Step(step)
+        except ValueError:
+            raise StudioError(f"unknown step {step!r}; use catalog | pdfs | export") from None
+
+        target = get_target(provider)
+        registry = Registry()
+        proj = resolve_project(registry, target, provider, project, dry_run=dry_run)
+
+        if step_enum is Step.CATALOG:
+            args: object = CatalogueArgs(version=version, pack=pack, companies=companies,
+                                         products_per_company=products_per_company, seed=seed)
+        elif step_enum is Step.PDFS:
+            if not run_id or total <= 0:
+                raise StudioError("the pdfs step needs --run-id and --total greater than 0")
+            args = GenerateArgs(run_id=run_id, total=total, pack=pack, fmt=fmt,
+                                catalogue=catalogue, selection_file=config, condition=condition,
+                                date_from=issue_date_from, date_to=issue_date_to)
+        else:  # EXPORT
+            if not run_id:
+                raise StudioError("the export step needs --run-id")
+            args = ExportArgs(run_id=run_id, sink=sink)
+    except StudioError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    typer.echo(f"  target   {proj.ref}" + (f"   ({proj.root})" if proj.root else ""))
+    typer.echo(f"  step     {step_enum.value}")
+    result = run_step(target, proj, step_enum, args, dry_run=dry_run)
+    typer.echo("\n  plan\n    docloom " + " ".join(result.argv))
+    if dry_run:
+        typer.echo("\n  (dry run — nothing executed)")
+        return
+    typer.echo(f"\n  {'✔' if result.ok else '✗'} {result.summary}")
+    if result.links:
+        typer.echo("  links")
+        for link in result.links:
+            typer.echo(f"    {link.label:<10} {link.href}")
+    if result.ok and result.run_id:
+        registry.set_last_run(proj.ref, result.run_id)
+    if not result.ok:
+        raise typer.Exit(1)
 
 
 if __name__ == "__main__":
