@@ -38,7 +38,11 @@ from docloom.packs.invoice.catalog import (
     Catalogue,
     CompanyRoster,
 )
-from docloom.packs.invoice.enums import GOODS_BUSINESS_TYPES, BusinessType
+from docloom.packs.invoice.enums import (
+    DIGITAL_NATIVE_BUSINESS_TYPES,
+    GOODS_BUSINESS_TYPES,
+    BusinessType,
+)
 
 #: Index the subset RNG is seeded at. Negative so it can never collide with a
 #: document index, which is what keeps the subset independent of any document.
@@ -159,6 +163,25 @@ def resolve(selection: Selection, catalogue: Catalogue, run_id: str) -> Composit
                 "cannot be an itemised telecom bill — this slice has no other issuer"
             )
         companies = without_telecom
+
+    if any(c is not DocumentCondition.CLEAN for c in conditions):
+        # Born-digital issuers (software, AI platforms) only ever produce clean
+        # digital PDFs — too new to have a hand-filled pad, and no paper original
+        # old enough to survive as a degraded scan. So they are dropped from any
+        # non-CLEAN slice, handwritten and light/heavy scan alike. Filtered for the
+        # whole slice like the rules above; runs keep one condition per slice, so
+        # the corner where a single slice mixes CLEAN with a scan (which would also
+        # drop them from the clean draws) is not how slices are written. Telecom's
+        # handwritten exclusion above is a separate rule (line count, not age).
+        grounded = [c for c in companies
+                    if c.business_type not in DIGITAL_NATIVE_BUSINESS_TYPES]
+        if not grounded:
+            raise UnsupportedConstraint(
+                "a handwritten or scanned document needs an issuer old enough to "
+                "have paper invoices; every company in this slice is born-digital "
+                "(software / AI platform)"
+            )
+        companies = grounded
 
     if selection.company_count is not None:
         companies = _subset(companies, selection.company_count, run_id, "companies")
