@@ -29,6 +29,7 @@ from docloom.core.selection import Selection
 from docloom.packs.invoice.catalog import Catalogue, ProductTemplate, SeedCatalogue
 from docloom.packs.invoice.composition import Composition, resolve
 from docloom.packs.invoice.enums import (
+    EARLIEST_ISSUE_DATE,
     GOODS_KINDS,
     BillingModel,
     BusinessType,
@@ -307,10 +308,17 @@ class InvoiceSampler:
         stops the run instead of failing every unit in turn."""
         self.composition(run_id)
 
-    def _draw_issue_date(self, rng: Random) -> date:
-        """Uniform over the slice's issue-date range, or the default window."""
+    def _draw_issue_date(self, rng: Random, business_type: BusinessType) -> date:
+        """Uniform over the slice's issue-date range, or the default window, but
+        never before the business type's era: an AI-platform vendor has no 2019
+        invoices, so its window floor rises to EARLIEST_ISSUE_DATE. A window that
+        ends before that era can't produce the type at all — composition.resolve
+        drops it up front, so here the floor never exceeds the window end."""
         start, end = self._selection.issue_date_range or (
             _DEFAULT_ISSUE_START, _DEFAULT_ISSUE_END)
+        floor = EARLIEST_ISSUE_DATE.get(business_type)
+        if floor is not None and floor > start:
+            start = min(floor, end)
         return start + timedelta(days=rng.randint(0, (end - start).days))
 
     def generate(self, run_id: str, index: int) -> GoldenInvoice:
@@ -329,7 +337,7 @@ class InvoiceSampler:
         # Drawn before the lines so a subscription's billing period can be bound to
         # it (arrears — the period ends on/before issue). Every other date on the
         # document derives from this one, so the run's date range governs them all.
-        issue = self._draw_issue_date(rng)
+        issue = self._draw_issue_date(rng, company.business_type)
         n = min(rng.randint(spec.line_count_low, spec.line_count_high), self._max_line_items)
         lines = tuple(
             _build_line(rng, i + 1, product, language, issue)

@@ -40,6 +40,7 @@ from docloom.packs.invoice.catalog import (
 )
 from docloom.packs.invoice.enums import (
     DIGITAL_NATIVE_BUSINESS_TYPES,
+    EARLIEST_ISSUE_DATE,
     GOODS_BUSINESS_TYPES,
     BusinessType,
 )
@@ -182,6 +183,23 @@ def resolve(selection: Selection, catalogue: Catalogue, run_id: str) -> Composit
                 "(software / AI platform)"
             )
         companies = grounded
+
+    if selection.issue_date_range is not None:
+        # A business cannot issue an invoice before it existed. If this slice's
+        # whole date window predates a type's era (an AI platform billing usage in
+        # 2019), that type can't appear — drop it, mirroring the born-digital
+        # condition filter above. Types whose era falls inside the window stay, and
+        # the sampler floors their issue date to the era.
+        window_end = selection.issue_date_range[1]
+        current = [c for c in companies
+                   if (f := EARLIEST_ISSUE_DATE.get(c.business_type)) is None
+                   or f <= window_end]
+        if not current:
+            raise UnsupportedConstraint(
+                "this slice's date window ends before every eligible issuer's era "
+                "existed (e.g. an AI-platform vendor has no invoices that old)"
+            )
+        companies = current
 
     if selection.company_count is not None:
         companies = _subset(companies, selection.company_count, run_id, "companies")

@@ -11,6 +11,7 @@ rename existing ones.
 
 from __future__ import annotations
 
+from datetime import date
 from enum import StrEnum
 
 
@@ -257,3 +258,14 @@ DIGITAL_NATIVE_BUSINESS_TYPES: frozenset[BusinessType] = frozenset({
     BusinessType.B2B_SAAS,
     BusinessType.AI_PLATFORM,
 })
+
+#: Earliest plausible issue date per business type — a business cannot have issued
+#: an invoice before it existed. The sampler floors a drawn issue date to this,
+#: and composition.resolve drops a type from any slice whose whole date window
+#: predates it. Same realism principle as DIGITAL_NATIVE_BUSINESS_TYPES, on the
+#: date axis: an AI-platform vendor billing usage is a very recent business, so it
+#: has no 2019 invoices. Only types genuinely newer than the corpus window need an
+#: entry; everything else is unconstrained (issuable at any date).
+EARLIEST_ISSUE_DATE: dict[BusinessType, date] = {
+    BusinessType.AI_PLATFORM: date(2025, 1, 1),
+}
