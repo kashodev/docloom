@@ -23,8 +23,10 @@ from docloom.studio import (
     Step,
     StudioError,
     get_target,
+    wizard,
 )
 from docloom.studio.app import resolve_project, run_step
+from docloom.studio.prompts import Choice, FallbackPrompter, ScriptedPrompter, get_prompter
 
 runner = CliRunner()
 
@@ -177,3 +179,98 @@ def test_studio_export_needs_a_run_id(tmp_path: Path) -> None:
                               "--step", "export", "--dry-run"], env=env)
     assert res.exit_code != 0
     assert "run-id" in res.output
+
+
+# ── prompts ─────────────────────────────────────────────────────────────────
+def test_fallback_prompter_reads_input(monkeypatch) -> None:
+    answers = iter(["2", "y", "hello"])
+    monkeypatch.setattr("builtins.input", lambda *a, **k: next(answers))
+    p = FallbackPrompter()
+    assert p.select("pick", [Choice("a", "A"), Choice("b", "B")]) == "b"
+    assert p.confirm("ok?") is True
+    assert p.text("name?") == "hello"
+
+
+def test_fallback_prompter_uses_defaults_on_empty(monkeypatch) -> None:
+    monkeypatch.setattr("builtins.input", lambda *a, **k: "")
+    p = FallbackPrompter()
+    assert p.select("pick", [Choice("a", "A")], default="a") == "a"
+    assert p.text("name?", default="d") == "d"
+    assert p.confirm("ok?", default=True) is True
+
+
+def test_scripted_prompter_pops_in_order() -> None:
+    p = ScriptedPrompter(["x", True])
+    assert p.text("a") == "x"
+    assert p.confirm("b") is True
+    assert p.asked == ["a", "b"]
+
+
+def test_get_prompter_returns_a_prompter() -> None:
+    assert get_prompter() is not None
+
+
+# ── wizard stages ───────────────────────────────────────────────────────────
+def test_choose_target_flag_wins_else_sole_local() -> None:
+    assert wizard.choose_target(None, "gcp", False) == "gcp"      # flag as given
+    assert wizard.choose_target(None, "", True) == "local"        # sole available, no prompt
+
+
+def test_choose_step_flag_unknown_and_prompt() -> None:
+    assert wizard.choose_step(None, "pdfs", False) is Step.PDFS
+    with pytest.raises(StudioError, match="unknown step"):
+        wizard.choose_step(None, "nope", False)
+    with pytest.raises(StudioError, match="pass --step"):
+        wizard.choose_step(None, "", False)                       # non-interactive, no flag
+    assert wizard.choose_step(ScriptedPrompter(["export"]), "", True) is Step.EXPORT
+
+
+def test_choose_pack_sole_pack_auto_and_flag() -> None:
+    assert wizard.choose_pack(None, "", False) == "invoice"       # the only installed pack
+    assert wizard.choose_pack(None, "contract", False) == "contract"
+
+
+def test_build_generate_args_flags_bypass_prompts() -> None:
+    a = wizard.build_generate_args(None, False, pack="invoice", run_id="r", total=3,
+                                   catalogue="", fmt="pdf", condition="", date_from="", date_to="")
+    assert isinstance(a, GenerateArgs) and a.run_id == "r" and a.total == 3
+
+
+def test_build_generate_args_missing_required_is_an_error() -> None:
+    with pytest.raises(StudioError, match="run-id"):
+        wizard.build_generate_args(None, False, pack="invoice", run_id="", total=3,
+                                   catalogue="", fmt="pdf", condition="", date_from="", date_to="")
+    with pytest.raises(StudioError, match="total"):
+        wizard.build_generate_args(None, False, pack="invoice", run_id="r", total=0,
+                                   catalogue="", fmt="pdf", condition="", date_from="", date_to="")
+
+
+def test_build_generate_args_prompts_when_interactive() -> None:
+    p = ScriptedPrompter(["demo", "5", "", "clean", ""])   # run_id/total/catalogue/condition/from
+    a = wizard.build_generate_args(p, True, pack="invoice", run_id="", total=0,
+                                   catalogue="", fmt="pdf", condition="", date_from="", date_to="")
+    assert a.run_id == "demo" and a.total == 5 and a.condition == "clean"
+
+
+def test_build_catalogue_args_prompts_with_defaults() -> None:
+    p = ScriptedPrompter(["v2", "50", "20"])
+    a = wizard.build_catalogue_args(p, True, pack="invoice", version="v1", companies=1000,
+                                    products_per_company=300, seed=0)
+    assert a.version == "v2" and a.companies == 50 and a.products_per_company == 20
+
+
+def test_choose_project_interactive_creates_when_none_saved(tmp_path: Path) -> None:
+    reg = Registry(tmp_path / "projects.yaml")
+    p = ScriptedPrompter([str(tmp_path / "ws")])          # just the workspace dir
+    proj = wizard.choose_project(p, "local", LocalTarget(), reg, "",
+                                 interactive=True, dry_run=False)
+    assert (Path(proj.root) / "blobs").is_dir() and reg.get(proj.ref) is not None
+
+
+def test_choose_project_interactive_picks_an_existing(tmp_path: Path) -> None:
+    reg = Registry(tmp_path / "projects.yaml")
+    reg.add(Project(target="local", id="ws", root=str(tmp_path / "ws"), last_run="old"))
+    p = ScriptedPrompter(["ws"])                          # select the saved one by id
+    proj = wizard.choose_project(p, "local", LocalTarget(), reg, "",
+                                 interactive=True, dry_run=False)
+    assert proj.last_run == "old"

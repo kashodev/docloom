@@ -39,15 +39,26 @@ from docloom.core.storage import open_store
 from docloom.core.usage import DEFAULT_USAGE_URI, open_usage_sink
 
 _log = get_logger(__name__)
-app = typer.Typer(add_completion=False, help="Generate synthetic documents with a golden dataset.")
+app = typer.Typer(add_completion=False, no_args_is_help=False,
+                  help="Generate synthetic documents with a golden dataset.")
 
 
-@app.callback()
-def _init() -> None:
+@app.callback(invoke_without_command=True)
+def _init(ctx: typer.Context) -> None:
     """Configure logging before any command runs. Console at a terminal, JSON to
-    a pipe/Cloud Run; DOCLOOM_LOG_LEVEL / DOCLOOM_LOG_FORMAT override."""
+    a pipe/Cloud Run; DOCLOOM_LOG_LEVEL / DOCLOOM_LOG_FORMAT override.
+
+    A bare ``docloom`` in a terminal launches the studio wizard; piped (no TTY) it
+    prints help, the conventional no-args behaviour for a script."""
     from docloom.core.logging import configure
     configure()
+    if ctx.invoked_subcommand is not None:
+        return
+    from docloom.studio.prompts import is_interactive
+    if is_interactive():
+        _run_studio()
+    else:
+        typer.echo(ctx.get_help())
 
 _STORAGE = typer.Option("./out/blobs", envvar="DOCLOOM_STORAGE", help="Blob store URI for documents + shards")
 _STATE = typer.Option("./out/runs.db", envvar="DOCLOOM_STATE", help="Run-state store URI")
@@ -583,6 +594,70 @@ def _print_status(store, run_id: str) -> None:
     )
 
 
+def _run_studio(*, provider: str = "local", project: str = "", step: str = "", pack: str = "",
+                config: str = "", run_id: str = "", total: int = 0, catalogue: str = "",
+                fmt: str = "pdf", condition: str = "", issue_date_from: str = "",
+                issue_date_to: str = "", version: str = "v1", companies: int = 1000,
+                products_per_company: int = 300, seed: int = 0, sink: str = "",
+                yes: bool = False, dry_run: bool = False) -> None:
+    """The studio flow with real defaults — the `studio` command and a bare
+    interactive `docloom` both call this. Walks target → project → pack → step →
+    args, prompting only for what a flag left unset, and confirms before running."""
+    from docloom.studio import Registry, Step, StudioError, get_target, wizard
+    from docloom.studio.app import run_step
+    from docloom.studio.prompts import get_prompter, is_interactive
+
+    interactive = is_interactive()
+    prompter = get_prompter() if interactive else None
+    try:
+        provider_name = wizard.choose_target(prompter, provider, interactive)
+        target = get_target(provider_name)
+        registry = Registry()
+        proj = wizard.choose_project(prompter, provider_name, target, registry, project,
+                                     interactive=interactive, dry_run=dry_run)
+        pack_name = wizard.choose_pack(prompter, pack, interactive)
+        step_enum = wizard.choose_step(prompter, step, interactive)
+
+        if step_enum is Step.CATALOG:
+            args: object = wizard.build_catalogue_args(
+                prompter, interactive, pack=pack_name, version=version, companies=companies,
+                products_per_company=products_per_company, seed=seed)
+        elif step_enum is Step.PDFS:
+            args = wizard.build_generate_args(
+                prompter, interactive, pack=pack_name, run_id=run_id, total=total,
+                catalogue=catalogue, fmt=fmt, condition=condition, date_from=issue_date_from,
+                date_to=issue_date_to, selection_file=config)
+        else:  # EXPORT
+            args = wizard.build_export_args(prompter, interactive, run_id=run_id, sink=sink)
+    except StudioError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    # Review the resolved plan (a dry run) before anything happens.
+    preview = run_step(target, proj, step_enum, args, dry_run=True)
+    typer.echo(f"\n  target   {proj.ref}" + (f"   ({proj.root})" if proj.root else ""))
+    typer.echo(f"  step     {step_enum.value}")
+    typer.echo(f"  summary  {preview.summary}")
+    typer.echo("  plan\n    docloom " + " ".join(preview.argv))
+    if dry_run:
+        typer.echo("\n  (dry run — nothing executed)")
+        return
+    if interactive and not yes and prompter is not None and not prompter.confirm(
+            "\n  Proceed?", default=False):
+        typer.echo("  aborted.")
+        raise typer.Exit(0)
+
+    result = run_step(target, proj, step_enum, args, dry_run=False)
+    typer.echo(f"\n  {'✔' if result.ok else '✗'} {result.summary}")
+    if result.links:
+        typer.echo("  links")
+        for link in result.links:
+            typer.echo(f"    {link.label:<10} {link.href}")
+    if result.ok and result.run_id:
+        registry.set_last_run(proj.ref, result.run_id)
+    if not result.ok:
+        raise typer.Exit(1)
+
+
 @app.command()
 def studio(
     provider: str = typer.Option("local", "--provider", "-p",
@@ -590,7 +665,7 @@ def studio(
     project: str = typer.Option("", "--project",
                                 help="Project / local workspace; created & saved if new"),
     step: str = typer.Option("", "--step", help="catalog | pdfs | export"),
-    pack: str = typer.Option("invoice", "--pack", help="Document type (pack)"),
+    pack: str = typer.Option("", "--pack", help="Document type (pack); '' = sole installed"),
     config: str = typer.Option("", "--config", help="Selection/slice file for the pdfs step"),
     run_id: str = typer.Option("", "--run-id", help="Run id (pdfs, export)"),
     total: int = typer.Option(0, "--total", help="How many documents (pdfs)"),
@@ -605,65 +680,22 @@ def studio(
                                               help="SKUs each (catalog)"),
     seed: int = typer.Option(0, "--seed", help="Build seed (catalog)"),
     sink: str = typer.Option("", "--sink", help="Golden sink uri (export); '' = local DuckDB"),
-    yes: bool = typer.Option(False, "--yes",
-                             help="Skip confirmation (reserved; phase 1 runs directly)"),
+    yes: bool = typer.Option(False, "--yes", help="Skip the interactive confirmation"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the plan; run nothing"),
 ) -> None:
-    """Orchestrate catalog / pdfs / export on a chosen deployment target.
+    """Orchestrate catalog / pdfs / export — interactively, or fully by flags.
 
-    Phase 1 is flag-driven and local-only: it resolves (and provisions, if new) a
-    workspace, then shells into the same `docloom` CLI a hand-run would. The
-    interactive wizard and cloud targets arrive in later phases — see
+    In a terminal it walks target → project → pack → step → args, prompting only
+    for what a flag did not already supply, and confirms before running. Fully
+    flagged (or piped) it runs non-interactively. Local-only for now; cloud
+    targets arrive in later phases — see
     `feature_explorations/interactive-cli-studio.md`.
     """
-    from docloom.studio import Registry, Step, StudioError, get_target
-    from docloom.studio.app import resolve_project, run_step
-    from docloom.studio.types import CatalogueArgs, ExportArgs, GenerateArgs
-
-    try:
-        if not step:
-            raise StudioError("pass --step catalog|pdfs|export")
-        try:
-            step_enum = Step(step)
-        except ValueError:
-            raise StudioError(f"unknown step {step!r}; use catalog | pdfs | export") from None
-
-        target = get_target(provider)
-        registry = Registry()
-        proj = resolve_project(registry, target, provider, project, dry_run=dry_run)
-
-        if step_enum is Step.CATALOG:
-            args: object = CatalogueArgs(version=version, pack=pack, companies=companies,
-                                         products_per_company=products_per_company, seed=seed)
-        elif step_enum is Step.PDFS:
-            if not run_id or total <= 0:
-                raise StudioError("the pdfs step needs --run-id and --total greater than 0")
-            args = GenerateArgs(run_id=run_id, total=total, pack=pack, fmt=fmt,
-                                catalogue=catalogue, selection_file=config, condition=condition,
-                                date_from=issue_date_from, date_to=issue_date_to)
-        else:  # EXPORT
-            if not run_id:
-                raise StudioError("the export step needs --run-id")
-            args = ExportArgs(run_id=run_id, sink=sink)
-    except StudioError as exc:
-        raise typer.BadParameter(str(exc)) from exc
-
-    typer.echo(f"  target   {proj.ref}" + (f"   ({proj.root})" if proj.root else ""))
-    typer.echo(f"  step     {step_enum.value}")
-    result = run_step(target, proj, step_enum, args, dry_run=dry_run)
-    typer.echo("\n  plan\n    docloom " + " ".join(result.argv))
-    if dry_run:
-        typer.echo("\n  (dry run — nothing executed)")
-        return
-    typer.echo(f"\n  {'✔' if result.ok else '✗'} {result.summary}")
-    if result.links:
-        typer.echo("  links")
-        for link in result.links:
-            typer.echo(f"    {link.label:<10} {link.href}")
-    if result.ok and result.run_id:
-        registry.set_last_run(proj.ref, result.run_id)
-    if not result.ok:
-        raise typer.Exit(1)
+    _run_studio(provider=provider, project=project, step=step, pack=pack, config=config,
+                run_id=run_id, total=total, catalogue=catalogue, fmt=fmt, condition=condition,
+                issue_date_from=issue_date_from, issue_date_to=issue_date_to, version=version,
+                companies=companies, products_per_company=products_per_company, seed=seed,
+                sink=sink, yes=yes, dry_run=dry_run)
 
 
 if __name__ == "__main__":

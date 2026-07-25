@@ -52,8 +52,12 @@ aws = ["boto3>=1.35"]
 # First-party Anthropic provider (Claude Haiku). DeepSeek and Qwen speak the
 # OpenAI-compatible wire protocol and need only httpx, already in core.
 anthropic = ["anthropic>=0.40"]
+# Arrow-key prompts for the `docloom studio` wizard. Optional: without it the
+# wizard falls back to numbered menus + plain input, and a fully-flagged run
+# needs nothing here at all.
+studio = ["questionary>=2.0"]
 # Everything, for a full deployment.
-all = ["docloom[gcp,aws,anthropic]"]
+all = ["docloom[gcp,aws,anthropic,studio]"]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
