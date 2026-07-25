@@ -362,3 +362,38 @@ def test_the_default_issue_window_is_unchanged_when_unset() -> None:
     unconfigured run behaves exactly as it did before the knob existed."""
     issued = [i.issue_date for i in docs(Selection(), n=40)]
     assert all(date(2026, 1, 1) <= d <= date(2026, 11, 27) for d in issued), issued
+
+
+# ── Business-type era floor ─────────────────────────────────────────────────
+def test_ai_platform_issue_dates_are_floored_to_its_era() -> None:
+    """An AI-platform vendor is a very recent business: even inside a window that
+    reaches back to 2023, its issue date never precedes its 2025 era."""
+    invoices = docs(Selection(business_types=("ai_platform",),
+                              issue_date_range=(date(2023, 1, 1), date(2025, 12, 31))), n=40)
+    assert invoices, "expected ai_platform invoices in the seed roster"
+    assert all(i.issue_date >= date(2025, 1, 1) for i in invoices), \
+        min(i.issue_date for i in invoices)
+
+
+def test_the_era_floor_is_a_soft_default_that_can_be_switched_off() -> None:
+    """Realism here is opt-out, never a hard stop: with the floor off, an AI-platform
+    issuer is allowed a deliberately anachronistic pre-era date, and the run is not
+    blocked."""
+    lo, hi = date(2019, 1, 1), date(2021, 12, 31)
+    invoices = docs(Selection(business_types=("ai_platform",),
+                              issue_date_range=(lo, hi), enforce_date_era=False), n=40)
+    assert invoices, "a pre-era window must still produce AI invoices, not raise"
+    assert all(lo <= i.issue_date <= hi for i in invoices)
+    assert any(i.issue_date < date(2025, 1, 1) for i in invoices)   # actually anachronistic
+
+
+def test_enforce_date_era_defaults_on_and_parses_off() -> None:
+    assert Selection.from_mapping({}).enforce_date_era is True
+    assert Selection.from_mapping({"enforce_date_era": False}).enforce_date_era is False
+
+
+def test_a_non_born_digital_type_ignores_the_era_floor() -> None:
+    """Retail has always issued invoices, so an older window is honoured as-is."""
+    lo, hi = date(2019, 1, 1), date(2021, 12, 31)
+    invoices = docs(Selection(business_types=("retail",), issue_date_range=(lo, hi)), n=30)
+    assert all(lo <= i.issue_date <= hi for i in invoices), invoices

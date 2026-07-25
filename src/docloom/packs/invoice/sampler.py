@@ -29,6 +29,7 @@ from docloom.core.selection import Selection
 from docloom.packs.invoice.catalog import Catalogue, ProductTemplate, SeedCatalogue
 from docloom.packs.invoice.composition import Composition, resolve
 from docloom.packs.invoice.enums import (
+    EARLIEST_ISSUE_DATE,
     GOODS_KINDS,
     BillingModel,
     BusinessType,
@@ -307,10 +308,22 @@ class InvoiceSampler:
         stops the run instead of failing every unit in turn."""
         self.composition(run_id)
 
-    def _draw_issue_date(self, rng: Random) -> date:
-        """Uniform over the slice's issue-date range, or the default window."""
+    def _draw_issue_date(self, rng: Random, business_type: BusinessType) -> date:
+        """Uniform over the slice's issue-date range, or the default window.
+
+        When ``enforce_date_era`` (the default), the window floor rises to the
+        business type's era so e.g. an AI-platform vendor gets no pre-2025 invoice.
+        This is a *soft* realism default: it only ever moves the floor up within
+        the window, never blocks a run, and is switched off for a slice that
+        deliberately wants anachronistic dates (the whole window is then honoured
+        as-is). If the window ends before the era, the floor caps at the window end
+        rather than erroring — as recent as the window allows."""
         start, end = self._selection.issue_date_range or (
             _DEFAULT_ISSUE_START, _DEFAULT_ISSUE_END)
+        if self._selection.enforce_date_era:
+            floor = EARLIEST_ISSUE_DATE.get(business_type)
+            if floor is not None and floor > start:
+                start = min(floor, end)
         return start + timedelta(days=rng.randint(0, (end - start).days))
 
     def generate(self, run_id: str, index: int) -> GoldenInvoice:
@@ -329,7 +342,7 @@ class InvoiceSampler:
         # Drawn before the lines so a subscription's billing period can be bound to
         # it (arrears — the period ends on/before issue). Every other date on the
         # document derives from this one, so the run's date range governs them all.
-        issue = self._draw_issue_date(rng)
+        issue = self._draw_issue_date(rng, company.business_type)
         n = min(rng.randint(spec.line_count_low, spec.line_count_high), self._max_line_items)
         lines = tuple(
             _build_line(rng, i + 1, product, language, issue)

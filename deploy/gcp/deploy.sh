@@ -281,6 +281,8 @@ for i, (s, count) in enumerate(zip(slices, counts), start=1):
     if goods:
         flags.append("--goods-receipt")
     flags += date_range_flags(s, name)
+    if not s.get("enforce_date_era", get("run.enforce_date_era", True)):
+        flags.append("--no-date-era-floor")     # allow deliberately anachronistic dates
 
     description = " ".join(flags).replace("--", "") or "unconstrained"
     # \x1f (ASCII Unit Separator), NOT tab: `read` collapses runs of *whitespace*
