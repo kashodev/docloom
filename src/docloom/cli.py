@@ -603,8 +603,11 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
     """The studio flow with real defaults — the `studio` command and a bare
     interactive `docloom` both call this. Walks target → project → pack → step →
     args, prompting only for what a flag left unset, and confirms before running."""
+    from functools import partial
+
     from docloom.studio import Registry, Step, StudioError, get_target, wizard
     from docloom.studio.app import run_step
+    from docloom.studio.progress import run_with_spinner
     from docloom.studio.prompts import get_prompter, is_interactive
 
     interactive = is_interactive()
@@ -616,46 +619,80 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
         proj = wizard.choose_project(prompter, provider_name, target, registry, project,
                                      interactive=interactive, dry_run=dry_run)
         pack_name = wizard.choose_pack(prompter, pack, interactive)
-        step_enum = wizard.choose_step(prompter, step, interactive)
-
-        if step_enum is Step.CATALOG:
-            args: object = wizard.build_catalogue_args(
-                prompter, interactive, pack=pack_name, version=version, companies=companies,
-                products_per_company=products_per_company, seed=seed)
-        elif step_enum is Step.PDFS:
-            args = wizard.build_generate_args(
-                prompter, interactive, pack=pack_name, run_id=run_id, total=total,
-                catalogue=catalogue, fmt=fmt, condition=condition, date_from=issue_date_from,
-                date_to=issue_date_to, selection_file=config)
-        else:  # EXPORT
-            args = wizard.build_export_args(prompter, interactive, run_id=run_id, sink=sink)
     except StudioError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
-    # Review the resolved plan (a dry run) before anything happens.
-    preview = run_step(target, proj, step_enum, args, dry_run=True)
-    typer.echo(f"\n  target   {proj.ref}" + (f"   ({proj.root})" if proj.root else ""))
-    typer.echo(f"  step     {step_enum.value}")
-    typer.echo(f"  summary  {preview.summary}")
-    typer.echo("  plan\n    docloom " + " ".join(preview.argv))
-    if dry_run:
-        typer.echo("\n  (dry run — nothing executed)")
-        return
-    if interactive and not yes and prompter is not None and not prompter.confirm(
-            "\n  Proceed?", default=False):
-        typer.echo("  aborted.")
-        raise typer.Exit(0)
+    typer.echo(f"\n  project  {proj.ref}" + (f"   ({proj.root})" if proj.root else ""))
+    # Interactive runs loop back to the step menu until the operator exits; a
+    # flagged/piped or --dry-run invocation runs a single step and returns.
+    loop = interactive and not dry_run
 
-    result = run_step(target, proj, step_enum, args, dry_run=False)
-    typer.echo(f"\n  {'✔' if result.ok else '✗'} {result.summary}")
-    if result.links:
-        typer.echo("  links")
-        for link in result.links:
-            typer.echo(f"    {link.label:<10} {link.href}")
-    if result.ok and result.run_id:
-        registry.set_last_run(proj.ref, result.run_id)
-    if not result.ok:
-        raise typer.Exit(1)
+    def _args(step_enum: Step, one_shot: bool) -> object:
+        # The first pass honours the per-run flags; later passes prompt afresh, so
+        # a looped run can't silently reuse the same run id.
+        rid, tot = (run_id, total) if one_shot else ("", 0)
+        cat, cond = (catalogue, condition) if one_shot else ("", "")
+        df, dt, cfg, snk = ((issue_date_from, issue_date_to, config, sink) if one_shot
+                            else ("", "", "", ""))
+        if step_enum is Step.CATALOG:
+            return wizard.build_catalogue_args(prompter, interactive, pack=pack_name,
+                                               version=version, companies=companies,
+                                               products_per_company=products_per_company, seed=seed)
+        if step_enum is Step.PDFS:
+            return wizard.build_generate_args(prompter, interactive, pack=pack_name, run_id=rid,
+                                              total=tot, catalogue=cat, fmt=fmt, condition=cond,
+                                              date_from=df, date_to=dt, selection_file=cfg)
+        return wizard.build_export_args(prompter, interactive, run_id=rid, sink=snk)
+
+    step_flag, first = step, True
+    while True:
+        try:
+            step_enum = wizard.choose_step(prompter, step_flag, interactive, allow_exit=loop)
+        except StudioError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        if step_enum is None:                     # exit chosen
+            typer.echo("  done.")
+            return
+        step_flag = ""
+        try:
+            args = _args(step_enum, first)
+        except StudioError as exc:
+            if loop:
+                typer.echo(f"  {exc}\n")
+                continue
+            raise typer.BadParameter(str(exc)) from exc
+        first = False
+
+        preview = run_step(target, proj, step_enum, args, dry_run=True)
+        typer.echo(f"\n  step     {step_enum.value}")
+        typer.echo(f"  summary  {preview.summary}")
+        typer.echo("  plan\n    docloom " + " ".join(preview.argv))
+        if dry_run:
+            typer.echo("\n  (dry run — nothing executed)")
+            return
+        if interactive and not yes and prompter is not None and not prompter.confirm(
+                "\n  Proceed?", default=True):
+            typer.echo("  skipped.\n" if loop else "  aborted.")
+            if loop:
+                continue
+            raise typer.Exit(0)
+
+        do = partial(run_step, target, proj, step_enum, args, dry_run=False, capture=interactive)
+        result = run_with_spinner("working...", do) if interactive else do()
+        typer.echo(f"\n  {'✔' if result.ok else '✗'} {result.summary}")
+        for line in result.detail.splitlines():
+            typer.echo(f"    {line}")
+        if result.links:
+            typer.echo("  links")
+            for link in result.links:
+                typer.echo(f"    {link.label:<10} {link.href}")
+        if result.ok and result.run_id:
+            registry.set_last_run(proj.ref, result.run_id)
+        if not loop:
+            if not result.ok:
+                raise typer.Exit(1)
+            return
+        typer.echo("")                            # spacing before the menu returns
 
 
 @app.command()

@@ -52,8 +52,8 @@ class LocalTarget:
         return bool(project.root) and (Path(project.root) / "blobs").is_dir()
 
     # ── steps ───────────────────────────────────────────────────────────────
-    def run_catalogue(
-        self, project: Project, args: CatalogueArgs, *, dry_run: bool = False) -> Result:
+    def run_catalogue(self, project: Project, args: CatalogueArgs, *,
+                      dry_run: bool = False, capture: bool = False) -> Result:
         out = str(Path(project.root, "catalogues", args.pack, args.version))
         argv = [
             "catalogue", "--out", out, "--version", args.version,
@@ -62,14 +62,14 @@ class LocalTarget:
             "--seed", str(args.seed),
         ]   # no --providers => the procedural, key-free build
         return self._invoke(
-            argv, dry_run,
+            argv, dry_run, capture=capture,
             summary=f"catalogue {args.version} · {args.companies} companies x "
                     f"{args.products_per_company} (procedural, no keys)",
             links=(Link("catalogue", out),),
         )
 
-    def run_generate(
-        self, project: Project, args: GenerateArgs, *, dry_run: bool = False) -> Result:
+    def run_generate(self, project: Project, args: GenerateArgs, *,
+                     dry_run: bool = False, capture: bool = False) -> Result:
         argv = [
             "generate", "--run-id", args.run_id, "--total", str(args.total),
             "--pack", args.pack, "--format", args.fmt,
@@ -83,11 +83,11 @@ class LocalTarget:
             argv += ["--condition", args.condition]
         if args.date_from and args.date_to:
             argv += ["--issue-date-from", args.date_from, "--issue-date-to", args.date_to]
-        run_dir = Path(project.root, "blobs", "runs", args.run_id)
+        run_dir = Path(project.root, "blobs", args.run_id)
         docs = run_dir / "documents"
         ext = "pdf" if args.fmt == "pdf" else "html"
         return self._invoke(
-            argv, dry_run,
+            argv, dry_run, capture=capture,
             summary=f"generate {args.total} {args.pack} ({args.fmt}) → {project.root}",
             links=(
                 Link("documents", str(docs)),
@@ -97,14 +97,15 @@ class LocalTarget:
             run_id=args.run_id,
         )
 
-    def run_export(self, project: Project, args: ExportArgs, *, dry_run: bool = False) -> Result:
+    def run_export(self, project: Project, args: ExportArgs, *,
+                   dry_run: bool = False, capture: bool = False) -> Result:
         sink = args.sink or f"duckdb://{Path(project.root, 'corpus.duckdb')}"
         argv = [
             "export", "--run-id", args.run_id, "--sink", sink,
             "--storage", self._storage(project),
         ]
         return self._invoke(
-            argv, dry_run,
+            argv, dry_run, capture=capture,
             summary=f"export {args.run_id} → {sink}",
             links=(Link("sink", sink),),
             run_id=args.run_id,
@@ -118,13 +119,20 @@ class LocalTarget:
         return str(Path(project.root, "runs.db"))
 
     def _invoke(self, argv: list[str], dry_run: bool, *, summary: str,
-                links: tuple[Link, ...] = (), run_id: str = "") -> Result:
+                links: tuple[Link, ...] = (), run_id: str = "", capture: bool = False) -> Result:
         if dry_run:
             return Result(ok=True, summary=summary, argv=tuple(argv), links=links, run_id=run_id)
-        proc = subprocess.run([sys.executable, "-m", "docloom", *argv], check=False)
+        # Capture only when a spinner is covering the run (interactive), so the
+        # animation stays clean; otherwise inherit the terminal and stream logs.
+        proc = subprocess.run([sys.executable, "-m", "docloom", *argv],
+                              check=False, capture_output=capture, text=capture)
         ok = proc.returncode == 0
+        detail = ""
+        if not ok and capture:
+            tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-8:]
+            detail = "\n".join(tail)
         return Result(
             ok=ok,
             summary=summary if ok else f"failed (exit {proc.returncode}): {summary}",
-            argv=tuple(argv), links=links if ok else (), run_id=run_id,
+            argv=tuple(argv), links=links if ok else (), run_id=run_id, detail=detail,
         )

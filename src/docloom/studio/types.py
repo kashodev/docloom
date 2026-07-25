@@ -41,6 +41,7 @@ class Result:
     argv: tuple[str, ...] = ()      # the `docloom …` command run (or, on --dry-run, would run)
     links: tuple[Link, ...] = ()
     run_id: str = ""
+    detail: str = ""                # captured output tail, shown on failure
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,11 +127,11 @@ class DeploymentTarget(Protocol):
     def provision(self, spec: ProjectSpec) -> Project: ...      # create resources, return saved
     def is_provisioned(self, project: Project) -> bool: ...
 
-    def run_catalogue(
-        self, project: Project, args: CatalogueArgs, *, dry_run: bool = False) -> Result: ...
+    def run_catalogue(self, project: Project, args: CatalogueArgs, *,
+                      dry_run: bool = False, capture: bool = False) -> Result: ...
 
-    def run_generate(
-        self, project: Project, args: GenerateArgs, *, dry_run: bool = False) -> Result: ...
+    def run_generate(self, project: Project, args: GenerateArgs, *,
+                     dry_run: bool = False, capture: bool = False) -> Result: ...
 
-    def run_export(
-        self, project: Project, args: ExportArgs, *, dry_run: bool = False) -> Result: ...
+    def run_export(self, project: Project, args: ExportArgs, *,
+                   dry_run: bool = False, capture: bool = False) -> Result: ...

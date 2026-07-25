@@ -97,7 +97,13 @@ def choose_pack(prompter: Prompter | None, pack_flag: str, interactive: bool) ->
     return prompter.select("Document type (pack)", choices, default=packs[0])
 
 
-def choose_step(prompter: Prompter | None, step_flag: str, interactive: bool) -> Step:
+_EXIT = "\x00exit"
+
+
+def choose_step(prompter: Prompter | None, step_flag: str, interactive: bool,
+                *, allow_exit: bool = False) -> Step | None:
+    """The chosen step, or ``None`` when the operator picks *exit* (only offered
+    when ``allow_exit``)."""
     if step_flag:
         try:
             return Step(step_flag)
@@ -110,7 +116,10 @@ def choose_step(prompter: Prompter | None, step_flag: str, interactive: bool) ->
         Choice("pdfs", "generate pdfs", "render documents + the golden set"),
         Choice("export", "export", "golden shards → a queryable sink"),
     ]
-    return Step(prompter.select("Step", choices))
+    if allow_exit:
+        choices.append(Choice(_EXIT, "exit", "leave the studio"))
+    picked = prompter.select("Step", choices)
+    return None if picked == _EXIT else Step(picked)
 
 
 # ── per-step args ───────────────────────────────────────────────────────────

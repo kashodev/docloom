@@ -20,6 +20,7 @@ from docloom.studio import (
     Project,
     ProjectSpec,
     Registry,
+    Result,
     Step,
     StudioError,
     get_target,
@@ -274,3 +275,93 @@ def test_choose_project_interactive_picks_an_existing(tmp_path: Path) -> None:
     proj = wizard.choose_project(p, "local", LocalTarget(), reg, "",
                                  interactive=True, dry_run=False)
     assert proj.last_run == "old"
+
+
+# ── spinner ─────────────────────────────────────────────────────────────────
+def test_run_with_spinner_returns_and_propagates() -> None:
+    from docloom.studio.progress import run_with_spinner
+    assert run_with_spinner("x", lambda: 42) == 42        # non-tty in pytest → direct call
+    with pytest.raises(ValueError, match="boom"):
+        run_with_spinner("x", lambda: (_ for _ in ()).throw(ValueError("boom")))
+
+
+def test_run_with_spinner_threaded_path(monkeypatch) -> None:
+    import io
+    import sys
+
+    class _TTY(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+    monkeypatch.setattr(sys, "stderr", _TTY())
+    from docloom.studio.progress import run_with_spinner
+    assert run_with_spinner("work", lambda: 7) == 7        # exercises the worker thread
+
+
+# ── exit option ─────────────────────────────────────────────────────────────
+def test_choose_step_offers_exit_only_when_allowed() -> None:
+    assert wizard.choose_step(ScriptedPrompter([wizard._EXIT]), "", True, allow_exit=True) is None
+    assert wizard.choose_step(ScriptedPrompter(["pdfs"]), "", True, allow_exit=True) is Step.PDFS
+
+
+# ── capture ─────────────────────────────────────────────────────────────────
+def test_capture_puts_the_error_tail_in_detail(tmp_path: Path) -> None:
+    t = LocalTarget()
+    p = t.provision(ProjectSpec(target="local", id="ws", root=str(tmp_path / "ws")))
+    r = t.run_export(p, ExportArgs(run_id="nope"), capture=True)   # no such run → exits non-zero
+    assert not r.ok and r.detail                                    # stderr/stdout tail captured
+
+
+# ── the interactive loop ────────────────────────────────────────────────────
+class _FakeTarget:
+    name = "local"
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def normalise(self, spec: ProjectSpec):
+        return Project(target="local", id=spec.id, root=spec.root)
+
+    def provision(self, spec: ProjectSpec):
+        return self.normalise(spec)
+
+    def is_provisioned(self, project) -> bool:
+        return True
+
+    def _result(self, kind: str, args):
+        self.calls.append(kind)
+        return Result(ok=True, summary=f"fake {kind}", argv=(kind,),
+                      run_id=getattr(args, "run_id", ""))
+
+    def run_catalogue(self, p, a, *, dry_run=False, capture=False):
+        return self._result("catalog", a)
+
+    def run_generate(self, p, a, *, dry_run=False, capture=False):
+        return self._result("pdfs", a)
+
+    def run_export(self, p, a, *, dry_run=False, capture=False):
+        return self._result("export", a)
+
+
+def test_interactive_loop_runs_a_step_then_returns_and_exits(monkeypatch, tmp_path, capsys) -> None:
+    from docloom import cli
+    fake = _FakeTarget()
+    monkeypatch.setenv("DOCLOOM_HOME", str(tmp_path / ".docloom"))
+    monkeypatch.setattr("docloom.studio.prompts.is_interactive", lambda: True)
+    # step=export, run_id, sink(blank), confirm=yes, then step=exit
+    answers = ["export", "run-a", "", True, wizard._EXIT]
+    monkeypatch.setattr("docloom.studio.prompts.get_prompter", lambda: ScriptedPrompter(answers))
+    monkeypatch.setattr("docloom.studio.get_target", lambda name: fake)
+
+    cli._run_studio(provider="local", project=str(tmp_path / "ws"))
+    out = capsys.readouterr().out
+    assert fake.calls.count("export") == 2         # preview (dry) + the real run
+    assert "fake export" in out and "done." in out  # ran the step, then exited on the menu
+
+
+def test_generate_links_match_the_real_local_layout(tmp_path: Path) -> None:
+    """Regression: local docs land at blobs/<run_id>/…, not blobs/runs/<run_id>/…."""
+    t = LocalTarget()
+    p = t.normalise(ProjectSpec(target="local", id="ws", root=str(tmp_path)))
+    r = t.run_generate(p, GenerateArgs(run_id="rid", total=1), dry_run=True)
+    docs = next(link.href for link in r.links if link.label == "documents")
+    assert docs == str(tmp_path / "blobs" / "rid" / "documents")
