@@ -31,6 +31,7 @@ from docloom.core.pipeline import (
     export_run,
     resume_run,
     work_run,
+    write_group_manifest,
 )
 from docloom.core.selection import Selection
 from docloom.core.sinks import open_sink
@@ -567,6 +568,35 @@ def export(
     for table, rows in sorted(stats.tables.items()):
         typer.echo(f"  {table}: {rows} row(s)")
     typer.echo(f"exported {stats.total_rows} row(s) across {len(stats.tables)} table(s) to {sink}")
+
+
+@app.command(name="finalize-run")
+def finalize_run(
+    run_id: str = typer.Option(..., "--run-id",
+                               help="The run's top-level id — the parent the slices nest under"),
+    slice_name: list[str] = typer.Option(
+        [], "--slice", help="Slice name to require (repeatable); omit to discover complete ones"),
+    storage_prefix: str = typer.Option(
+        "", "--storage-prefix", help="Prefix the run lives under (default: the run id)"),
+    storage: str = _STORAGE,
+) -> None:
+    """Write one aggregate root manifest over a multi-slice run's per-slice roots.
+
+    A multi-slice run nests its slices under one folder, each with its own root
+    manifest; this adds a single `<run>/manifest.json` indexing them, leaving the
+    per-slice roots intact. With `--slice` the named slices must all be complete
+    (a gap is refused); without, complete slices are discovered.
+    """
+    blob = open_store(storage)
+    try:
+        manifest = write_group_manifest(blob, group_id=run_id, storage_prefix=storage_prefix,
+                                        slice_names=tuple(slice_name))
+    except (FileNotFoundError, ValueError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(f"group manifest: {run_id} — {len(manifest.slices)} slice(s), "
+               f"{manifest.total_documents} document(s)")
+    for s in manifest.slices:
+        typer.echo(f"  {s.name:16s} {s.total_documents:>8} docs   {s.prefix}")
 
 
 @app.command()

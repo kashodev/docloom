@@ -628,6 +628,21 @@ run_job() {
     gcloud run jobs execute "${JOB}" --region="${REGION}" --project="${PROJECT}" \
       --wait --args="$(gen_args "${name}" "${pack}" "${count}" "${fmt}" "${comp}")"
   done < <(each_slice)
+
+  # A multi-slice run nests its slices under one folder; write one aggregate root
+  # manifest over the per-slice roots so `runs/<run>/manifest.json` describes the
+  # whole run. The per-slice roots are preserved. A single-slice run's own root
+  # already is the top-level manifest, so this is skipped.
+  if [[ "${SLICE_COUNT}" -gt 1 ]]; then
+    local slice_args=""
+    while IFS=$'\x1f' read -r name _; do
+      [[ -n "${name}" ]] && slice_args+="|--slice=${name}"
+    done < <(each_slice)
+    say "Finalising ${RUN_ID} — aggregate root manifest over ${SLICE_COUNT} slices"
+    gcloud run jobs execute "${JOB}" --region="${REGION}" --project="${PROJECT}" \
+      --wait --tasks=1 --parallelism=1 \
+      --args="^|^finalize-run|--run-id=${RUN_ID}|--storage=${STORAGE_URI}${slice_args}"
+  fi
 }
 
 resume() {

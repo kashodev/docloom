@@ -229,3 +229,70 @@ def test_the_default_flat_layout_is_unchanged(tmp_path: Path) -> None:
     assert blob.exists("r/manifest.json")
     m = read_run_manifest(blob, "r")
     assert m.document_key_pattern == "{run_id}/documents/unit-{unit:06d}/{record_id}{ext}"
+
+
+# ── Run group (aggregate root over a multi-slice run) ───────────────────────
+def _multi(tmp_path: Path, group: str, slices: tuple[str, ...]):
+    """Generate several nested slices of one run into a shared bucket."""
+    blob = LocalBlobStore(str(tmp_path / "blobs"))
+    state = SqliteStateStore(tmp_path / "runs.db")
+    pack = get_pack("invoice")
+    for s in slices:
+        create_run(state, run_id=f"{group}-{s}", pack="invoice", config_id=s,
+                   total=8, unit_size=4)
+        work_run(state, run_id=f"{group}-{s}", source=pack.default_source(max_line_items=4),
+                 renderer=HtmlRenderer(pack), blob=blob, storage_prefix=f"{group}/{s}")
+    return blob
+
+
+def test_group_manifest_aggregates_the_slices(tmp_path: Path) -> None:
+    from docloom.core.pipeline import (
+        read_group_manifest,
+        read_run_manifest,
+        write_group_manifest,
+    )
+    blob = _multi(tmp_path, "corpus", ("anchor", "clean"))
+    gm = write_group_manifest(blob, group_id="corpus", slice_names=("anchor", "clean"))
+    # one aggregate root at the run's top level, summing the slices
+    assert blob.exists("corpus/manifest.json")
+    assert gm.total_documents == 16 and len(gm.slices) == 2
+    assert {s.name for s in gm.slices} == {"anchor", "clean"}
+    assert gm.table_rows["invoices"] == 16
+    # per-slice roots are preserved untouched
+    assert blob.exists("corpus/anchor/manifest.json")
+    slice_root = read_run_manifest(blob, "corpus-anchor", storage_prefix="corpus/anchor")
+    assert slice_root.total_documents == 8
+    # reads back as a group
+    assert read_group_manifest(blob, "corpus").group_id == "corpus"
+
+
+def test_group_manifest_discovers_slices_without_names(tmp_path: Path) -> None:
+    from docloom.core.pipeline import write_group_manifest
+    blob = _multi(tmp_path, "corpus", ("anchor", "clean", "handwritten"))
+    gm = write_group_manifest(blob, group_id="corpus")           # discover
+    assert len(gm.slices) == 3 and gm.total_documents == 24
+
+
+def test_group_manifest_refuses_a_missing_named_slice(tmp_path: Path) -> None:
+    from docloom.core.pipeline import write_group_manifest
+    blob = _multi(tmp_path, "corpus", ("anchor",))               # 'clean' never ran
+    with pytest.raises(FileNotFoundError, match="incomplete"):
+        write_group_manifest(blob, group_id="corpus", slice_names=("anchor", "clean"))
+
+
+def test_a_slice_root_is_not_mistaken_for_a_group(tmp_path: Path) -> None:
+    from docloom.core.pipeline import read_group_manifest
+    blob = _multi(tmp_path, "corpus", ("anchor",))
+    with pytest.raises(ValueError, match="not a run-group"):
+        read_group_manifest(blob, "corpus/anchor")              # that key is a RunManifest
+
+
+def test_finalize_run_command_writes_the_group_manifest(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from docloom.cli import app
+    blob = _multi(tmp_path, "corpus", ("anchor", "clean"))
+    res = CliRunner().invoke(app, ["finalize-run", "--run-id", "corpus",
+                                   "--storage", str(tmp_path / "blobs")])
+    assert res.exit_code == 0, res.output
+    assert "2 slice(s)" in res.output and blob.exists("corpus/manifest.json")

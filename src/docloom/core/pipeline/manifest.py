@@ -38,7 +38,6 @@ import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
 
 from docloom.core.storage.base import BlobStore
 
@@ -413,3 +412,162 @@ def enumerate_document_keys(blob: BlobStore, run_id: str, *,
         unit = UnitManifest.from_json(blob.get(ref.key))
         for document in unit.documents:
             yield document.key
+
+
+# ── Run group (the aggregate root over a multi-slice run) ────────────────────
+# A multi-slice run nests its slices under one parent, `<run>/<slice>/…`, each
+# with its own root manifest. This adds ONE aggregate manifest at the run's top
+# level, `<run>/manifest.json`, indexing those per-slice roots (which stay as-is).
+# It carries a "kind" so a consumer reading `<x>/manifest.json` can tell a group
+# root from a slice root — they share the key shape but not the schema.
+GROUP_KIND = "run-group"
+
+
+@dataclass(frozen=True, slots=True)
+class SliceRef:
+    """The group root's pointer to one slice: enough to find its own root
+    manifest and see its totals, without inlining them."""
+
+    name: str                 # the slice's sub-folder
+    run_id: str               # the slice's flat, unique run id
+    prefix: str               # its storage prefix, <group>/<name>
+    key: str                  # its root manifest key
+    sha256: str
+    total_units: int
+    total_documents: int
+    table_rows: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class GroupManifest:
+    """The aggregate root for a multi-slice run — one manifest at the run's top
+    level over the per-slice roots, which are preserved unchanged."""
+
+    group_id: str
+    created_at: str
+    completed_at: str
+    total_documents: int
+    table_rows: dict[str, int]
+    slices: tuple[SliceRef, ...]
+    schema_version: int = MANIFEST_SCHEMA_VERSION
+
+    def to_json(self) -> bytes:
+        return json.dumps(
+            {
+                "schema_version": self.schema_version,
+                "kind": GROUP_KIND,
+                "group_id": self.group_id,
+                "created_at": self.created_at,
+                "completed_at": self.completed_at,
+                "total_slices": len(self.slices),
+                "total_documents": self.total_documents,
+                "table_rows": self.table_rows,
+                "slices": [
+                    {"name": s.name, "run_id": s.run_id, "prefix": s.prefix, "key": s.key,
+                     "sha256": s.sha256, "total_units": s.total_units,
+                     "total_documents": s.total_documents, "table_rows": s.table_rows}
+                    for s in self.slices
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        ).encode("utf-8")
+
+    @classmethod
+    def from_json(cls, raw: bytes) -> GroupManifest:
+        data = json.loads(raw)
+        if data.get("kind") != GROUP_KIND:
+            raise ValueError(
+                f"not a run-group manifest (kind={data.get('kind')!r}); a slice's "
+                "root is a RunManifest — read it with read_run_manifest"
+            )
+        return cls(
+            group_id=data["group_id"],
+            created_at=data.get("created_at", ""),
+            completed_at=data.get("completed_at", ""),
+            total_documents=data["total_documents"],
+            table_rows=dict(data.get("table_rows", {})),
+            slices=tuple(
+                SliceRef(s["name"], s["run_id"], s["prefix"], s["key"], s["sha256"],
+                         s["total_units"], s["total_documents"], dict(s.get("table_rows", {})))
+                for s in data["slices"]
+            ),
+            schema_version=int(data.get("schema_version", 0)),
+        )
+
+
+def _slice_manifest_keys(blob: BlobStore, group_prefix: str) -> Iterable[str]:
+    """Per-slice root manifests one level under the group prefix —
+    ``<group>/<slice>/manifest.json`` — not the group's own root or the parts."""
+    base = f"{group_prefix}/"
+    for key in blob.iter_keys(base):
+        rest = key[len(base):]
+        if rest.count("/") == 1 and rest.endswith("/" + ROOT_NAME):
+            yield key
+
+
+def write_group_manifest(
+    blob: BlobStore, *, group_id: str, storage_prefix: str = "",
+    slice_names: tuple[str, ...] = (),
+) -> GroupManifest:
+    """Aggregate a multi-slice run's per-slice root manifests into one group root
+    at ``<group>/manifest.json``, leaving the per-slice roots intact.
+
+    With ``slice_names`` the slices are read explicitly and a missing one raises —
+    the same gap-refusal a single run's root uses, so a group root is only written
+    when every named slice is complete. Without, the complete slice roots present
+    under the prefix are discovered. Idempotent: re-assembles byte-identical
+    substance from the same slice roots.
+    """
+    prefix = storage_prefix or group_id
+    keys = ([root_key(f"{prefix}/{name}") for name in slice_names]
+            if slice_names else sorted(_slice_manifest_keys(blob, prefix)))
+    if not keys:
+        raise ValueError(f"no slice manifests under {prefix}/ — nothing to aggregate")
+
+    slices: list[SliceRef] = []
+    total_documents = 0
+    table_rows: dict[str, int] = {}
+    created: list[str] = []
+    for key in keys:
+        try:
+            raw = blob.get(key)
+        except KeyError as exc:
+            raise FileNotFoundError(
+                f"slice manifest {key!r} is missing — the run is incomplete; "
+                "refusing to write a group root over a gap"
+            ) from exc
+        rm = RunManifest.from_json(raw)
+        name = key[len(prefix) + 1:].rsplit("/", 1)[0]
+        slices.append(SliceRef(
+            name=name, run_id=rm.run_id, prefix=f"{prefix}/{name}", key=key,
+            sha256=sha256_hex(raw), total_units=rm.total_units,
+            total_documents=rm.total_documents, table_rows=dict(rm.table_rows)))
+        total_documents += rm.total_documents
+        for table, rows in rm.table_rows.items():
+            table_rows[table] = table_rows.get(table, 0) + rows
+        if rm.created_at:
+            created.append(rm.created_at)
+
+    manifest = GroupManifest(
+        group_id=group_id,
+        created_at=min(created) if created else _now(),
+        completed_at=_now(),
+        total_documents=total_documents,
+        table_rows=table_rows,
+        slices=tuple(sorted(slices, key=lambda s: s.name)),
+    )
+    blob.put(root_key(prefix), manifest.to_json(), "application/json")
+    return manifest
+
+
+def read_group_manifest(blob: BlobStore, group_id: str, *,
+                        storage_prefix: str = "") -> GroupManifest:
+    """Load a run's aggregate group manifest. Raises ``FileNotFoundError`` if
+    absent (the run's slices were never finalised into one root)."""
+    prefix = storage_prefix or group_id
+    try:
+        raw = blob.get(root_key(prefix))
+    except KeyError as exc:
+        raise FileNotFoundError(f"no group manifest at {root_key(prefix)!r}") from exc
+    return GroupManifest.from_json(raw)

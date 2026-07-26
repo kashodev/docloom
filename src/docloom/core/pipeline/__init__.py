@@ -11,12 +11,16 @@ codec are the kernel's.
 from docloom.core.pipeline.export import ExportStats, export_run
 from docloom.core.pipeline.golden import decode_shard, encode_shard
 from docloom.core.pipeline.manifest import (
+    GroupManifest,
     RunManifest,
+    SliceRef,
     UnitManifest,
     enumerate_document_keys,
     is_complete,
+    read_group_manifest,
     read_run_manifest,
     verify_run,
+    write_group_manifest,
 )
 from docloom.core.pipeline.pdf import PdfRenderer
 from docloom.core.pipeline.planner import plan_units
@@ -26,26 +30,30 @@ from docloom.core.pipeline.source import DocumentSource, stable_seed
 from docloom.core.pipeline.worker import GenerationWorker, WorkerStats
 
 __all__ = [
-    "RunManifest",
-    "UnitManifest",
-    "enumerate_document_keys",
-    "is_complete",
-    "read_run_manifest",
-    "verify_run",
     "DocumentRenderer",
     "DocumentSource",
     "ExportStats",
     "GenerationWorker",
+    "GroupManifest",
     "HtmlRenderer",
     "PdfRenderer",
     "RenderedDocument",
+    "RunManifest",
+    "SliceRef",
+    "UnitManifest",
     "WorkerStats",
     "create_run",
     "decode_shard",
     "encode_shard",
+    "enumerate_document_keys",
     "export_run",
+    "is_complete",
     "plan_units",
+    "read_group_manifest",
+    "read_run_manifest",
     "resume_run",
     "stable_seed",
+    "verify_run",
     "work_run",
+    "write_group_manifest",
 ]
