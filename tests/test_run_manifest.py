@@ -32,14 +32,16 @@ from docloom.core.state.sqlite import SqliteStateStore
 from docloom.core.storage.local import LocalBlobStore
 
 
-def _run(tmp_path: Path, *, total: int = 12, unit_size: int = 4, run_id: str = "r"):  # noqa: ANN202
+def _run(tmp_path: Path, *, total: int = 12, unit_size: int = 4, run_id: str = "r",
+         storage_prefix: str = ""):  # noqa: ANN202
     blob = LocalBlobStore(str(tmp_path / "blobs"))
     state = SqliteStateStore(tmp_path / "runs.db")
     source = get_pack("invoice").default_source(max_line_items=4)
     create_run(state, run_id=run_id, pack="invoice", config_id="cfg",
                total=total, unit_size=unit_size)
     stats = work_run(state, run_id=run_id, source=source,
-                     renderer=HtmlRenderer(get_pack("invoice")), blob=blob)
+                     renderer=HtmlRenderer(get_pack("invoice")), blob=blob,
+                     storage_prefix=storage_prefix)
     return blob, state, stats
 
 
@@ -190,3 +192,40 @@ def test_manifest_keys_do_not_leak_into_the_golden_export(tmp_path: Path) -> Non
     stats = export_run("r", blob, sink)
     assert set(stats.tables) == {"invoices", "line_items"}
     assert "manifest" not in stats.tables
+
+
+# ── Nested layout (storage_prefix) ──────────────────────────────────────────
+def test_a_nested_run_writes_everything_under_the_prefix(tmp_path: Path) -> None:
+    """A run can nest its blobs under a shared parent; the run id stays flat."""
+    blob, _, _ = _run(tmp_path, total=8, unit_size=4, storage_prefix="corpus/anchor")
+    # documents, golden and the manifest land under the nested prefix …
+    assert any(k.startswith("corpus/anchor/documents/") for k in blob.iter_keys("corpus/"))
+    assert any(k.startswith("corpus/anchor/golden/") for k in blob.iter_keys("corpus/"))
+    assert blob.exists("corpus/anchor/manifest.json")
+    # … and nothing lands at the flat run-id path
+    assert list(blob.iter_keys("r/")) == []
+
+
+def test_a_nested_run_manifest_reads_back_with_the_prefix(tmp_path: Path) -> None:
+    blob, _, _ = _run(tmp_path, total=8, unit_size=4, storage_prefix="corpus/anchor")
+    assert is_complete(blob, "r", storage_prefix="corpus/anchor")
+    m = read_run_manifest(blob, "r", storage_prefix="corpus/anchor")
+    assert m.run_id == "r" and m.total_documents == 8           # run id stays flat
+    assert m.document_key_pattern.startswith("corpus/anchor/documents/")
+    keys = set(enumerate_document_keys(blob, "r", storage_prefix="corpus/anchor"))
+    assert keys and all(k.startswith("corpus/anchor/documents/") for k in keys)
+
+
+def test_export_reads_from_the_nested_prefix(tmp_path: Path) -> None:
+    from docloom.core.pipeline import export_run
+    from docloom.core.sinks import ParquetSink
+    blob, _, _ = _run(tmp_path, total=8, unit_size=4, storage_prefix="corpus/anchor")
+    stats = export_run("r", blob, ParquetSink(tmp_path / "export"), storage_prefix="corpus/anchor")
+    assert stats.total_rows > 0 and "invoices" in stats.tables
+
+
+def test_the_default_flat_layout_is_unchanged(tmp_path: Path) -> None:
+    blob, _, _ = _run(tmp_path, total=8, unit_size=4)          # no prefix
+    assert blob.exists("r/manifest.json")
+    m = read_run_manifest(blob, "r")
+    assert m.document_key_pattern == "{run_id}/documents/unit-{unit:06d}/{record_id}{ext}"

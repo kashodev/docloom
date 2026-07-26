@@ -54,16 +54,21 @@ def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def root_key(run_id: str) -> str:
-    return f"{run_id}/{ROOT_NAME}"
+# ``prefix`` is a run's storage sub-path. It defaults to the ``run_id`` (the
+# historical, flat layout), but a run can nest its output under a shared parent —
+# e.g. a multi-slice deploy putting ``<corpus>/<slice>/…`` — by passing a prefix
+# distinct from its (still-flat, unique) run id. The state store and golden
+# ``run_id`` column are unaffected; only where blobs land changes.
+def root_key(prefix: str) -> str:
+    return f"{prefix}/{ROOT_NAME}"
 
 
-def parts_prefix(run_id: str) -> str:
-    return f"{run_id}/{_PARTS_DIR}/"
+def parts_prefix(prefix: str) -> str:
+    return f"{prefix}/{_PARTS_DIR}/"
 
 
-def part_key(run_id: str, unit_index: int) -> str:
-    return f"{run_id}/{_PARTS_DIR}/unit-{unit_index:06d}.json"
+def part_key(prefix: str, unit_index: int) -> str:
+    return f"{prefix}/{_PARTS_DIR}/unit-{unit_index:06d}.json"
 
 
 # ── Per-unit part ───────────────────────────────────────────────────────────
@@ -226,10 +231,10 @@ class RunManifest:
 
 
 # ── Writing ─────────────────────────────────────────────────────────────────
-def write_unit_manifest(blob: BlobStore, unit: UnitManifest) -> None:
+def write_unit_manifest(blob: BlobStore, unit: UnitManifest, *, prefix: str = "") -> None:
     """Write one unit's part. Called by the worker after the unit's blobs land
     and before the unit is marked done, so a done unit always has a part."""
-    blob.put(part_key(unit.run_id, unit.unit_index), unit.to_json(), "application/json")
+    blob.put(part_key(prefix or unit.run_id, unit.unit_index), unit.to_json(), "application/json")
 
 
 def _part_ref(key: str, raw: bytes, unit: UnitManifest) -> PartRef:
@@ -254,6 +259,7 @@ def write_run_manifest(
     catalogue_version: str = "",
     created_at: str = "",
     completed_at: str = "",
+    storage_prefix: str = "",
 ) -> RunManifest:
     """Assemble and write the root manifest from the unit parts on the bucket.
 
@@ -266,10 +272,11 @@ def write_run_manifest(
     completeness over a gap would be worse than none, because a consumer trusts
     it precisely so it does not have to check.
     """
+    prefix = storage_prefix or run_id
     parts: list[PartRef] = []
     table_rows: dict[str, int] = {}
     total_documents = 0
-    for key in sorted(blob.iter_keys(parts_prefix(run_id))):
+    for key in sorted(blob.iter_keys(parts_prefix(prefix))):
         raw = blob.get(key)
         unit = UnitManifest.from_json(raw)
         parts.append(_part_ref(key, raw, unit))
@@ -285,6 +292,14 @@ def write_run_manifest(
             f"refusing to write a root manifest over a gap (missing e.g. {missing[:5]})"
         )
 
+    # The advisory key patterns describe the real layout. Only overridden when the
+    # storage prefix differs from the run id, so a flat run's manifest is unchanged.
+    patterns: dict[str, str] = {}
+    if prefix != run_id:
+        patterns = {
+            "document_key_pattern": prefix + "/documents/unit-{unit:06d}/{record_id}{ext}",
+            "shard_key_pattern": prefix + "/golden/{table}/unit-{unit:06d}.jsonl.gz",
+        }
     manifest = RunManifest(
         run_id=run_id,
         pack=pack,
@@ -296,8 +311,9 @@ def write_run_manifest(
         total_documents=total_documents,
         table_rows=table_rows,
         parts=tuple(sorted(parts, key=lambda p: p.unit_index)),
+        **patterns,
     )
-    blob.put(root_key(run_id), manifest.to_json(), "application/json")
+    blob.put(root_key(prefix), manifest.to_json(), "application/json")
     return manifest
 
 
@@ -306,14 +322,15 @@ def _now() -> str:
 
 
 # ── Consuming (the cross-app contract) ──────────────────────────────────────
-def read_run_manifest(blob: BlobStore, run_id: str) -> RunManifest:
+def read_run_manifest(blob: BlobStore, run_id: str, *, storage_prefix: str = "") -> RunManifest:
     """Load a run's root manifest. Raises ``FileNotFoundError`` if absent — which
     for a consumer means the run is not complete, not that it is malformed."""
+    prefix = storage_prefix or run_id
     try:
-        raw = blob.get(root_key(run_id))
+        raw = blob.get(root_key(prefix))
     except KeyError as exc:
         raise FileNotFoundError(
-            f"no run manifest at {root_key(run_id)!r} — the run is incomplete or "
+            f"no run manifest at {root_key(prefix)!r} — the run is incomplete or "
             "does not exist; a completed run always has one"
         ) from exc
     manifest = RunManifest.from_json(raw)
@@ -326,9 +343,9 @@ def read_run_manifest(blob: BlobStore, run_id: str) -> RunManifest:
     return manifest
 
 
-def is_complete(blob: BlobStore, run_id: str) -> bool:
+def is_complete(blob: BlobStore, run_id: str, *, storage_prefix: str = "") -> bool:
     """Whether a consumer may pull this run — i.e. its root manifest exists."""
-    return blob.exists(root_key(run_id))
+    return blob.exists(root_key(storage_prefix or run_id))
 
 
 @dataclass(slots=True)
@@ -383,14 +400,15 @@ def verify_run(blob: BlobStore, run_id: str, *, deep: bool = False) -> Verificat
     return report
 
 
-def enumerate_document_keys(blob: BlobStore, run_id: str) -> Iterable[str]:
+def enumerate_document_keys(blob: BlobStore, run_id: str, *,
+                            storage_prefix: str = "") -> Iterable[str]:
     """Yield every document key in the run, from the manifest alone.
 
     This is the method a consumer uses instead of listing the bucket: the
     manifest is authoritative, so a document that exists but is not listed here
     is not part of the run, and a listed one that is missing is a caught error.
     """
-    manifest = read_run_manifest(blob, run_id)
+    manifest = read_run_manifest(blob, run_id, storage_prefix=storage_prefix)
     for ref in manifest.parts:
         unit = UnitManifest.from_json(blob.get(ref.key))
         for document in unit.documents:

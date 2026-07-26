@@ -36,16 +36,18 @@ class ExportStats:
         return sum(self.tables.values())
 
 
-def export_run(run_id: str, blob: BlobStore, sink: GoldenSink) -> ExportStats:
+def export_run(run_id: str, blob: BlobStore, sink: GoldenSink,
+               *, storage_prefix: str = "") -> ExportStats:
     """Read a run's golden shards and write them to ``sink``.
 
     Shards are grouped by table and written in key order, so a table's Parquet
     parts land deterministically. ``sink.register`` is called once at the end to
     make the tables queryable (create DuckDB views / BigQuery external tables;
-    a no-op for plain Parquet).
+    a no-op for plain Parquet). ``storage_prefix`` (default: the run id) is where
+    the run's blobs live — set it for a run nested under a shared parent.
     """
     bind(run_id=run_id)
-    prefix = f"{run_id}/golden/"
+    prefix = f"{storage_prefix or run_id}/golden/"
     shards_by_table: dict[str, list[str]] = {}
     for key in blob.iter_keys(prefix):
         table = key[len(prefix):].split("/", 1)[0]

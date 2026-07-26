@@ -172,6 +172,10 @@ def generate(
     config_id: str = typer.Option("default", help="Run config id (recorded on the run)"),
     max_line_items: int = typer.Option(8000, help="Hard cap on line items per document"),
     resume: bool = typer.Option(False, help="Resume: re-queue failed units, then continue"),
+    storage_prefix: str = typer.Option(
+        "", "--storage-prefix",
+        help="Sub-path under storage for this run's blobs (default: the run id). Set to "
+             "<parent>/<name> to nest several runs under one folder."),
     storage: str = _STORAGE,
     state: str = _STATE,
     llm_usage: str = _USAGE,
@@ -228,7 +232,8 @@ def generate(
                    total=total, unit_size=unit_size)
 
     try:
-        stats = work_run(store, run_id=run_id, source=source, renderer=renderer, blob=blob)
+        stats = work_run(store, run_id=run_id, source=source, renderer=renderer, blob=blob,
+                         storage_prefix=storage_prefix)
     finally:
         if isinstance(renderer, PdfRenderer):
             renderer.close()
@@ -546,12 +551,16 @@ def export(
     run_id: str = typer.Option(..., help="Run to export"),
     sink: str = typer.Option("./out/golden", envvar="DOCLOOM_SINK",
                              help="Golden sink URI (parquet:// | duckdb:// | bigquery://…)"),
+    storage_prefix: str = typer.Option(
+        "", "--storage-prefix",
+        help="Sub-path the run's blobs live under (default: the run id); match what "
+             "`generate` used for a nested run."),
     storage: str = _STORAGE,
 ) -> None:
     """Export a run's golden shards into a queryable sink."""
     blob = open_store(storage)
     target = open_sink(sink)
-    stats = export_run(run_id, blob, target)
+    stats = export_run(run_id, blob, target, storage_prefix=storage_prefix)
     if not stats.tables:
         typer.echo(f"no golden shards found for run {run_id!r} under {storage}")
         raise typer.Exit(1)
