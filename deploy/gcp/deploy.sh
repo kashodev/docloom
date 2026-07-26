@@ -399,6 +399,21 @@ run_id_for() {
   [[ "${SLICE_COUNT}" -eq 1 ]] && echo "${RUN_ID}" || echo "${RUN_ID}-$1"
 }
 
+# Storage sub-path for a slice. A single-slice run stays flat (empty → the CLI
+# defaults it to the run id). A multi-slice run nests every slice under one
+# parent folder, `<run.id>/<slice>/…`, instead of sibling `<run.id>-<slice>/`
+# folders — so one logical run is one directory. The run id (above) stays flat
+# and unique, so state, resume, export and the golden run_id column are unchanged.
+prefix_for() {
+  [[ "${SLICE_COUNT}" -eq 1 ]] && echo "" || echo "${RUN_ID}/$1"
+}
+
+# The storage path a slice's blobs actually live under: nested for multi-slice,
+# the flat run id otherwise. Used for the teardown/output paths.
+path_for() {
+  local p; p="$(prefix_for "$1")"; [[ -n "${p}" ]] && echo "${p}" || run_id_for "$1"
+}
+
 # Feed the slice table to a `while read` loop. Fields are separated by \x1f
 # rather than a tab: `read` treats whitespace delimiters as collapsible, so an
 # empty composition field would shift every later field left.
@@ -412,6 +427,8 @@ gen_args() {  # name, pack, count, format, composition flags, [extra flag]
   # golden rows — filter documents by run_id, not by this.
   args+="|--config-id=${name}|--max-line-items=${MAX_LINE_ITEMS}"
   args+="|--storage=${STORAGE_URI}|--state=${STATE_URI}|--llm-usage=${LLM_USAGE}"
+  local prefix; prefix="$(prefix_for "${name}")"
+  [[ -n "${prefix}" ]] && args+="|--storage-prefix=${prefix}"
   # Draw descriptions from a published catalogue when one is configured; omitted,
   # the CLI falls back to the seed catalogue exactly as before.
   [[ -n "${CATALOGUE_URI}" ]] && args+="|--catalogue=${CATALOGUE_URI}"
@@ -645,10 +662,11 @@ export_golden() {
   while IFS=$'\x1f' read -r name _; do
     [[ -n "${name}" ]] || continue
     say "Exporting $(run_id_for "${name}") → ${SINK_URI}"
+    local prefix_arg=""; p="$(prefix_for "${name}")"; [[ -n "${p}" ]] && prefix_arg="|--storage-prefix=${p}"
     # One task: export is a single sequential read of the shards.
     gcloud run jobs execute "${JOB}" --region="${REGION}" --project="${PROJECT}" \
       --wait --tasks=1 --parallelism=1 \
-      --args="^|^export|--run-id=$(run_id_for "${name}")|--storage=${STORAGE_URI}|--sink=${SINK_URI}"
+      --args="^|^export|--run-id=$(run_id_for "${name}")|--storage=${STORAGE_URI}|--sink=${SINK_URI}${prefix_arg}"
   done < <(each_slice)
 }
 
@@ -656,13 +674,13 @@ teardown() {
   say "Teardown — deletes this run's output. Not reversible."
   echo "  job    : ${JOB}"
   while IFS=$'\x1f' read -r name _; do
-    [[ -n "${name}" ]] && echo "  output : gs://${BUCKET}/runs/$(run_id_for "${name}")"
+    [[ -n "${name}" ]] && echo "  output : gs://${BUCKET}/runs/$(path_for "${name}")"
   done < <(each_slice)
   read -r -p "  proceed? [y/N] " reply
   [[ "${reply}" == "y" ]] || { echo "  aborted"; exit 0; }
   gcloud run jobs delete "${JOB}" --region="${REGION}" --project="${PROJECT}" --quiet || true
   while IFS=$'\x1f' read -r name _; do
-    [[ -n "${name}" ]] && gcloud storage rm -r "gs://${BUCKET}/runs/$(run_id_for "${name}")" \
+    [[ -n "${name}" ]] && gcloud storage rm -r "gs://${BUCKET}/runs/$(path_for "${name}")" \
       --project="${PROJECT}" || true
   done < <(each_slice)
   echo "  bucket, Firestore database and service account left in place"

@@ -106,6 +106,7 @@ def work_run(
     source: DocumentSource,
     renderer: DocumentRenderer,
     blob: BlobStore,
+    storage_prefix: str = "",
 ) -> WorkerStats:
     """Drive a single worker over a run until its pool is empty.
 
@@ -125,7 +126,8 @@ def work_run(
     prepare_source(source, run_id)
     _log.info("worker started")
     worker = GenerationWorker(
-        run_id=run_id, source=source, renderer=renderer, blob=blob, state=state
+        run_id=run_id, source=source, renderer=renderer, blob=blob, state=state,
+        storage_prefix=storage_prefix,
     )
     stats = worker.run()
     _log.info("worker finished", completed=stats.units_completed,
@@ -141,7 +143,7 @@ def work_run(
         # worker drains a complete run.
         if run is not None and run.state is not RunState.COMPLETED:
             state.set_run_state(run_id, RunState.COMPLETED)
-            _write_run_manifest(run, blob, source)
+            _write_run_manifest(run, blob, source, storage_prefix=storage_prefix)
             _log.info("run completed", units=run.total_units,
                       documents=progress[WorkUnitState.DONE])
         else:
@@ -158,7 +160,8 @@ def work_run(
     return stats
 
 
-def _write_run_manifest(run: Run, blob: BlobStore, source: DocumentSource) -> None:
+def _write_run_manifest(run: Run, blob: BlobStore, source: DocumentSource,
+                        *, storage_prefix: str = "") -> None:
     """Write the root manifest now the run is complete.
 
     Every unit part exists by here — a unit's part lands before it is marked
@@ -177,4 +180,5 @@ def _write_run_manifest(run: Run, blob: BlobStore, source: DocumentSource) -> No
         # every golden row, surfaced once at the run level for a consumer.
         catalogue_version=getattr(getattr(source, "_catalogue", None), "version", ""),
         created_at=run.created_at.isoformat(),
+        storage_prefix=storage_prefix,
     )

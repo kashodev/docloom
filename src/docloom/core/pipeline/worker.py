@@ -63,8 +63,12 @@ class GenerationWorker:
         renderer: DocumentRenderer,
         blob: BlobStore,
         state: StateStore,
+        storage_prefix: str = "",
     ) -> None:
         self._run_id = run_id
+        # Where this run's blobs land. Defaults to the run id (the flat layout);
+        # a nested run passes a shared parent prefix (e.g. <corpus>/<slice>).
+        self._prefix = storage_prefix or run_id
         self._source = source
         self._renderer = renderer
         self._blob = blob
@@ -144,6 +148,7 @@ class GenerationWorker:
                 start_index=unit.start_index, count=unit.count,
                 documents=tuple(documents), shards=tuple(shards),
             ),
+            prefix=self._prefix,
         )
         return unit.count
 
@@ -151,7 +156,7 @@ class GenerationWorker:
     # Sharded by unit index so a run's blobs group naturally and a retry (same
     # unit, same deterministic content) overwrites in place.
     def _document_key(self, unit: WorkUnit, record_id: str, extension: str) -> str:
-        return f"{self._run_id}/documents/unit-{unit.unit_index:06d}/{record_id}{extension}"
+        return f"{self._prefix}/documents/unit-{unit.unit_index:06d}/{record_id}{extension}"
 
     def _shard_key(self, unit: WorkUnit, table: str) -> str:
-        return f"{self._run_id}/golden/{table}/unit-{unit.unit_index:06d}.jsonl.gz"
+        return f"{self._prefix}/golden/{table}/unit-{unit.unit_index:06d}.jsonl.gz"
