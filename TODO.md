@@ -58,6 +58,36 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         progress marker in the bucket) tells it the expected unit count so it can
         tell "not done yet" from "done, here is everything".
 
+- [ ] **Aggregate root manifest over a multi-slice run.** A single `generate` now
+      nests its slices under one folder — `runs/<run>/<slice>/…`, each with its own
+      root manifest (shipped in #40) — but there is still no single top-level
+      `runs/<run>/manifest.json` describing the whole run. A first attempt at that
+      aggregate (branch `feat/run-group-manifest`, PR #41 — **closed unmerged**)
+      added a `GroupManifest` + `SliceRef`, a `finalize-run` CLI command, and had
+      `deploy.sh` write it. It worked, but *how* it got written was unsatisfying —
+      both delivery mechanisms were rejected:
+      - **A separate finalize job** (what #41 shipped) spends a whole Cloud Run
+        execution — cold start, image pull — on a sub-second read-3-manifests,
+        write-1 operation. Wasteful for what it does. (It also hit a `gcloud run
+        jobs execute` quirk: `--parallelism` is not a valid execute-time override,
+        only `--tasks` is. See the related note below.)
+      - **Folding it into the last slice's `generate`** ties the aggregate write to
+        that slice's `--wait`, which can block for a very long time on a large run;
+        if the operator's terminal drops, the manifest is never written. Rejected
+        for the same reason detached dispatch (studio item 9) is wanted.
+      - **Investigate further — the wanted shape.** Write the aggregate either from
+        a cheap standalone **CLI command** the operator runs *once, locally against
+        `gs://`* when the slices are done (seconds, no job, no long `--wait`), **or**
+        from a **small script**. Decouple it from any long-running job and from a
+        live terminal. Open questions: where the slice list comes from (config vs
+        bucket discovery), how the operator/tool knows every slice is complete
+        (per-slice roots exist ⇒ complete — that's the building block), and where it
+        belongs (a `docloom` subcommand, a `scripts/` helper, or the studio flow).
+      - Separately: **`deploy.sh` on `main` passes `--parallelism=1` to `gcloud run
+        jobs execute` in `status()` and `export_golden()`** (pre-existing, not from
+        #41), which gcloud rejects as an unrecognized argument. Drop it — `--tasks=1`
+        already pins a single task. Small standalone fix, unrelated to the manifest.
+
 - [x] **A "crisp" (well-preserved) handwritten variant.** Shipped as the `wear`
       dial (0..1) on the record: one value scales the SVG ink displacement at
       render time and the scan degradation afterwards, so the two always agree.
