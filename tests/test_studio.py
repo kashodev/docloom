@@ -263,10 +263,24 @@ def test_build_generate_args_prompts_when_interactive() -> None:
 
 
 def test_build_catalogue_args_prompts_with_defaults() -> None:
-    p = ScriptedPrompter(["v2", "50", "20"])
+    p = ScriptedPrompter(["v2", "50", "20", "procedural"])   # + provider-mix prompt
     a = wizard.build_catalogue_args(p, True, pack="invoice", version="v1", companies=1000,
                                     products_per_company=300, seed=0)
     assert a.version == "v2" and a.companies == 50 and a.products_per_company == 20
+    assert a.mix == "procedural" and a.budget_usd == 0.0     # procedural never asks for a budget
+
+
+def test_build_catalogue_args_llm_mix_then_prompts_budget() -> None:
+    p = ScriptedPrompter(["v2", "50", "20", "cheap-mix", "12.5"])   # mix, then budget
+    a = wizard.build_catalogue_args(p, True, pack="invoice", version="v1", companies=1000,
+                                    products_per_company=300, seed=0)
+    assert a.mix == "cheap-mix" and a.budget_usd == 12.5
+
+
+def test_build_catalogue_args_mix_flag_bypasses_prompts() -> None:
+    a = wizard.build_catalogue_args(None, False, pack="invoice", version="v1", companies=10,
+                                    products_per_company=5, seed=0, mix="anthropic", budget_usd=7)
+    assert a.mix == "anthropic" and a.budget_usd == 7.0
 
 
 def test_choose_project_interactive_creates_when_none_saved(tmp_path: Path) -> None:
@@ -486,6 +500,76 @@ def test_gcp_studio_dry_run_via_the_command(tmp_path: Path) -> None:
     res = runner.invoke(app, argv, env=env)
     assert res.exit_code == 0, res.output
     assert "deploy.sh" in res.output and "gcp:acme" in res.output
+
+
+# ── provider mixes (LLM catalogue) ──────────────────────────────────────────
+def test_mixes_procedural_is_keyless_and_llm_mixes_carry_secrets() -> None:
+    from docloom.studio.mixes import get_mix, mix_names
+    assert "procedural" in mix_names() and "cheap-mix" in mix_names()
+    assert not get_mix("procedural").is_llm and get_mix("procedural").secrets_map() == {}
+    cheap = get_mix("cheap-mix")
+    assert cheap.is_llm and {p["name"] for p in cheap.providers_block()} == {
+        "deepseek", "dashscope", "anthropic"}
+    assert set(cheap.secrets_map()) == {
+        "DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY", "ANTHROPIC_API_KEY"}
+    with pytest.raises(StudioError, match="unknown provider mix"):
+        get_mix("nope")
+
+
+def test_gcp_catalogue_procedural_has_no_providers_block() -> None:
+    t = GcpTarget()
+    p = t.normalise(ProjectSpec(target="gcp", id="acme"))
+    r = t.run_catalogue(p, CatalogueArgs(version="v2"), dry_run=True)   # default mix = procedural
+    cfg = _cfg_from(r.command)["catalogue"]
+    assert "providers" not in cfg and "secrets" not in cfg and "budget_usd" not in cfg
+
+
+def test_gcp_catalogue_llm_mix_emits_providers_fallback_secrets_budget() -> None:
+    t = GcpTarget()
+    p = t.normalise(ProjectSpec(target="gcp", id="acme"))
+    r = t.run_catalogue(p, CatalogueArgs(version="v2", mix="cheap-mix", budget_usd=25),
+                        dry_run=True)
+    cfg = _cfg_from(r.command)["catalogue"]
+    assert {pr["name"] for pr in cfg["providers"]} == {"deepseek", "dashscope", "anthropic"}
+    assert cfg["budget_usd"] == 25 and cfg["secrets"]["ANTHROPIC_API_KEY"] == "anthropic-api-key"
+    assert cfg["fallback"][0]["name"] == "dashscope"     # quarantine leans on the cheap survivor
+    assert "cheap-mix" in r.summary
+
+
+def test_local_catalogue_llm_mix_writes_a_providers_file(tmp_path: Path) -> None:
+    t = LocalTarget()
+    p = t.provision(ProjectSpec(target="local", id="ws", root=str(tmp_path / "ws")))
+    r = t.run_catalogue(p, CatalogueArgs(version="v1", mix="anthropic", budget_usd=5), dry_run=True)
+    assert "--providers" in r.argv and "--budget-usd" in r.argv
+    pf = Path(r.argv[r.argv.index("--providers") + 1])
+    assert pf.is_file() and "anthropic" in pf.read_text()
+
+
+def test_capture_catalogue_secrets_saves_names_never_values(tmp_path: Path) -> None:
+    from docloom.cli import _capture_catalogue_secrets
+    reg = Registry(tmp_path / "projects.yaml")
+    proj = Project(target="gcp", id="acme")
+    reg.add(proj)
+    updated = _capture_catalogue_secrets(reg, proj, CatalogueArgs(mix="cheap-mix", budget_usd=25))
+    assert set(updated.secrets_present) == {"deepseek-api-key", "dashscope-api-key",
+                                            "anthropic-api-key"}
+    assert reg.get("gcp:acme").secrets_present == updated.secrets_present   # persisted
+    # a procedural mix records nothing
+    assert _capture_catalogue_secrets(reg, proj, CatalogueArgs()).secrets_present == ()
+
+
+def test_studio_catalog_llm_mix_dry_run_prints_secrets_and_plan(tmp_path: Path) -> None:
+    home = tmp_path / ".docloom"
+    Registry(home / "projects.yaml").add(
+        Project(target="gcp", id="acme", region="us-central1", bucket="acme-docloom",
+                resources={"state": "firestore://acme/(default)"}), make_default=True)
+    res = runner.invoke(app, ["studio", "-p", "gcp", "--project", "acme", "--step", "catalog",
+                              "--version", "v2", "--mix", "cheap-mix", "--budget", "25",
+                              "--dry-run"],
+                        env={"DOCLOOM_HOME": str(home)})
+    assert res.exit_code == 0, res.output
+    assert "Secret Manager secret" in res.output and "anthropic-api-key" in res.output
+    assert "cheap-mix" in res.output
 
 
 # ── onboarding an existing gcp project ──────────────────────────────────────

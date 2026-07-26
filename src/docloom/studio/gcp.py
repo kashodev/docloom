@@ -88,18 +88,31 @@ class GcpTarget:
     # ── steps ───────────────────────────────────────────────────────────────
     def run_catalogue(self, project: Project, args: CatalogueArgs, *,
                       dry_run: bool = False, capture: bool = False) -> Result:
+        from docloom.studio.mixes import get_mix
         out = f"gs://{project.bucket}/catalogues/{args.pack}/{args.version}"
-        config = self._base_config(project) | {
-            "catalogue": {"out": out, "version": args.version, "companies": args.companies,
-                          "products_per_company": args.products_per_company}
-        }   # no providers ⇒ the procedural build; an LLM mix is a later addition
+        cat: dict[str, object] = {"out": out, "version": args.version,
+                                  "companies": args.companies,
+                                  "products_per_company": args.products_per_company}
+        # An LLM mix expands to the exact catalogue.providers/fallback/secrets block
+        # deploy.sh already runs — the API keys stay in Secret Manager (the block
+        # carries only the secret *names*). No mix ⇒ the procedural build, byte-for-
+        # byte as before.
+        mix = get_mix(args.mix)
+        if mix.is_llm:
+            cat |= {"providers": mix.providers_block(), "fallback": mix.fallback_block(),
+                    "secrets": mix.secrets_map(), "concurrency": 8}
+            if args.budget_usd:
+                cat["budget_usd"] = args.budget_usd
+        config = self._base_config(project) | {"catalogue": cat}
         links = (
             Link("catalogue", out),
             Link("console", _bucket_url(project.bucket,
                                         f"catalogues/{args.pack}/{args.version}", project.id)),
         )
+        summary = (f"catalogue {args.version} → {out}"
+                   + (f" · {mix.name} ≤ ${args.budget_usd:g}" if mix.is_llm else " · procedural"))
         return self._run(config, ["catalogue"], dry_run, capture,
-                         summary=f"catalogue {args.version} → {out}", links=links)
+                         summary=summary, links=links)
 
     def run_generate(self, project: Project, args: GenerateArgs, *,
                      dry_run: bool = False, capture: bool = False) -> Result:

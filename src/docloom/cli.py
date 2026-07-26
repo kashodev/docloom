@@ -664,6 +664,7 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
                 fmt: str = "pdf", condition: str = "", issue_date_from: str = "",
                 issue_date_to: str = "", version: str = "v1", companies: int = 1000,
                 products_per_company: int = 300, seed: int = 0, sink: str = "",
+                mix: str = "procedural", budget_usd: float = 0.0,
                 onboard: bool = False, region: str = "", bucket: str = "",
                 yes: bool = False, wait: bool = False, dry_run: bool = False) -> None:
     """The studio flow with real defaults — the `studio` command and a bare
@@ -695,9 +696,11 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
         df, dt, cfg, snk = ((issue_date_from, issue_date_to, config, sink) if one_shot
                             else ("", "", "", ""))
         if step_enum is Step.CATALOG:
+            mx, bud = (mix, budget_usd) if one_shot else ("procedural", 0.0)
             return wizard.build_catalogue_args(prompter, interactive, pack=pack_name,
                                                version=version, companies=companies,
-                                               products_per_company=products_per_company, seed=seed)
+                                               products_per_company=products_per_company,
+                                               seed=seed, mix=mx, budget_usd=bud)
         if step_enum is Step.PDFS:
             return wizard.build_generate_args(prompter, interactive, pack=pack_name, run_id=rid,
                                               total=tot, catalogue=cat, fmt=fmt, condition=cond,
@@ -744,6 +747,13 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
                 typer.echo("")
                 continue
             first = False
+
+            # An LLM catalogue on a cloud target needs API keys in Secret Manager.
+            # Record the secret *names* on the project (never a value), and tell the
+            # operator how to create any that are missing — deploy.sh then verifies
+            # them and grants access at build time.
+            if step_enum is Step.CATALOG and provider_name != "local":
+                proj = _capture_catalogue_secrets(registry, proj, args)
 
             preview = run_step(target, proj, step_enum, args, dry_run=True)
             typer.echo(f"\n  step     {step_enum.value}")
@@ -824,6 +834,9 @@ def studio(
     products_per_company: int = typer.Option(300, "--products-per-company",
                                               help="SKUs each (catalog)"),
     seed: int = typer.Option(0, "--seed", help="Build seed (catalog)"),
+    mix: str = typer.Option("procedural", "--mix",
+                            help="LLM provider mix (catalog): procedural | cheap-mix | anthropic"),
+    budget_usd: float = typer.Option(0.0, "--budget", help="Hard USD cap for an LLM catalogue"),
     sink: str = typer.Option("", "--sink", help="Golden sink uri (export); '' = local DuckDB"),
     yes: bool = typer.Option(False, "--yes", help="Skip the interactive confirmation"),
     wait: bool = typer.Option(False, "--wait",
@@ -844,8 +857,8 @@ def studio(
                 run_id=run_id, total=total, catalogue=catalogue, fmt=fmt, condition=condition,
                 issue_date_from=issue_date_from, issue_date_to=issue_date_to, version=version,
                 companies=companies, products_per_company=products_per_company, seed=seed,
-                sink=sink, onboard=onboard, region=region, bucket=bucket, yes=yes, wait=wait,
-                dry_run=dry_run)
+                mix=mix, budget_usd=budget_usd, sink=sink, onboard=onboard, region=region,
+                bucket=bucket, yes=yes, wait=wait, dry_run=dry_run)
 
 
 @studio_app.command("status")
@@ -874,6 +887,33 @@ def studio_status(
         return
     if not result.ok:
         raise typer.Exit(1)
+
+
+def _capture_catalogue_secrets(registry, project, args):
+    """For an LLM catalogue on a cloud target: record the mix's secret *names* on
+    the project (never a value) and print how to create any missing ones. Returns
+    the (possibly updated) project. A procedural build needs no keys — a no-op."""
+    from dataclasses import replace
+
+    from docloom.studio.mixes import get_mix
+    mix = get_mix(getattr(args, "mix", "procedural"))
+    if not mix.is_llm:
+        return project
+    secrets = mix.secrets_map()                       # env var → Secret Manager name
+    names = tuple(secrets.values())
+    typer.echo(f"\n  this mix needs {len(names)} Secret Manager secret(s) "
+               "(names saved to the project; values stay in Secret Manager):")
+    for env, name in secrets.items():
+        typer.echo(f"    {env:<20} → {name}")
+    typer.echo("  create any that are missing (once), then the build reads them:")
+    for name in names:
+        typer.echo(f'    printf %s "$YOUR_KEY" | gcloud secrets create {name} '
+                   f"--data-file=- --project={project.id}")
+    merged = tuple(sorted(set(project.secrets_present) | set(names)))
+    if merged != project.secrets_present:
+        project = replace(project, secrets_present=merged)
+        registry.add(project)                          # persist names only
+    return project
 
 
 def _resolve_saved_project(registry, project: str, provider: str):

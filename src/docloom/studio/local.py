@@ -59,17 +59,30 @@ class LocalTarget:
     # ── steps ───────────────────────────────────────────────────────────────
     def run_catalogue(self, project: Project, args: CatalogueArgs, *,
                       dry_run: bool = False, capture: bool = False) -> Result:
+        from docloom.studio.mixes import get_mix
         out = str(Path(project.root, "catalogues", args.pack, args.version))
         argv = [
             "catalogue", "--out", out, "--version", args.version,
             "--pack", args.pack, "--companies", str(args.companies),
             "--products-per-company", str(args.products_per_company),
             "--seed", str(args.seed),
-        ]   # no --providers => the procedural, key-free build
+        ]
+        # An LLM mix writes a providers file and points --providers at it; the API
+        # keys come from the environment (the factory reads them at build time).
+        # No mix ⇒ the procedural, key-free build, unchanged.
+        mix = get_mix(args.mix)
+        if mix.is_llm:
+            providers_file = self._write_providers(project, mix)
+            argv += ["--providers", providers_file]
+            if args.budget_usd:
+                argv += ["--budget-usd", f"{args.budget_usd:g}"]
+            note = f"{mix.name} (keys from env; ≤ ${args.budget_usd:g})"
+        else:
+            note = "procedural, no keys"
         return self._invoke(
             argv, dry_run, capture=capture,
             summary=f"catalogue {args.version} · {args.companies} companies x "
-                    f"{args.products_per_company} (procedural, no keys)",
+                    f"{args.products_per_company} ({note})",
             links=(Link("catalogue", out),),
         )
 
@@ -117,6 +130,17 @@ class LocalTarget:
         )
 
     # ── internals ───────────────────────────────────────────────────────────
+    def _write_providers(self, project: Project, mix) -> str:
+        """Write the mix's provider block to a file for ``--providers``. Lives in
+        the workspace (not a temp dir) so the plan is inspectable and re-runnable."""
+        import yaml
+        path = Path(project.root, "providers.yaml")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(yaml.safe_dump(
+            {"providers": mix.providers_block(), "fallback": mix.fallback_block()},
+            sort_keys=False))
+        return str(path)
+
     def _storage(self, project: Project) -> str:
         return str(Path(project.root, "blobs"))
 
