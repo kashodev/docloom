@@ -6,6 +6,8 @@ the later wizard both converge.
 """
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 from docloom.studio.registry import Registry
@@ -59,6 +61,39 @@ def resolve_project(
             "(a new name is created and saved)."
         )
     return saved
+
+
+def status_of(project: Project, run_id: str, *, wait: bool = False,
+              dry_run: bool = False, capture: bool = False) -> Result:
+    """Reattach to a run and report its progress — the reader half of detached
+    dispatch. A cloud run (`deploy.sh dispatch`) reports into the project's state
+    store, so this reads that store directly with ``docloom status`` rather than
+    holding a job open; ``wait`` streams until the run finishes. It is
+    target-agnostic: the state URI (``firestore://…`` for gcp, a SQLite path for
+    local) comes from the saved project, so one path serves every target."""
+    state_uri = project.resources.get("state")
+    if not state_uri:
+        raise StudioError(
+            f"project {project.ref} has no recorded state store to read a run from "
+            "— re-provision or onboard it so its state URI is saved.")
+    argv = ["status", "--run-id", run_id, "--state", state_uri]
+    if wait:
+        argv.append("--wait")
+    command = "docloom " + " ".join(argv)
+    summary = f"status {run_id}" + (" (streaming until done)" if wait else "")
+    if dry_run:
+        return Result(ok=True, summary=summary, argv=tuple(argv), command=command, run_id=run_id)
+    proc = subprocess.run([sys.executable, "-m", "docloom", *argv],
+                          check=False, capture_output=capture, text=capture)
+    ok = proc.returncode == 0
+    detail = ""
+    if capture:
+        tail = (proc.stdout or "").strip().splitlines()[-12:]
+        if not ok and not tail:
+            tail = (proc.stderr or "").strip().splitlines()[-12:]
+        detail = "\n".join(tail)
+    return Result(ok=ok, summary=summary if ok else f"failed: {summary}",
+                  argv=tuple(argv), command=command, run_id=run_id, detail=detail)
 
 
 def run_step(

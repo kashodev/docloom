@@ -570,9 +570,43 @@ def export(
 
 
 @app.command()
-def status(run_id: str = typer.Option(...), state: str = _STATE) -> None:
-    """Show a run's progress."""
-    _print_status(open_state(state), run_id)
+def status(run_id: str = typer.Option(...), state: str = _STATE,
+           wait: bool = typer.Option(False, "--wait",
+                                     help="Poll until the run reaches a terminal state"),
+           interval: float = typer.Option(5.0, "--interval",
+                                          help="Seconds between polls with --wait")) -> None:
+    """Show a run's progress. With --wait, stream it until the run finishes.
+
+    This is the cheap way to follow a **detached** run: a dispatched Cloud Run job
+    (``deploy.sh dispatch``) reports into the same state store, so
+    ``status --wait --state firestore://…`` reattaches from any machine without
+    holding a job open. A line is printed only when the counts change."""
+    store = open_state(state)
+    if not wait:
+        _print_status(store, run_id)
+        return
+
+    import time
+    last: object = None
+    while True:
+        run = store.get_run(run_id)
+        if run is None:
+            typer.echo(f"run {run_id!r} not found")
+            raise typer.Exit(1)
+        p = store.progress(run_id)
+        key = (run.state, p[WorkUnitState.DONE], p[WorkUnitState.FAILED])
+        if key != last:
+            _print_status(store, run_id)
+            last = key
+        outstanding = p[WorkUnitState.PENDING] + p[WorkUnitState.RUNNING]
+        terminal = run.state in (RunState.COMPLETED, RunState.CANCELLED, RunState.FAILED)
+        # Done when the run is terminal, or drained (nothing left to claim) — the
+        # latter catches a run left RUNNING with failed units, which needs a resume.
+        if terminal or outstanding == 0:
+            clean = run.state is RunState.COMPLETED or (
+                outstanding == 0 and p[WorkUnitState.FAILED] == 0)
+            raise typer.Exit(0 if clean else 1)
+        time.sleep(interval)
 
 
 @app.command()
@@ -631,7 +665,7 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
                 issue_date_to: str = "", version: str = "v1", companies: int = 1000,
                 products_per_company: int = 300, seed: int = 0, sink: str = "",
                 onboard: bool = False, region: str = "", bucket: str = "",
-                yes: bool = False, dry_run: bool = False) -> None:
+                yes: bool = False, wait: bool = False, dry_run: bool = False) -> None:
     """The studio flow with real defaults — the `studio` command and a bare
     interactive `docloom` both call this. Walks target → project → pack → step →
     args, prompting only for what a flag left unset, with back/exit navigation."""
@@ -738,6 +772,18 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
                     typer.echo(f"    {link.label:<10} {link.href}")
             if result.ok and result.run_id:
                 registry.set_last_run(proj.ref, result.run_id)
+            # A detached cloud run returns before it finishes; tell the operator how
+            # to reattach, and stream it now if they asked to --wait.
+            if (result.ok and result.run_id and step_enum is Step.PDFS
+                    and provider_name != "local"):
+                reattach = (f"docloom studio status -p {provider_name} "
+                            f"--project {proj.id} --run {result.run_id}")
+                typer.echo("  dispatched — not waiting. Reattach with:")
+                typer.echo(f"    {reattach}")
+                if wait:
+                    typer.echo("  streaming until the run finishes (Ctrl-C to detach)…\n")
+                    from docloom.studio.app import status_of
+                    status_of(proj, result.run_id, wait=True)
             if not loop:
                 if not result.ok:
                     raise typer.Exit(1)
@@ -747,10 +793,16 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
             return
 
 
-@app.command()
+studio_app = typer.Typer(no_args_is_help=False,
+                         help="Orchestrate catalog / pdfs / export — interactively or by flags.")
+app.add_typer(studio_app, name="studio")
+
+
+@studio_app.callback(invoke_without_command=True)
 def studio(
+    ctx: typer.Context,
     provider: str = typer.Option("local", "--provider", "-p",
-                                 help="Deployment target — local (gcp/aws/azure land later)"),
+                                 help="Deployment target — local | gcp (aws/azure land later)"),
     project: str = typer.Option("", "--project",
                                 help="Project / local workspace; created & saved if new"),
     onboard: bool = typer.Option(False, "--onboard",
@@ -774,21 +826,80 @@ def studio(
     seed: int = typer.Option(0, "--seed", help="Build seed (catalog)"),
     sink: str = typer.Option("", "--sink", help="Golden sink uri (export); '' = local DuckDB"),
     yes: bool = typer.Option(False, "--yes", help="Skip the interactive confirmation"),
+    wait: bool = typer.Option(False, "--wait",
+                              help="After a cloud dispatch, stream status until the run finishes"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the plan; run nothing"),
 ) -> None:
     """Orchestrate catalog / pdfs / export — interactively, or fully by flags.
 
     In a terminal it walks target → project → pack → step → args, prompting only
     for what a flag did not already supply, and confirms before running. Fully
-    flagged (or piped) it runs non-interactively. Local-only for now; cloud
-    targets arrive in later phases — see
-    `feature_explorations/interactive-cli-studio.md`.
+    flagged (or piped) it runs non-interactively. A cloud run is **dispatched** and
+    returns handles + links immediately — follow it with `docloom studio status`.
+    See `feature_explorations/interactive-cli-studio.md`.
     """
+    if ctx.invoked_subcommand is not None:
+        return          # a subcommand (e.g. `status`) handles it; don't run the wizard
     _run_studio(provider=provider, project=project, step=step, pack=pack, config=config,
                 run_id=run_id, total=total, catalogue=catalogue, fmt=fmt, condition=condition,
                 issue_date_from=issue_date_from, issue_date_to=issue_date_to, version=version,
                 companies=companies, products_per_company=products_per_company, seed=seed,
-                sink=sink, onboard=onboard, region=region, bucket=bucket, yes=yes, dry_run=dry_run)
+                sink=sink, onboard=onboard, region=region, bucket=bucket, yes=yes, wait=wait,
+                dry_run=dry_run)
+
+
+@studio_app.command("status")
+def studio_status(
+    run: str = typer.Option(..., "--run", "--run-id", help="The run id to reattach to"),
+    project: str = typer.Option("", "--project",
+                                help="Saved project ref (<target>:<id>) or id; '' = the default"),
+    provider: str = typer.Option("", "--provider", "-p",
+                                 help="Target for a bare --project id (local | gcp)"),
+    wait: bool = typer.Option(False, "--wait", help="Stream until the run is terminal"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the command; run nothing"),
+) -> None:
+    """Reattach to a dispatched run and show its progress (`--wait` streams).
+
+    Resolves the run's state store from the saved project, so it works from any
+    machine that has the project registered — no live job or terminal to hold."""
+    from docloom.studio import Registry, StudioError
+    from docloom.studio.app import status_of
+    try:
+        proj = _resolve_saved_project(Registry(), project, provider)
+        result = status_of(proj, run, wait=wait, dry_run=dry_run)
+    except StudioError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    if dry_run:
+        typer.echo(f"  project  {proj.ref}\n  plan\n    {result.command}")
+        return
+    if not result.ok:
+        raise typer.Exit(1)
+
+
+def _resolve_saved_project(registry, project: str, provider: str):
+    """The saved :class:`Project` named by ``--project`` (a ``<target>:<id>`` ref,
+    a bare id with ``--provider``, a unique bare id, or the registry default)."""
+    from docloom.studio import StudioError
+    if ":" in project:
+        ref = project
+    elif provider and project:
+        ref = f"{provider}:{project}"
+    elif project:
+        matches = [p for p in registry.projects() if p.id == project]
+        if len(matches) == 1:
+            return matches[0]
+        if not matches:
+            raise StudioError(f"no saved project with id {project!r}; "
+                              "run `docloom studio` to create or onboard it")
+        raise StudioError(f"project id {project!r} is ambiguous across targets — pass --provider")
+    else:
+        ref = registry.default_ref()
+        if not ref:
+            raise StudioError("no --project given and no default is set — pass --project <ref>")
+    proj = registry.get(ref)
+    if proj is None:
+        raise StudioError(f"no saved project {ref!r}; run `docloom studio` to create or onboard it")
+    return proj
 
 
 if __name__ == "__main__":

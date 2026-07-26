@@ -11,6 +11,7 @@
 #   ./deploy.sh -c run.yaml build       build + push the image (Cloud Build)
 #   ./deploy.sh -c run.yaml deploy      create/update the Cloud Run job
 #   ./deploy.sh -c run.yaml run         execute — one execution per document type
+#   ./deploy.sh -c run.yaml dispatch    execute detached — don't wait; follow with status
 #   ./deploy.sh -c run.yaml resume      re-queue failed units, reclaim crashed ones
 #   ./deploy.sh -c run.yaml status      run progress, from Firestore
 #   ./deploy.sh -c run.yaml logs        recent job logs
@@ -37,7 +38,9 @@ CONFIG=""
 declare -a OVERRIDES=()
 COMMAND=""
 
-usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; }
+# Print the header comment block (line 2 to the first non-comment line), so
+# adding a usage line above never needs a line-number tweak here.
+usage() { sed -n '2,/^[^#]/p' "$0" | sed '/^[^#]/d; s/^# \{0,1\}//'; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -621,13 +624,28 @@ deploy_job() {
     --args="$(gen_args "${f_name}" "${f_pack}" "${f_count}" "${f_fmt}" "${f_comp}")"
 }
 
-run_job() {
+# Execute every slice's job. WAIT is "--wait" to block until each finishes
+# (`run`) or "" to return as soon as each execution is created (`dispatch`).
+# Detached is what a run that outlives the caller's terminal needs: the work
+# proceeds in the cloud and is followed with `status`, not by holding this shell
+# open for what may be hours. Slices dispatch back-to-back as independent
+# executions; with --wait they run one after another.
+_execute_slices() {
+  local wait_flag="$1"
   while IFS=$'\x1f' read -r name pack count fmt comp _; do
     [[ -n "${name}" ]] || continue
     say "Executing ${JOB} — slice '${name}': ${count} ${pack} document(s)"
     gcloud run jobs execute "${JOB}" --region="${REGION}" --project="${PROJECT}" \
-      --wait --args="$(gen_args "${name}" "${pack}" "${count}" "${fmt}" "${comp}")"
+      ${wait_flag} --args="$(gen_args "${name}" "${pack}" "${count}" "${fmt}" "${comp}")"
   done < <(each_slice)
+}
+
+run_job() { _execute_slices "--wait"; }
+
+dispatch_job() {
+  _execute_slices ""
+  say "dispatched — the run continues in the cloud. Follow it with:"
+  say "    ./deploy.sh -c ${CONFIG} status        (or: docloom status --run-id … --state ${STATE_URI} --wait)"
 }
 
 resume() {
@@ -764,6 +782,7 @@ case "${COMMAND}" in
   build)     build ;;
   deploy)    deploy_job ;;
   run)       run_job ;;
+  dispatch)  dispatch_job ;;
   resume)    resume ;;
   status)    status ;;
   logs)      logs ;;

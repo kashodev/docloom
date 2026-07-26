@@ -450,12 +450,16 @@ def test_gcp_catalogue_synthesises_config_and_links() -> None:
     assert any("console.cloud.google.com" in link.href for link in r.links)
 
 
-def test_gcp_generate_is_deploy_then_run_one_slice() -> None:
+def test_gcp_generate_is_deploy_then_dispatch_detached_one_slice() -> None:
     t = GcpTarget()
     p = t.normalise(ProjectSpec(target="gcp", id="acme"))
     r = t.run_generate(p, GenerateArgs(run_id="corpus1", total=5000, catalogue="gs://b/v2",
                                        condition="clean"), dry_run=True)
-    assert " deploy " in r.command and " run" in r.command and "&&" in r.command
+    # Detached: deploy then `dispatch` (no --wait), never the blocking `run`.
+    assert " deploy " in r.command and "&&" in r.command
+    assert r.command.rstrip().endswith(" dispatch")
+    assert " run" not in r.command                 # not the blocking subcommand
+    assert r.summary.startswith("dispatched")
     cfg = _cfg_from(r.command)
     assert cfg["run"]["id"] == "corpus1" and cfg["run"]["catalogue"] == "gs://b/v2"
     assert len(cfg["documents"]) == 1              # one slice → a clean run id
@@ -505,6 +509,57 @@ def test_wizard_onboards_an_existing_gcp_project(tmp_path: Path) -> None:
                                  interactive=True, dry_run=False)
     assert proj.region == "us-west1" and proj.bucket == "acme-bucket" and proj.provisioned_at
     assert reg.get("gcp:acme") is not None                    # saved, no gcloud touched
+
+
+# ── detached dispatch: status / reattach ────────────────────────────────────
+def test_status_of_builds_a_docloom_status_command() -> None:
+    from docloom.studio.app import status_of
+    proj = GcpTarget().normalise(ProjectSpec(target="gcp", id="acme"))
+    r = status_of(proj, "corpus1", wait=True, dry_run=True)
+    assert r.argv[:3] == ("status", "--run-id", "corpus1")
+    assert r.argv[r.argv.index("--state") + 1].startswith("firestore://acme")
+    assert "--wait" in r.argv and r.run_id == "corpus1"
+    assert "docloom status --run-id corpus1" in r.command
+
+
+def test_status_of_without_a_state_store_is_an_error() -> None:
+    from docloom.studio.app import status_of
+    with pytest.raises(StudioError, match="no recorded state"):
+        status_of(Project(target="gcp", id="x"), "r", dry_run=True)    # no resources → no state
+
+
+def test_resolve_saved_project_by_ref_id_default_and_missing(tmp_path: Path) -> None:
+    from docloom.cli import _resolve_saved_project
+    reg = Registry(tmp_path / "projects.yaml")
+    reg.add(Project(target="gcp", id="acme", resources={"state": "firestore://acme/(default)"}),
+            make_default=True)
+    assert _resolve_saved_project(reg, "gcp:acme", "").id == "acme"      # explicit ref
+    assert _resolve_saved_project(reg, "acme", "gcp").id == "acme"       # id + provider
+    assert _resolve_saved_project(reg, "acme", "").id == "acme"          # unique bare id
+    assert _resolve_saved_project(reg, "", "").ref == "gcp:acme"         # the default
+    with pytest.raises(StudioError, match="no saved project"):
+        _resolve_saved_project(reg, "gcp:nope", "")
+    reg.add(Project(target="local", id="acme", root="/w"))              # now ambiguous
+    with pytest.raises(StudioError, match="ambiguous"):
+        _resolve_saved_project(reg, "acme", "")
+
+
+def test_studio_status_command_dry_run_resolves_and_plans(tmp_path: Path) -> None:
+    home = tmp_path / ".docloom"
+    Registry(home / "projects.yaml").add(
+        Project(target="gcp", id="acme", region="us-central1", bucket="acme-docloom",
+                resources={"state": "firestore://acme/(default)"}), make_default=True)
+    res = runner.invoke(app, ["studio", "status", "--project", "gcp:acme", "--run", "corpus1",
+                              "--wait", "--dry-run"], env={"DOCLOOM_HOME": str(home)})
+    assert res.exit_code == 0, res.output
+    assert "docloom status --run-id corpus1" in res.output
+    assert "firestore://acme" in res.output and "--wait" in res.output
+
+
+def test_studio_status_unknown_project_is_a_clean_error(tmp_path: Path) -> None:
+    res = runner.invoke(app, ["studio", "status", "--project", "gcp:none", "--run", "r"],
+                        env={"DOCLOOM_HOME": str(tmp_path / ".docloom")})
+    assert res.exit_code != 0 and "no saved project" in res.output
 
 
 def test_studio_onboard_flag_threads_to_choose_project(monkeypatch, tmp_path: Path) -> None:
