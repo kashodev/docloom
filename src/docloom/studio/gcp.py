@@ -120,8 +120,13 @@ class GcpTarget:
             Link("console", _bucket_url(project.bucket, f"runs/{args.run_id}", project.id)),
             Link("job", f"{_CONSOLE}/run/jobs?project={project.id}&region={project.region}"),
         )
-        return self._run(config, ["deploy", "run"], dry_run, capture, run_id=args.run_id,
-                         summary=f"generate {args.total} {args.pack} → {base}", links=links)
+        # Detached: `deploy` (build/update the job — quick) then `dispatch`, which
+        # executes without --wait. A GCP run can take hours and outlive the
+        # operator's terminal, so the studio returns handles + links immediately and
+        # the run is followed with `docloom studio status --run …` (decision 1). The
+        # blocking `run` subcommand stays available for a hand-run.
+        return self._run(config, ["deploy", "dispatch"], dry_run, capture, run_id=args.run_id,
+                         summary=f"dispatched {args.total} {args.pack} → {base}", links=links)
 
     def run_export(self, project: Project, args: ExportArgs, *,
                    dry_run: bool = False, capture: bool = False) -> Result:

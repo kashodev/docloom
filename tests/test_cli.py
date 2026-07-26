@@ -96,6 +96,35 @@ def test_pause_and_cancel(tmp_path: Path) -> None:
     assert cancelled.exit_code == 0 and "cancelled" in cancelled.output
 
 
+def test_status_wait_returns_on_a_completed_run(tmp_path: Path) -> None:
+    """--wait streams and exits 0 once the run is terminal (here, already done)."""
+    p = _paths(tmp_path)
+    runner.invoke(app, [
+        "generate", "--run-id", "cliw", "--total", "8", "--unit-size", "4",
+        "--format", "html", "--storage", p["storage"], "--state", p["state"],
+    ])
+    st = runner.invoke(app, ["status", "--run-id", "cliw", "--state", p["state"],
+                             "--wait", "--interval", "0"])
+    assert st.exit_code == 0, st.output
+    assert "2 done" in st.output and "completed" in st.output
+
+
+def test_status_wait_exits_nonzero_when_a_unit_is_left_failed(tmp_path: Path) -> None:
+    """A run drained with a failed unit (nothing pending) is terminal-for-wait and
+    exits non-zero — it needs a resume, and a follower should learn that."""
+    from docloom.core.state import Run, SqliteStateStore, WorkUnit
+    db = tmp_path / "runs.db"
+    store = SqliteStateStore(db)
+    store.create_run(Run(run_id="rf", pack="invoice", config_id="c", total_units=1),
+                     [WorkUnit(run_id="rf", unit_index=0, start_index=0, count=4)])
+    store.claim_next_unit("rf")
+    store.fail_unit("rf", 0, "boom")            # drained: 0 pending, 1 failed, still RUNNING
+    st = runner.invoke(app, ["status", "--run-id", "rf", "--state", str(db),
+                             "--wait", "--interval", "0"])
+    assert st.exit_code == 1
+    assert "1 failed" in st.output
+
+
 def test_plan_then_generate_works_the_planned_run(tmp_path: Path) -> None:
     """`plan` exists so a large run can be inspected before compute is committed
     to it; `generate` must then pick that plan up rather than making its own."""
