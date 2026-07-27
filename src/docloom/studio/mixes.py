@@ -52,7 +52,11 @@ CHEAP = Mix(
     "cheap-mix",
     "deepseek 50 / dashscope 50 — cheap OpenAI-compatible only (thinking off on qwen)",
     providers=(
-        {"name": "deepseek", "model": "deepseek-v4-flash", "weight": 50},
+        # Both are reasoning models: without thinking disabled they burn the whole
+        # token budget on reasoning_content and return empty text. deepseek and
+        # dashscope disable it with different vendor params.
+        {"name": "deepseek", "model": "deepseek-v4-flash", "weight": 50,
+         "extra_body": {"thinking": {"type": "disabled"}}},
         {"name": "dashscope", "model": "qwen3.5-flash", "weight": 50,
          "extra_body": {"enable_thinking": False}},
     ),
@@ -67,7 +71,8 @@ BALANCED = Mix(
     "balanced",
     "deepseek 40 / dashscope 40 / anthropic 20 — a 20% Anthropic slice for quality",
     providers=(
-        {"name": "deepseek", "model": "deepseek-v4-flash", "weight": 40},
+        {"name": "deepseek", "model": "deepseek-v4-flash", "weight": 40,
+         "extra_body": {"thinking": {"type": "disabled"}}},   # reasoning off (see cheap-mix)
         {"name": "dashscope", "model": "qwen3.5-flash", "weight": 40,
          "extra_body": {"enable_thinking": False}},
         {"name": "anthropic", "model": "claude-haiku-4-5", "weight": 20},

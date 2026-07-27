@@ -548,6 +548,19 @@ def test_mixes_procedural_is_keyless_and_llm_mixes_carry_secrets() -> None:
         get_mix("nope")
 
 
+def test_openai_compatible_reasoning_providers_disable_thinking() -> None:
+    """deepseek-v4-flash and qwen3.5-flash are reasoning models — without thinking
+    disabled they spend the whole token budget reasoning and return empty content
+    (observed live). deepseek and dashscope disable it with different params."""
+    from docloom.studio.mixes import get_mix
+    for name in ("cheap-mix", "balanced"):
+        for p in get_mix(name).providers_block():
+            if p["name"] == "deepseek":
+                assert p.get("extra_body", {}).get("thinking") == {"type": "disabled"}, name
+            if p["name"] == "dashscope":
+                assert p.get("extra_body", {}).get("enable_thinking") is False, name
+
+
 def test_every_llm_mix_weights_and_fallback_total_100() -> None:
     """deploy.sh rejects provider weights or fallback shares that don't total 100."""
     from docloom.studio.mixes import get_mix, mix_names
