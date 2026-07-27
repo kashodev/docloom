@@ -100,9 +100,14 @@ class GcpTarget:
         mix = get_mix(args.mix)
         if mix.is_llm:
             cat |= {"providers": mix.providers_block(), "fallback": mix.fallback_block(),
-                    "secrets": mix.secrets_map(), "concurrency": 8}
+                    "secrets": mix.secrets_map(), "concurrency": args.concurrency}
             if args.budget_usd:
                 cat["budget_usd"] = args.budget_usd
+        # tasks > 1 makes the build sharded and resumable over company ranges,
+        # worked by that many Cloud Run tasks against the Firestore state store the
+        # base config already carries (applies to a procedural build too).
+        if args.tasks > 1:
+            cat["tasks"] = args.tasks
         config = self._base_config(project) | {"catalogue": cat}
         links = (
             Link("catalogue", out),
@@ -126,6 +131,10 @@ class GcpTarget:
         if args.date_from and args.date_to:
             slice_["date_range"] = [args.date_from, args.date_to]
         config = self._base_config(project) | {"run": run, "documents": [slice_]}
+        # How many Cloud Run tasks work the run (via the atomic claim). parallelism
+        # 0 ⇒ run all `tasks` at once.
+        config["job"] = {**config["job"], "tasks": args.tasks,
+                         "parallelism": args.parallelism or args.tasks}
         base = f"gs://{project.bucket}/runs/{args.run_id}"
         links = (
             Link("documents", f"{base}/documents"),

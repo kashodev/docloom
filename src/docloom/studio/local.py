@@ -73,7 +73,10 @@ class LocalTarget:
         mix = get_mix(args.mix)
         if mix.is_llm:
             providers_file = self._write_providers(project, mix)
-            argv += ["--providers", providers_file]
+            # --concurrency tunes the LLM calls in flight. `tasks` is a Cloud Run
+            # (multi-instance) concept with no meaning for this single local process,
+            # so it is intentionally not threaded here.
+            argv += ["--providers", providers_file, "--concurrency", str(args.concurrency)]
             if args.budget_usd:
                 argv += ["--budget-usd", f"{args.budget_usd:g}"]
             note = f"{mix.name} (keys from env; ≤ ${args.budget_usd:g})"

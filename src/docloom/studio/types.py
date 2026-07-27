@@ -92,6 +92,8 @@ class CatalogueArgs:
     seed: int = 0
     mix: str = "procedural"
     budget_usd: float = 0.0
+    concurrency: int = 8            # LLM calls in flight within a task (LLM mix only)
+    tasks: int = 1                 # Cloud Run tasks; >1 = a sharded, resumable build
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +109,8 @@ class GenerateArgs:
     condition: str = ""             # clean | light_scan | heavy_scan | handwritten
     date_from: str = ""             # issue-date window (YYYY-MM-DD)
     date_to: str = ""
+    tasks: int = 4                  # Cloud Run tasks working the run concurrently
+    parallelism: int = 0            # max tasks running at once; 0 ⇒ = tasks
 
 
 @dataclass(frozen=True, slots=True)

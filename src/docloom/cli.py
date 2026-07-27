@@ -664,7 +664,8 @@ def _run_studio(*, provider: str = "", project: str = "", step: str = "", pack: 
                 fmt: str = "pdf", condition: str = "", issue_date_from: str = "",
                 issue_date_to: str = "", version: str = "v1", companies: int = 1000,
                 products_per_company: int = 300, seed: int = 0, sink: str = "",
-                mix: str = "procedural", budget_usd: float = 0.0,
+                mix: str = "procedural", budget_usd: float = 0.0, concurrency: int = 0,
+                tasks: int = 0, parallelism: int = 0,
                 onboard: bool = False, region: str = "", bucket: str = "",
                 yes: bool = False, wait: bool = False, dry_run: bool = False) -> None:
     """The studio flow with real defaults — the `studio` command and a bare
@@ -696,11 +697,13 @@ def _run_studio(*, provider: str = "", project: str = "", step: str = "", pack: 
             return wizard.build_catalogue_args(prompter, interactive, pack=pack_name,
                                                version=version, companies=companies,
                                                products_per_company=products_per_company,
-                                               seed=seed, mix=mx, budget_usd=bud)
+                                               seed=seed, mix=mx, budget_usd=bud,
+                                               concurrency=concurrency, tasks=tasks)
         if step_enum is Step.PDFS:
             return wizard.build_generate_args(prompter, interactive, pack=pack_name, run_id=rid,
                                               total=tot, catalogue=cat, fmt=fmt, condition=cond,
-                                              date_from=df, date_to=dt, selection_file=cfg)
+                                              date_from=df, date_to=dt, selection_file=cfg,
+                                              tasks=tasks, parallelism=parallelism)
         return wizard.build_export_args(prompter, interactive, run_id=rid, sink=snk)
 
     provider_name: str | None = None          # None ⇒ (re)show the target screen
@@ -854,6 +857,13 @@ def studio(
                             help="LLM provider mix (catalog): procedural | cheap-mix | "
                                  "balanced | anthropic"),
     budget_usd: float = typer.Option(0.0, "--budget", help="Hard USD cap for an LLM catalogue"),
+    concurrency: int = typer.Option(0, "--concurrency",
+                                    help="LLM calls in flight for the catalog build (default 8)"),
+    tasks: int = typer.Option(0, "--tasks",
+                              help="Cloud Run tasks: catalog>1 shards the build; pdfs workers "
+                                   "(default catalog 1, pdfs 4)"),
+    parallelism: int = typer.Option(0, "--parallelism",
+                                    help="Max pdfs tasks running at once (default = --tasks)"),
     sink: str = typer.Option("", "--sink", help="Golden sink uri (export); '' = local DuckDB"),
     yes: bool = typer.Option(False, "--yes", help="Skip the interactive confirmation"),
     wait: bool = typer.Option(False, "--wait",
@@ -874,7 +884,8 @@ def studio(
                 run_id=run_id, total=total, catalogue=catalogue, fmt=fmt, condition=condition,
                 issue_date_from=issue_date_from, issue_date_to=issue_date_to, version=version,
                 companies=companies, products_per_company=products_per_company, seed=seed,
-                mix=mix, budget_usd=budget_usd, sink=sink, onboard=onboard, region=region,
+                mix=mix, budget_usd=budget_usd, concurrency=concurrency, tasks=tasks,
+                parallelism=parallelism, sink=sink, onboard=onboard, region=region,
                 bucket=bucket, yes=yes, wait=wait, dry_run=dry_run)
 
 

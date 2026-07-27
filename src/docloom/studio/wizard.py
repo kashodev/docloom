@@ -174,8 +174,8 @@ def choose_step(prompter: Prompter | None, step_flag: str, interactive: bool,
 # any prompt (the driver then returns to the step menu).
 def build_catalogue_args(prompter: Prompter | None, interactive: bool, *, pack: str,
                          version: str, companies: int, products_per_company: int,
-                         seed: int, mix: str = "procedural",
-                         budget_usd: float = 0.0) -> CatalogueArgs | str:
+                         seed: int, mix: str = "procedural", budget_usd: float = 0.0,
+                         concurrency: int = 8, tasks: int = 1) -> CatalogueArgs | str:
     from docloom.studio.mixes import get_mix, mix_names
     if interactive and prompter is not None:
         version = prompter.text("Catalogue version", default=version, allow_back=True)
@@ -205,16 +205,28 @@ def build_catalogue_args(prompter: Prompter | None, interactive: bool, *, pack: 
             if raw == BACK:
                 return BACK
             budget_usd = float(raw) if raw.replace(".", "", 1).isdigit() else (budget_usd or 20.0)
+            raw = prompter.text("Concurrency (LLM calls in flight)",
+                                default=str(concurrency or 8), allow_back=True)
+            if raw == BACK:
+                return BACK
+            concurrency = _as_int(raw, concurrency or 8)
+            raw = prompter.text("Tasks (parallel Cloud Run shards; 1 = single build)",
+                                default=str(tasks or 1), allow_back=True)
+            if raw == BACK:
+                return BACK
+            tasks = _as_int(raw, tasks or 1)
     else:
         budget_usd = 0.0
     return CatalogueArgs(version=version, pack=pack, companies=companies,
                          products_per_company=products_per_company, seed=seed,
-                         mix=mix, budget_usd=budget_usd)
+                         mix=mix, budget_usd=budget_usd,
+                         concurrency=concurrency or 8, tasks=tasks or 1)
 
 
 def build_generate_args(prompter: Prompter | None, interactive: bool, *, pack: str, run_id: str,
                         total: int, catalogue: str, fmt: str, condition: str, date_from: str,
-                        date_to: str, selection_file: str = "") -> GenerateArgs | str:
+                        date_to: str, selection_file: str = "", tasks: int = 4,
+                        parallelism: int = 0) -> GenerateArgs | str:
     run_id = _required_text(run_id, interactive, prompter, "Run id", "run-id", allow_back=True)
     if run_id == BACK:
         return BACK
@@ -241,9 +253,15 @@ def build_generate_args(prompter: Prompter | None, interactive: bool, *, pack: s
                                         allow_back=True)
                 if date_to == BACK:
                     return BACK
+        raw = prompter.text("Tasks (parallel Cloud Run workers)",
+                            default=str(tasks or 4), allow_back=True)
+        if raw == BACK:
+            return BACK
+        tasks = _as_int(raw, tasks or 4)
     return GenerateArgs(run_id=run_id, total=total, pack=pack, fmt=fmt,  # type: ignore[arg-type]
                         catalogue=catalogue, selection_file=selection_file,
-                        condition=condition, date_from=date_from, date_to=date_to)
+                        condition=condition, date_from=date_from, date_to=date_to,
+                        tasks=tasks or 4, parallelism=parallelism)
 
 
 def build_export_args(prompter: Prompter | None, interactive: bool, *,
