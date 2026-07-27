@@ -10,31 +10,31 @@
       
       
       
-        <link rel="canonical" href="https://kashodev.github.io/docsynth/core/pipeline/">
+        <link rel="canonical" href="https://kashodev.github.io/docsynth/quickstart/">
       
       
-        <link rel="prev" href="../overview/">
+        <link rel="prev" href="..">
       
       
-        <link rel="next" href="../state/">
+        <link rel="next" href="../architecture/overview/">
       
       
         
       
       
-      <link rel="icon" href="../../assets/images/favicon.png">
+      <link rel="icon" href="../assets/images/favicon.png">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
     
     
       
-        <title>Pipeline - docsynth</title>
+        <title>Quickstart - docsynth</title>
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
       
         
-        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -53,7 +53,7 @@
       
     
     
-    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#pipeline" class="md-skip">
+        <a href="#quickstart" class="md-skip">
           Skip to content
         </a>
       
@@ -94,7 +94,7 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../.." title="docsynth" class="md-header__button md-logo" aria-label="docsynth" data-md-component="logo">
+    <a href=".." title="docsynth" class="md-header__button md-logo" aria-label="docsynth" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -114,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Pipeline
+              Quickstart
             
           </span>
         </div>
@@ -232,7 +232,7 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../.." title="docsynth" class="md-nav__button md-logo" aria-label="docsynth" data-md-component="logo">
+    <a href=".." title="docsynth" class="md-nav__button md-logo" aria-label="docsynth" data-md-component="logo">
       
   
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
@@ -262,7 +262,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../.." class="md-nav__link">
+      <a href=".." class="md-nav__link">
         
   
   
@@ -286,10 +286,37 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../quickstart/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quickstart
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -305,6 +332,81 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#install-docsynth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Install docsynth
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-the-studio" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run the studio
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-you-get" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What you get
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Next steps
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -368,7 +470,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/overview/" class="md-nav__link">
+      <a href="../architecture/overview/" class="md-nav__link">
         
   
   
@@ -396,7 +498,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/contract/" class="md-nav__link">
+      <a href="../architecture/contract/" class="md-nav__link">
         
   
   
@@ -424,7 +526,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/flows/" class="md-nav__link">
+      <a href="../architecture/flows/" class="md-nav__link">
         
   
   
@@ -452,7 +554,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/concurrency/" class="md-nav__link">
+      <a href="../architecture/concurrency/" class="md-nav__link">
         
   
   
@@ -480,7 +582,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../architecture/data-model/" class="md-nav__link">
+      <a href="../architecture/data-model/" class="md-nav__link">
         
   
   
@@ -512,8 +614,6 @@
       
   
   
-    
-  
   
   
     
@@ -526,11 +626,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
@@ -551,7 +651,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             
@@ -569,7 +669,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../overview/" class="md-nav__link">
+      <a href="../core/overview/" class="md-nav__link">
         
   
   
@@ -594,37 +694,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Pipeline
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../core/pipeline/" class="md-nav__link">
         
   
   
@@ -640,81 +713,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#run-orchestration-runpy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Run orchestration (run.py)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#the-worker-loop-workerpy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The worker loop (worker.py)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#determinism-sourcepy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Determinism (source.py)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#rendering-rendererpy-pdfpy-degradepy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Rendering (renderer.py, pdf.py, degrade.py)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#golden-shards-manifest-goldenpy-manifestpy" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Golden shards &amp; manifest (golden.py, manifest.py)
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -727,7 +725,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../state/" class="md-nav__link">
+      <a href="../core/state/" class="md-nav__link">
         
   
   
@@ -755,7 +753,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../storage/" class="md-nav__link">
+      <a href="../core/storage/" class="md-nav__link">
         
   
   
@@ -783,7 +781,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../providers/" class="md-nav__link">
+      <a href="../core/providers/" class="md-nav__link">
         
   
   
@@ -811,7 +809,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../misc/" class="md-nav__link">
+      <a href="../core/misc/" class="md-nav__link">
         
   
   
@@ -898,7 +896,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../invoice/overview/" class="md-nav__link">
+      <a href="../invoice/overview/" class="md-nav__link">
         
   
   
@@ -926,7 +924,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../invoice/catalogue/" class="md-nav__link">
+      <a href="../invoice/catalogue/" class="md-nav__link">
         
   
   
@@ -954,7 +952,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../invoice/generation/" class="md-nav__link">
+      <a href="../invoice/generation/" class="md-nav__link">
         
   
   
@@ -982,7 +980,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../invoice/export/" class="md-nav__link">
+      <a href="../invoice/export/" class="md-nav__link">
         
   
   
@@ -1010,7 +1008,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../invoice/content/" class="md-nav__link">
+      <a href="../invoice/content/" class="md-nav__link">
         
   
   
@@ -1038,7 +1036,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../invoice/rendering/" class="md-nav__link">
+      <a href="../invoice/rendering/" class="md-nav__link">
         
   
   
@@ -1066,7 +1064,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../invoice/composition/" class="md-nav__link">
+      <a href="../invoice/composition/" class="md-nav__link">
         
   
   
@@ -1094,7 +1092,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../invoice/reference/" class="md-nav__link">
+      <a href="../invoice/reference/" class="md-nav__link">
         
   
   
@@ -1181,7 +1179,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../studio/overview/" class="md-nav__link">
+      <a href="../studio/overview/" class="md-nav__link">
         
   
   
@@ -1209,7 +1207,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../studio/projects/" class="md-nav__link">
+      <a href="../studio/projects/" class="md-nav__link">
         
   
   
@@ -1237,7 +1235,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../studio/steps/" class="md-nav__link">
+      <a href="../studio/steps/" class="md-nav__link">
         
   
   
@@ -1265,7 +1263,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../studio/dispatch/" class="md-nav__link">
+      <a href="../studio/dispatch/" class="md-nav__link">
         
   
   
@@ -1293,7 +1291,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../studio/catalogue/" class="md-nav__link">
+      <a href="../studio/catalogue/" class="md-nav__link">
         
   
   
@@ -1321,7 +1319,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../studio/tuning/" class="md-nav__link">
+      <a href="../studio/tuning/" class="md-nav__link">
         
   
   
@@ -1408,7 +1406,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operations/deploy-tool/" class="md-nav__link">
+      <a href="../operations/deploy-tool/" class="md-nav__link">
         
   
   
@@ -1436,7 +1434,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operations/gcp/" class="md-nav__link">
+      <a href="../operations/gcp/" class="md-nav__link">
         
   
   
@@ -1464,7 +1462,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operations/running/" class="md-nav__link">
+      <a href="../operations/running/" class="md-nav__link">
         
   
   
@@ -1492,7 +1490,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../operations/docs-site/" class="md-nav__link">
+      <a href="../operations/docs-site/" class="md-nav__link">
         
   
   
@@ -1527,7 +1525,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../design-decisions/" class="md-nav__link">
+      <a href="../design-decisions/" class="md-nav__link">
         
   
   
@@ -1574,10 +1572,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#run-orchestration-runpy" class="md-nav__link">
+  <a href="#prerequisites" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Run orchestration (run.py)
+        Prerequisites
       
     </span>
   </a>
@@ -1585,10 +1583,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-worker-loop-workerpy" class="md-nav__link">
+  <a href="#install-docsynth" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The worker loop (worker.py)
+        Install docsynth
       
     </span>
   </a>
@@ -1596,10 +1594,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#determinism-sourcepy" class="md-nav__link">
+  <a href="#run-the-studio" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Determinism (source.py)
+        Run the studio
       
     </span>
   </a>
@@ -1607,10 +1605,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#rendering-rendererpy-pdfpy-degradepy" class="md-nav__link">
+  <a href="#what-you-get" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Rendering (renderer.py, pdf.py, degrade.py)
+        What you get
       
     </span>
   </a>
@@ -1618,10 +1616,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#golden-shards-manifest-goldenpy-manifestpy" class="md-nav__link">
+  <a href="#next-steps" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Golden shards &amp; manifest (golden.py, manifest.py)
+        Next steps
       
     </span>
   </a>
@@ -1648,114 +1646,107 @@
   
 
 
-<h1 id="pipeline">Pipeline<a class="headerlink" href="#pipeline" title="Permanent link">&para;</a></h1>
-<p><code>core/pipeline/</code> is the document-agnostic spine of a run: plan → create → drive →
-render → persist → manifest, then export. It calls the pack only through the
-<a href="../../architecture/contract/">contract</a> hooks.</p>
-<table>
-<thead>
-<tr>
-<th>Module</th>
-<th>Role</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>run.py</code></td>
-<td>Orchestration — <code>create_run</code>, <code>work_run</code>, <code>resume_run</code>.</td>
-</tr>
-<tr>
-<td><code>planner.py</code></td>
-<td><code>plan_units</code> — a document count → a list of work units (index ranges).</td>
-</tr>
-<tr>
-<td><code>worker.py</code></td>
-<td><code>GenerationWorker</code> — the drain loop: claim → generate → render → persist per unit.</td>
-</tr>
-<tr>
-<td><code>source.py</code></td>
-<td><code>DocumentSource</code> protocol, <code>stable_seed</code>, <code>prepare_source</code>.</td>
-</tr>
-<tr>
-<td><code>renderer.py</code></td>
-<td><code>DocumentRenderer</code> protocol, <code>HtmlRenderer</code>; <code>render()</code> → bytes.</td>
-</tr>
-<tr>
-<td><code>pdf.py</code></td>
-<td><code>PdfRenderer</code> — Chromium/Playwright print; running header; page-fit.</td>
-</tr>
-<tr>
-<td><code>degrade.py</code></td>
-<td><code>degrade_pdf</code> — scan post-processing (rasterise, noise, JPEG, no text layer).</td>
-</tr>
-<tr>
-<td><code>golden.py</code></td>
-<td><code>encode_shard</code> / <code>decode_shard</code> — the exactness-preserving golden codec.</td>
-</tr>
-<tr>
-<td><code>manifest.py</code></td>
-<td><code>UnitManifest</code> / <code>RunManifest</code> — the self-describing per-run manifest.</td>
-</tr>
-<tr>
-<td><code>export.py</code></td>
-<td><code>export_run</code> — golden shards → a sink (see <a href="../../invoice/export/">Export</a>).</td>
-</tr>
-</tbody>
-</table>
-<h2 id="run-orchestration-runpy">Run orchestration (<code>run.py</code>)<a class="headerlink" href="#run-orchestration-runpy" title="Permanent link">&para;</a></h2>
-<p>Three entry points, all called by a CLI command or a Cloud Run task:</p>
+<h1 id="quickstart">Quickstart<a class="headerlink" href="#quickstart" title="Permanent link">&para;</a></h1>
+<p>Install docsynth and generate your first synthetic documents — with a computed
+golden dataset — using the <a href="../studio/overview/">studio</a>. This walk-through uses
+the <strong>local</strong> target: no cloud account, no API keys.</p>
+<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong><code>create_run</code></strong> plans the run into units and records it. Safe to call from every
-  worker at once — creation is a <strong>conditional write</strong>, so exactly one worker plans
-  and the rest wait for the plan to land (<code>Run.planned</code> closes the follow-on race).</li>
-<li><strong><code>work_run</code></strong> drives one worker until the unit pool is empty. Multiple processes
-  calling it against the same store <em>is</em> the multi-worker case; the atomic claim
-  keeps them from colliding. On the transition to <code>COMPLETED</code> (and only then) it
-  writes the <strong>root manifest</strong> — so the root's presence is the completion signal.</li>
-<li><strong><code>resume_run</code></strong> clears any pause, returns failed units to the pool, and reclaims
-  units abandoned by crashed workers (expired leases).</li>
+<li><strong>Python 3.12+</strong> and <strong>git</strong>.</li>
+<li><strong>Chromium for PDF rendering.</strong> docsynth renders PDFs through headless Chromium
+  (via Playwright); one command installs it below. <em>Skip it only if you will
+  generate <code>--format html</code> exclusively.</em></li>
+<li><em>(Optional, cloud)</em> the <strong><code>gcloud</code> CLI</strong> and a GCP project — only if you later
+  use the <code>gcp</code> target. Not needed here.</li>
 </ul>
-<p>A run's identity lives in the <strong>state store</strong>, not a Python object, so any process
-that can reach the store can start, resume, pause, or cancel it.</p>
-<h2 id="the-worker-loop-workerpy">The worker loop (<code>worker.py</code>)<a class="headerlink" href="#the-worker-loop-workerpy" title="Permanent link">&para;</a></h2>
-<p><code>GenerationWorker.run()</code> claims the next unit and processes it until none remain.
-For each document index in a unit it: <code>source.generate(run_id, index)</code> → a
-<code>GoldenRecord</code>; <code>renderer.render(record)</code> → bytes; <code>blob.put(key, …)</code>;
-<code>record.to_rows()</code> → golden shards; and — <strong>before</strong> marking the unit done —
-writes the unit's manifest part. That order is load-bearing: a completed unit
-always has a manifest part, so the root manifest can trust the parts. A failed
-document marks the unit failed and the worker moves on (retried on the next
-resume, not in a hot loop).</p>
-<h2 id="determinism-sourcepy">Determinism (<code>source.py</code>)<a class="headerlink" href="#determinism-sourcepy" title="Permanent link">&para;</a></h2>
-<p><code>stable_seed(run_id, index)</code> is a SHA-256 over <code>(run_id, index)</code> — every draw an
-invoice makes is seeded from it, so the same index always yields the same
-document. That is what makes a run <strong>resumable</strong> (re-generating an index
-overwrites identical content) and the golden set <strong>reproducible</strong>.
-<code>prepare_source</code> runs a source's one-time, run-scoped setup (e.g. resolving a
-<code>Selection</code> against the roster) once, up front, so a bad configuration stops the
-run rather than failing document after document.</p>
-<h2 id="rendering-rendererpy-pdfpy-degradepy">Rendering (<code>renderer.py</code>, <code>pdf.py</code>, <code>degrade.py</code>)<a class="headerlink" href="#rendering-rendererpy-pdfpy-degradepy" title="Permanent link">&para;</a></h2>
-<p><code>HtmlRenderer</code> produces the HTML via the kernel's Jinja environment
-(<code>render_record(pack, record)</code>). <code>PdfRenderer</code> prints that through
-Chromium/Playwright, using <code>header_fields(record)</code> for the running header and
-handling page-fit (<code>fit_scale</code>) and <code>(cont'd)</code> markers on page-spanning sections
-(<code>spanning_sections</code>). <code>degrade.py</code> then realises the capture condition: <strong>clean</strong>
-passes through with its text layer intact; a <strong>scan</strong> rasterises at 150 dpi,
-degrades with the record's own seed, and re-wraps with <strong>no text layer</strong> so OCR
-must read pixels. (Handwritten pads are rendered by the invoice pack; see
-<a href="../../invoice/generation/">Invoice generation</a>.)</p>
-<h2 id="golden-shards-manifest-goldenpy-manifestpy">Golden shards &amp; manifest (<code>golden.py</code>, <code>manifest.py</code>)<a class="headerlink" href="#golden-shards-manifest-goldenpy-manifestpy" title="Permanent link">&para;</a></h2>
-<p><code>golden.py</code> encodes a unit's rows to a <strong>gzipped-JSONL shard</strong>, preserving exact
-values (money as strings, not floats). <code>manifest.py</code> writes a <strong>part per unit</strong>
-(<code>&lt;prefix&gt;/manifest/unit-XXXXXX.json</code>, listing that unit's documents and shards
-with a sha256 each) and, at completion, a <strong>root</strong> (<code>&lt;prefix&gt;/manifest.json</code>)
-indexing the parts plus totals. The root refuses to write over a missing part,
-and its presence is the run's done-signal — a partial run has parts but no root.
-A consumer can reconstruct and verify a run from the manifest alone
-(<code>read_run_manifest</code>, <code>is_complete</code>, <code>verify_run</code>, <code>enumerate_document_keys</code>).</p>
-<p>See <a href="../../architecture/concurrency/">Concurrency &amp; coordination</a> for the claim /
-lease / completion contract, and <a href="../../architecture/flows/">Execution flows</a> for
-the end-to-end sequences.</p>
+<h2 id="install-docsynth">Install docsynth<a class="headerlink" href="#install-docsynth" title="Permanent link">&para;</a></h2>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">From source (works today)</label><label for="__tabbed_1_2">From PyPI (once 0.1.0 is published)</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code><span class="c1"># 1. Get the source</span>
+git<span class="w"> </span>clone<span class="w"> </span>https://github.com/kashodev/docsynth.git
+<span class="nb">cd</span><span class="w"> </span>docsynth
+
+<span class="c1"># 2. Create and activate a virtual environment</span>
+python<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
+<span class="nb">source</span><span class="w"> </span>.venv/bin/activate<span class="w">          </span><span class="c1"># Windows: .venv\Scripts\activate</span>
+
+<span class="c1"># 3. Install docsynth (editable) with the studio wizard extra</span>
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s1">&#39;.[studio]&#39;</span>
+
+<span class="c1"># 4. Install the headless Chromium the PDF renderer uses</span>
+playwright<span class="w"> </span>install<span class="w"> </span>chromium
+</code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
+<span class="nb">source</span><span class="w"> </span>.venv/bin/activate<span class="w">          </span><span class="c1"># Windows: .venv\Scripts\activate</span>
+pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;docsynth[studio]&#39;</span>
+playwright<span class="w"> </span>install<span class="w"> </span>chromium
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Until the first release is on PyPI, use the <strong>From source</strong> tab — the
+PyPI name currently holds a placeholder only.</p>
+</div>
+</div>
+</div>
+</div>
+<p>Either way you get the <strong><code>docsynth</code></strong> command:</p>
+<div class="highlight"><pre><span></span><code>docsynth<span class="w"> </span>--help
+docsynth<span class="w"> </span>studio<span class="w"> </span>--help
+</code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">Extras</p>
+<ul>
+<li><code>'.[studio]'</code> adds arrow-key prompts (<code>questionary</code>). Plain
+  <code>pip install -e .</code> still works — the wizard falls back to numbered menus.</li>
+<li><code>'.[gcp]'</code> / <code>'.[aws]'</code> add the cloud backends (<code>gs://</code> / <code>firestore://</code> /
+  <code>bigquery://</code> / <code>s3://</code>); <code>'.[anthropic]'</code> adds the Claude provider;
+  <code>'.[all]'</code> is everything. None are needed for this local quickstart.</li>
+</ul>
+</div>
+<h2 id="run-the-studio">Run the studio<a class="headerlink" href="#run-the-studio" title="Permanent link">&para;</a></h2>
+<p><code>docsynth studio</code> is an interactive wizard. Launch it and it walks you through
+the flow — <strong>target → project → pack → step → confirm</strong> — prompting only for what
+you haven't already passed as a flag:</p>
+<div class="highlight"><pre><span></span><code>docsynth<span class="w"> </span>studio
+</code></pre></div>
+<p>Choose:</p>
+<ol>
+<li><strong>Target → <code>local</code>.</strong> Runs on this machine, synchronously; no keys.</li>
+<li><strong>Project →</strong> type a new name. The studio creates a local workspace
+   (a <code>blobs/</code> dir for documents + shards and a <code>runs.db</code> for run state) and
+   saves it to <code>~/.docsynth/projects.yaml</code>.</li>
+<li><strong>Pack →</strong> <code>invoice</code> (the sole installed pack, so it's auto-selected).</li>
+<li><strong>Steps</strong> — the studio runs the three in order:<ul>
+<li><strong>catalog</strong> — build a product catalogue. Keep it small to start
+   (e.g. <strong>5</strong> companies × <strong>10</strong> products); the default mix is <code>procedural</code>,
+   so no LLM and no keys.</li>
+<li><strong>pdfs</strong> — how many documents to render (e.g. <strong>20</strong>), and <code>pdf</code> or
+   <code>html</code>.</li>
+<li><strong>export</strong> — write the <strong>golden dataset</strong> (every field value, exact to
+   the cent) to DuckDB / Parquet.</li>
+</ul>
+</li>
+<li><strong>Confirm</strong> — it runs locally and prints where everything landed.</li>
+</ol>
+<p>Prefer one command? Every prompt has a flag, so the same run is scriptable — see
+<a href="../studio/steps/">Studio → Steps</a> for the fully-flagged (CI) form.</p>
+<h2 id="what-you-get">What you get<a class="headerlink" href="#what-you-get" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Rendered documents</strong> in the workspace <code>blobs/</code> (the PDFs/HTML).</li>
+<li><strong>A golden dataset</strong> from the export step — the ground truth for every
+  document, which is the point: score an OCR/extraction model against it. See
+  <a href="../architecture/data-model/">Data model &amp; the golden set</a>.</li>
+</ul>
+<h2 id="next-steps">Next steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../studio/overview/">Studio — Overview</a> — the full wizard, cloud runs, tuning.</li>
+<li><a href="../architecture/overview/">Architecture — Overview</a> — kernel ↔ pack, flows.</li>
+<li><a href="../invoice/overview/">Invoice pack</a> — what the first pack models.</li>
+<li><a href="../operations/gcp/">Deploying on GCP</a> — scale a run to Cloud Run Jobs.</li>
+</ul>
 
 
 
@@ -1791,7 +1782,7 @@ the end-to-end sequences.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../overview/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Overview">
+          <a href=".." class="md-footer__link md-footer__link--prev" aria-label="Previous: Home">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1801,20 +1792,20 @@ the end-to-end sequences.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Overview
+                Home
               </div>
             </div>
           </a>
         
         
           
-          <a href="../state/" class="md-footer__link md-footer__link--next" aria-label="Next: State stores">
+          <a href="../architecture/overview/" class="md-footer__link md-footer__link--next" aria-label="Next: Overview">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                State stores
+                Overview
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -1855,10 +1846,10 @@ the end-to-end sequences.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.sections", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.code.copy", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>
