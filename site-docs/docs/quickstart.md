@@ -15,37 +15,30 @@ the **local** target: no cloud account, no API keys.
 
 ## Install docsynth
 
-=== "From source (works today)"
+=== "From PyPI (recommended)"
 
     ```bash
-    # 1. Get the source
+    # 1. Create and activate a virtual environment
+    python -m venv .venv
+    source .venv/bin/activate          # Windows: .venv\Scripts\activate
+
+    # 2. Install docsynth with the studio wizard extra
+    pip install 'docsynth[studio]'
+
+    # 3. Install the headless Chromium the PDF renderer uses
+    playwright install chromium
+    ```
+
+=== "From source"
+
+    ```bash
     git clone https://github.com/kashodev/docsynth.git
     cd docsynth
-
-    # 2. Create and activate a virtual environment
     python -m venv .venv
     source .venv/bin/activate          # Windows: .venv\Scripts\activate
-
-    # 3. Install docsynth (editable) with the studio wizard extra
     pip install -e '.[studio]'
-
-    # 4. Install the headless Chromium the PDF renderer uses
     playwright install chromium
     ```
-
-=== "From PyPI (once 0.1.0 is published)"
-
-    ```bash
-    python -m venv .venv
-    source .venv/bin/activate          # Windows: .venv\Scripts\activate
-    pip install 'docsynth[studio]'
-    playwright install chromium
-    ```
-
-    !!! note
-        Until the first release is on PyPI, use the **From source** tab — the
-        PyPI name currently holds a placeholder only. See
-        [Publishing to PyPI](operations/publishing.md).
 
 Either way you get the **`docsynth`** command:
 
