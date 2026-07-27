@@ -271,6 +271,34 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       - Repro: `scratchpad/smoke_catalogue.py` (unmerged); `--raw` dumps the
         message shape that proved the diagnosis.
 
+- [ ] **A separate budget for empty completions, independent of retries.** An
+      empty completion still *costs* — a reasoning model that spends its whole
+      token budget on `reasoning_content` and returns `content: ""` is billed for
+      those output tokens (observed live: deepseek-v4-flash, 2,000 output tokens
+      per empty, execution `docloom-generate-catalogue-h6w2x`). The circuit-breaker
+      (`empty_streak_limit`, default 10) quarantines a provider that returns empties
+      — but it does **not cap the money spent getting there**, and it is weak
+      *within a round*: `build_llm_catalogue` submits a whole round's chunks in one
+      `CatalogueRunner.run()`, and routing captures the quarantine set per-run, so a
+      newly-quarantined provider is not actually diverted until the **next** round.
+      On a large multi-slice run (each slice its own build, each round hundreds of
+      chunks), that is a lot of tokens paid for blank answers before quarantine
+      bites.
+      - **Wanted:** a dedicated *empty-completion budget* — a hard cap (absolute
+        USD, or a fraction of the main budget) on cumulative spend attributable to
+        empty completions, tracked separately from the normal token budget and from
+        retry accounting. Crossing it stops issuing LLM calls for the offending
+        provider(s) immediately (fail the affected slots to procedural), regardless
+        of the streak counter — so a misconfigured reasoning model can waste at most
+        that cap, not a whole round.
+      - Relate to / possibly subsume the streak quarantine: the streak decides
+        *which* provider is bad; the empty-budget decides *how much* you will pay to
+        find out. Consider making quarantine react within a round too (re-read the
+        quarantine set per chunk, not per run).
+      - Cross-references the reasoning-model item above (disabling thinking removes
+        the *cause*; this bounds the *cost* when a mix is still misconfigured) and
+        the `DistributedBudgetGuard` for the fleet-wide/sharded case.
+
 - [x] **The budget pre-flight estimate is defeated by output that exceeds
       `max_tokens`.** *(Correction: an earlier version of this entry claimed the
       guard did not enforce on actual spend. It does — `BudgetGuard.add` raises
@@ -417,6 +445,40 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         it covers the whole class rather than this one instance.
 
 ## Concurrency & multi-cloud portability
+- [ ] **Surface task/concurrency control in the studio (catalogue + generate),
+      and reconsider export parallelism.** The knobs exist in the kernel and
+      `deploy.sh` but the studio bakes in fixed values, so a `docloom studio` run
+      can't scale up without hand-editing config. Split into three parts:
+      - **Catalogue is single-task unless sharded — and the studio never shards.**
+        `docloom catalogue` runs a single-process, in-memory build **unless
+        `--state` is given**, which switches it to `_sharded_catalogue` (a
+        resumable build over company ranges, worked by N Cloud Run tasks via the
+        same atomic claim as generation). Within the single task it still runs
+        `--concurrency` LLM calls at once (default **8**). `deploy.sh` shards when
+        `catalogue.tasks > 1` (`CAT_TASKS`), but `GcpTarget.run_catalogue` sets
+        `concurrency: 8` and **omits `catalogue.tasks`**, so a studio catalogue is
+        always **1 task × 8 concurrent calls**. (This is why "100×300 ran one
+        task" — expected, not a bug: 30k items is within the single-task budget,
+        and 8 calls were in flight the whole time.) *Wanted:* studio `--concurrency`
+        (→ `catalogue.concurrency`) and `--tasks` (→ `catalogue.tasks`, which pulls
+        in the Firestore state store the base config already has, so tasks > 1
+        becomes a sharded resumable build).
+      - **Generate workers are hardcoded to 4.** `GcpTarget._base_config` pins
+        `job: {tasks: 4, parallelism: 4}`; `deploy.sh` reads `job.tasks` /
+        `job.parallelism` (default 1). No studio flag exposes them. *Wanted:*
+        studio `--tasks` / `--parallelism` for the pdfs step (→ `job.*`).
+      - **Export has no concurrency at all.** `export_run` is a plain sequential
+        nested loop (`for table: for shard: decode → sink.write`,
+        `core/pipeline/export.py`), and `deploy.sh` runs it single-task per slice.
+        It's deliberate — a table's Parquet parts land in deterministic key order —
+        so any parallelism must preserve that (e.g. bounded-parallel *reads* with
+        ordered writes, or per-table workers). *Investigate whether it's worth it*
+        before adding knobs; a large export is currently single-threaded I/O.
+      - Shape: thread the flags through `_run_studio` → the `*Args` dataclasses →
+        `GcpTarget`/`LocalTarget` (catalogue.concurrency/tasks, job.tasks/parallelism);
+        `deploy.sh --set` already proves the config path, the studio just doesn't
+        reach it. Separate PR from the LLM-catalogue-mix work.
+
 - [x] **Concurrent cold start races the run plan.** Every worker checked
       `get_run(run_id) is None` and created the run if so. When N tasks start
       simultaneously — which is exactly what Cloud Run Jobs does — two could both
