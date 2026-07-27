@@ -81,14 +81,17 @@ class Project:
 
 @dataclass(frozen=True, slots=True)
 class CatalogueArgs:
-    """`generate catalog` inputs. Phase 1 builds the procedural (key-free) pool;
-    the LLM provider mix is a later, cloud-first concern."""
+    """`generate catalog` inputs. ``mix`` names a provider preset (see
+    ``studio.mixes``): ``procedural`` (the default) is the key-free combinatorial
+    build; any other mix is LLM-backed and honours ``budget_usd`` as a hard cap."""
 
     version: str = "v1"
     pack: str = "invoice"
     companies: int = 1000
     products_per_company: int = 300
     seed: int = 0
+    mix: str = "procedural"
+    budget_usd: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

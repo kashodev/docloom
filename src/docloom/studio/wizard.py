@@ -62,13 +62,25 @@ def _as_int(raw: str, fallback: int) -> int:
 
 
 # ── stages ──────────────────────────────────────────────────────────────────
-def choose_target(prompter: Prompter | None, provider_flag: str, interactive: bool) -> str:
+_TARGET_HINTS = {"local": "this machine — no cloud, no keys",
+                 "gcp": "Cloud Run Jobs · GCS · Firestore"}
+
+
+def choose_target(prompter: Prompter | None, provider_flag: str, interactive: bool,
+                  *, allow_exit: bool = False) -> str:
+    """The chosen target. A ``--provider`` flag wins outright; otherwise, in an
+    interactive session with more than one target, this is the studio's first
+    screen — pick local vs a cloud. Non-interactive (or a single target) falls
+    through to the first target (``local``), so scripts need no flag. May return
+    :data:`EXIT` when ``allow_exit`` and the operator chooses to leave."""
     if provider_flag:
         return provider_flag
     targets = available_targets()
     if len(targets) == 1 or not interactive or prompter is None:
         return targets[0]
-    choices = [Choice(t, t) for t in targets]
+    choices = [Choice(t, t, _TARGET_HINTS.get(t, "")) for t in targets]
+    if allow_exit:
+        choices.append(Choice(EXIT, "exit", "leave the studio"))
     return prompter.select("Deployment target", choices, default=targets[0])
 
 
@@ -162,7 +174,9 @@ def choose_step(prompter: Prompter | None, step_flag: str, interactive: bool,
 # any prompt (the driver then returns to the step menu).
 def build_catalogue_args(prompter: Prompter | None, interactive: bool, *, pack: str,
                          version: str, companies: int, products_per_company: int,
-                         seed: int) -> CatalogueArgs | str:
+                         seed: int, mix: str = "procedural",
+                         budget_usd: float = 0.0) -> CatalogueArgs | str:
+    from docloom.studio.mixes import get_mix, mix_names
     if interactive and prompter is not None:
         version = prompter.text("Catalogue version", default=version, allow_back=True)
         if version == BACK:
@@ -176,8 +190,26 @@ def build_catalogue_args(prompter: Prompter | None, interactive: bool, *, pack: 
         if raw == BACK:
             return BACK
         products_per_company = _as_int(raw, products_per_company)
+        mix_choices = [Choice(n, n, get_mix(n).description) for n in mix_names()]
+        mix_choices.append(Choice(BACK, "← back"))
+        mix = prompter.select("LLM provider mix", mix_choices, default=mix)
+        if mix == BACK:
+            return BACK
+    # A budget only bites an LLM build; the procedural pool spends nothing, so
+    # neither prompt for nor carry a cap on it.
+    resolved = get_mix(mix)
+    if resolved.is_llm:
+        if interactive and prompter is not None:
+            raw = prompter.text("Budget (USD, hard cap, fleet-wide)",
+                                default=f"{budget_usd or 20:g}", allow_back=True)
+            if raw == BACK:
+                return BACK
+            budget_usd = float(raw) if raw.replace(".", "", 1).isdigit() else (budget_usd or 20.0)
+    else:
+        budget_usd = 0.0
     return CatalogueArgs(version=version, pack=pack, companies=companies,
-                         products_per_company=products_per_company, seed=seed)
+                         products_per_company=products_per_company, seed=seed,
+                         mix=mix, budget_usd=budget_usd)
 
 
 def build_generate_args(prompter: Prompter | None, interactive: bool, *, pack: str, run_id: str,
