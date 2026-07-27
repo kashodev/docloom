@@ -57,6 +57,7 @@ plugins:
 
 nav:
   - Home: index.md
+  - Quickstart: quickstart.md
   - Architecture:
       - Overview: architecture/overview.md
       - Kernel ↔ pack contract: architecture/contract.md

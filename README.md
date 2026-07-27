@@ -50,9 +50,16 @@ The sections below are these principles made concrete.
 ## Running it
 
 ```bash
-pip install docsynth
+# From source (works today; `pip install docsynth` once 0.1.0 ships)
+git clone https://github.com/kashodev/docsynth.git && cd docsynth
+python -m venv .venv && source .venv/bin/activate
+pip install -e '.[studio]'
 playwright install chromium      # one-time, for PDF rendering
+
+docsynth studio                  # interactive wizard — pick the local target
 ```
+
+→ Full walk-through: **[Quickstart](https://kashodev.github.io/docsynth/quickstart/)**.
 
 The **infrastructure** is local by default and cloud-optional — the same
 interfaces carry either, dispatched by URI scheme, so the calling code does not
