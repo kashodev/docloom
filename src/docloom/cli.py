@@ -659,7 +659,7 @@ def _pdfs_progress(project, step, args):
     return poll
 
 
-def _run_studio(*, provider: str = "local", project: str = "", step: str = "", pack: str = "",
+def _run_studio(*, provider: str = "", project: str = "", step: str = "", pack: str = "",
                 config: str = "", run_id: str = "", total: int = 0, catalogue: str = "",
                 fmt: str = "pdf", condition: str = "", issue_date_from: str = "",
                 issue_date_to: str = "", version: str = "v1", companies: int = 1000,
@@ -672,7 +672,7 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
     args, prompting only for what a flag left unset, with back/exit navigation."""
     from functools import partial
 
-    from docloom.studio import Registry, Step, StudioError, get_target, wizard
+    from docloom.studio import Registry, Step, StudioError, available_targets, get_target, wizard
     from docloom.studio.app import run_step
     from docloom.studio.progress import drain_stdin, run_with_spinner
     from docloom.studio.prompts import BACK, EXIT, get_prompter, is_interactive
@@ -681,12 +681,8 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
     prompter = get_prompter() if interactive else None
     loop = interactive and not dry_run       # loop back to the menu; back/exit offered
 
-    try:
-        provider_name = wizard.choose_target(prompter, provider, interactive)
-        target = get_target(provider_name)
-    except StudioError as exc:
-        raise typer.BadParameter(str(exc)) from exc
     registry = Registry()
+    provider_flag = provider              # an explicit --provider pins the target
 
     def _args(step_enum: Step, one_shot: bool) -> object:
         # The first pass honours the per-run flags; later passes prompt afresh, so
@@ -707,17 +703,36 @@ def _run_studio(*, provider: str = "local", project: str = "", step: str = "", p
                                               date_from=df, date_to=dt, selection_file=cfg)
         return wizard.build_export_args(prompter, interactive, run_id=rid, sink=snk)
 
+    provider_name: str | None = None          # None ⇒ (re)show the target screen
+    target = None
     project_flag = project
-    while True:                               # ── project screen (back returns here) ──
-        try:
+    while True:                               # ── target + project screens ──
+        if provider_name is None:             # ── target screen (the studio's entry) ──
+            try:
+                picked = wizard.choose_target(prompter, provider_flag, interactive, allow_exit=loop)
+                target = None if picked == EXIT else get_target(picked)
+            except StudioError as exc:
+                raise typer.BadParameter(str(exc)) from exc
+            if picked == EXIT:
+                typer.echo("  bye.")
+                return
+            provider_name = picked
+            project_flag = project            # a fresh target re-honours --project
+        # Back is offered from the project screen only when the target was chosen
+        # from a menu here (no --provider) with somewhere to return to.
+        target_from_menu = (not provider_flag) and loop and len(available_targets()) > 1
+        try:                                  # ── project screen ──
             proj = wizard.choose_project(prompter, provider_name, target, registry, project_flag,
                                          interactive=interactive, dry_run=dry_run, allow_back=loop,
                                          adopt=onboard, region=region, bucket=bucket)
             pack_name = wizard.choose_pack(prompter, pack, interactive)
         except StudioError as exc:
             raise typer.BadParameter(str(exc)) from exc
-        if proj == BACK:                      # nothing precedes this (single target) → leave
-            typer.echo("  bye.")
+        if proj == BACK:
+            if target_from_menu:
+                provider_name = None          # ← back to the target screen
+                continue
+            typer.echo("  bye.")              # nothing precedes → leave
             return
         project_flag = ""                     # a re-selection prompts rather than reusing the flag
         typer.echo(f"\n  project  {proj.ref}" + (f"   ({proj.root})" if proj.root else ""))
@@ -811,8 +826,9 @@ app.add_typer(studio_app, name="studio")
 @studio_app.callback(invoke_without_command=True)
 def studio(
     ctx: typer.Context,
-    provider: str = typer.Option("local", "--provider", "-p",
-                                 help="Deployment target — local | gcp (aws/azure land later)"),
+    provider: str = typer.Option("", "--provider", "-p",
+                                 help="Deployment target — local | gcp; omit to pick on the "
+                                      "first screen (aws/azure land later)"),
     project: str = typer.Option("", "--project",
                                 help="Project / local workspace; created & saved if new"),
     onboard: bool = typer.Option(False, "--onboard",

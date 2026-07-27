@@ -416,6 +416,33 @@ def test_step_menu_back_returns_to_project_selection(monkeypatch, tmp_path, caps
     assert "bye." in capsys.readouterr().out
 
 
+def test_no_provider_flag_shows_target_screen_and_back_returns_to_it(
+        monkeypatch, tmp_path, capsys) -> None:
+    """With no --provider, the studio opens on the target screen; ← back from the
+    project screen returns to it (and exit there leaves)."""
+    from docloom import cli
+    fake = _FakeTarget()
+    monkeypatch.setenv("DOCLOOM_HOME", str(tmp_path / ".docloom"))
+    monkeypatch.setattr("docloom.studio.prompts.is_interactive", lambda: True)
+    # target=local → project menu ← back (→ target screen) → target = exit
+    monkeypatch.setattr("docloom.studio.prompts.get_prompter",
+                        lambda: ScriptedPrompter(["local", BACK, EXIT]))
+    monkeypatch.setattr("docloom.studio.get_target", lambda name: fake)
+    cli._run_studio()                      # no provider ⇒ the target screen is the entry
+    out = capsys.readouterr().out
+    assert fake.calls == [] and "bye." in out
+
+
+def test_no_provider_flag_non_interactive_defaults_to_local(tmp_path: Path) -> None:
+    """Piped / CI with no --provider falls through to local — no prompt, scripts unchanged."""
+    env = {"DOCLOOM_HOME": str(tmp_path / ".docloom")}
+    res = runner.invoke(app, ["studio", "--project", str(tmp_path / "ws"),
+                              "--step", "pdfs", "--run-id", "r", "--total", "1", "--dry-run"],
+                        env=env)
+    assert res.exit_code == 0, res.output
+    assert "docloom generate" in res.output      # resolved to local, printed its plan
+
+
 # ── progress + drain ────────────────────────────────────────────────────────
 def test_pdfs_progress_is_none_for_non_pdfs(tmp_path: Path) -> None:
     from docloom.cli import _pdfs_progress

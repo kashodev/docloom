@@ -62,13 +62,25 @@ def _as_int(raw: str, fallback: int) -> int:
 
 
 # ── stages ──────────────────────────────────────────────────────────────────
-def choose_target(prompter: Prompter | None, provider_flag: str, interactive: bool) -> str:
+_TARGET_HINTS = {"local": "this machine — no cloud, no keys",
+                 "gcp": "Cloud Run Jobs · GCS · Firestore"}
+
+
+def choose_target(prompter: Prompter | None, provider_flag: str, interactive: bool,
+                  *, allow_exit: bool = False) -> str:
+    """The chosen target. A ``--provider`` flag wins outright; otherwise, in an
+    interactive session with more than one target, this is the studio's first
+    screen — pick local vs a cloud. Non-interactive (or a single target) falls
+    through to the first target (``local``), so scripts need no flag. May return
+    :data:`EXIT` when ``allow_exit`` and the operator chooses to leave."""
     if provider_flag:
         return provider_flag
     targets = available_targets()
     if len(targets) == 1 or not interactive or prompter is None:
         return targets[0]
-    choices = [Choice(t, t) for t in targets]
+    choices = [Choice(t, t, _TARGET_HINTS.get(t, "")) for t in targets]
+    if allow_exit:
+        choices.append(Choice(EXIT, "exit", "leave the studio"))
     return prompter.select("Deployment target", choices, default=targets[0])
 
 
