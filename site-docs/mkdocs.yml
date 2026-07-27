@@ -91,5 +91,6 @@ nav:
       - The deploy tool: operations/deploy-tool.md
       - Deploying on GCP: operations/gcp.md
       - Running / resuming / status / export: operations/running.md
+      - Publishing to PyPI: operations/publishing.md
       - Deploying this docs site: operations/docs-site.md
   - Design decisions: design-decisions.md

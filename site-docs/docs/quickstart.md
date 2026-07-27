@@ -44,7 +44,8 @@ the **local** target: no cloud account, no API keys.
 
     !!! note
         Until the first release is on PyPI, use the **From source** tab — the
-        PyPI name currently holds a placeholder only.
+        PyPI name currently holds a placeholder only. See
+        [Publishing to PyPI](operations/publishing.md).
 
 Either way you get the **`docsynth`** command:
 
