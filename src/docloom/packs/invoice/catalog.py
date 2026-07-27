@@ -141,7 +141,7 @@ class Catalogue(Protocol):
 
         Documents are a function of ``(run_id, index, generator version)``, and
         content is half of that third term — so a corpus is only reproducible if
-        you know which catalogue produced it. See docs/concurrency.md.
+        you know which catalogue produced it (reproducibility is per code version).
         """
         ...
 
@@ -337,8 +337,8 @@ def _party_and_profile(
 
     Draw order is load-bearing and must not be reordered: the seed roster is
     generated from one sequential RNG, so inserting, removing or reordering a
-    draw here changes every company and therefore every document. See
-    docs/concurrency.md on reproducibility being per code version.
+    draw here changes every company and therefore every document —
+    reproducibility is per code version, not absolute.
     """
     slug = name.lower().replace(" ", "").replace(".", "")[:20]
     party = Party(

@@ -211,7 +211,7 @@ catalogue:
     - {name: dashscope, share: 70}   # cheapest survivor takes most of it
     - {name: procedural, share: 30}  # the rest costs nothing
   # API keys are never written here. They live in Secret Manager and are
-  # injected at task start; see docs/deploy-gcp.md § "Where do the API keys go".
+  # injected at task start (docs site → Operations → Deploying on GCP).
   secrets:
     DEEPSEEK_API_KEY: deepseek-api-key
     DASHSCOPE_API_KEY: dashscope-api-key

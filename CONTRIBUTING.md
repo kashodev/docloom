@@ -69,5 +69,6 @@ PYTHONPATH=src pytest -q          # full suite
   `(run_id, index)`. That is sometimes the right thing to do — making line items
   distinct was — but it means a run cannot be resumed across the change, and an
   old run id no longer reproduces its old corpus. Call it out explicitly under
-  *Risk & rollout* so a reviewer can weigh it. See
-  [docs/concurrency.md](docs/concurrency.md#reproducibility-is-per-code-version-not-absolute).
+  *Risk & rollout* so a reviewer can weigh it — reproducibility is per code
+  version, not absolute (see the docs site → Architecture → Concurrency &
+  coordination).
