@@ -1,127 +1,127 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://kashodev.github.io/docloom/</loc>
+         <loc>https://kashodev.github.io/docsynth/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/design-decisions/</loc>
+         <loc>https://kashodev.github.io/docsynth/design-decisions/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/architecture/concurrency/</loc>
+         <loc>https://kashodev.github.io/docsynth/architecture/concurrency/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/architecture/contract/</loc>
+         <loc>https://kashodev.github.io/docsynth/architecture/contract/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/architecture/data-model/</loc>
+         <loc>https://kashodev.github.io/docsynth/architecture/data-model/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/architecture/flows/</loc>
+         <loc>https://kashodev.github.io/docsynth/architecture/flows/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/architecture/overview/</loc>
+         <loc>https://kashodev.github.io/docsynth/architecture/overview/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/core/misc/</loc>
+         <loc>https://kashodev.github.io/docsynth/core/misc/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/core/overview/</loc>
+         <loc>https://kashodev.github.io/docsynth/core/overview/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/core/pipeline/</loc>
+         <loc>https://kashodev.github.io/docsynth/core/pipeline/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/core/providers/</loc>
+         <loc>https://kashodev.github.io/docsynth/core/providers/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/core/state/</loc>
+         <loc>https://kashodev.github.io/docsynth/core/state/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/core/storage/</loc>
+         <loc>https://kashodev.github.io/docsynth/core/storage/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/invoice/catalogue/</loc>
+         <loc>https://kashodev.github.io/docsynth/invoice/catalogue/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/invoice/composition/</loc>
+         <loc>https://kashodev.github.io/docsynth/invoice/composition/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/invoice/content/</loc>
+         <loc>https://kashodev.github.io/docsynth/invoice/content/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/invoice/export/</loc>
+         <loc>https://kashodev.github.io/docsynth/invoice/export/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/invoice/generation/</loc>
+         <loc>https://kashodev.github.io/docsynth/invoice/generation/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/invoice/overview/</loc>
+         <loc>https://kashodev.github.io/docsynth/invoice/overview/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/invoice/reference/</loc>
+         <loc>https://kashodev.github.io/docsynth/invoice/reference/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/invoice/rendering/</loc>
+         <loc>https://kashodev.github.io/docsynth/invoice/rendering/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/operations/deploy-tool/</loc>
+         <loc>https://kashodev.github.io/docsynth/operations/deploy-tool/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/operations/docs-site/</loc>
+         <loc>https://kashodev.github.io/docsynth/operations/docs-site/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/operations/gcp/</loc>
+         <loc>https://kashodev.github.io/docsynth/operations/gcp/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/operations/running/</loc>
+         <loc>https://kashodev.github.io/docsynth/operations/running/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/studio/catalogue/</loc>
+         <loc>https://kashodev.github.io/docsynth/studio/catalogue/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/studio/dispatch/</loc>
+         <loc>https://kashodev.github.io/docsynth/studio/dispatch/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/studio/overview/</loc>
+         <loc>https://kashodev.github.io/docsynth/studio/overview/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/studio/projects/</loc>
+         <loc>https://kashodev.github.io/docsynth/studio/projects/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/studio/steps/</loc>
+         <loc>https://kashodev.github.io/docsynth/studio/steps/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
     <url>
-         <loc>https://kashodev.github.io/docloom/studio/tuning/</loc>
+         <loc>https://kashodev.github.io/docsynth/studio/tuning/</loc>
          <lastmod>2026-07-27</lastmod>
     </url>
 </urlset>
