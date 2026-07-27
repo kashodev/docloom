@@ -2,9 +2,11 @@
   <img src="docloom-logo-page-slate.svg" alt="docloom" width="420">
 </p>
 
-Weave templates and generated data into realistic documents — and get a
-**computed golden dataset** alongside them, exact to the cent, to score an
-OCR/LLM extraction pipeline against.
+Weave templates and generated data into realistic **synthetic documents** — and
+get a **computed golden dataset** alongside them, exact to the cent. The primary
+intended use is **testing AI/OCR document-extraction pipelines**: generate a
+large, varied corpus of synthetic documents whose every field value is known in
+advance, then score an extraction model against that ground truth.
 
 The first document type is **invoices**: hundreds of thousands of them, across
 dozens of business types, billing models (flat, tiered, metered, subscription,
@@ -18,11 +20,16 @@ document type. Contracts and legal documents are additional packs, not forks.
 Five principles are the spine of the project; every part of the system is meant
 to serve them, and new features are designed against them.
 
-1. **Realistic — but no PII.** Generated documents look real, so a corpus is
-   worth testing against; they never carry personally identifiable information.
-   Identity (addresses, phones, tax IDs) is *derived* deterministically at
-   generation and never stored, and catalogue content is screened — so there is
-   no PII-shaped field to leak.
+1. **Realistic — but no PII, and never for fraud.** Generated documents are
+   **synthetic**: they look real, so a corpus is worth testing against, but they
+   never carry personally identifiable information. Identifying details (addresses,
+   phones, tax IDs) are *derived* deterministically at generation and never stored,
+   and LLM-generated descriptions are screened for PII and quality (regex gates — a
+   flagged description falls back to procedural text) — so there is no PII-shaped
+   field to leak. The
+   project creates **no identity documents for fraudulent purposes, and no documents
+   intended to enable fraudulent activity** — its purpose is producing test data
+   with a known ground truth, not passing anything off as genuine.
 2. **Provider-agnostic.** LLMs, cloud providers, and infrastructure backends are
    pluggable — storage, run-state, and export are chosen by URI scheme; models
    are a weighted, config-driven provider mix — with no change to calling code.
@@ -36,9 +43,9 @@ to serve them, and new features are designed against them.
 5. **Extensible.** Extending generation is simple, at three levels: *within* a
    pack (a business type, billing model, locale, or template is a table/file
    edit); a *new document type* is a new pack, no kernel fork; and *variants of a
-   new type* (a passport vs a driver's licence) are an internal axis of one pack,
-   sharing a base by composition. See [Extending](#extending) for the boundary
-   rule.
+   new type* (a bank statement vs a credit-card statement) are an internal axis of
+   one pack, sharing a base by composition. See [Extending](#extending) for the
+   boundary rule.
 
 The sections below are these principles made concrete.
 
@@ -119,21 +126,21 @@ Extensibility runs at three levels:
 - **A new document type** — a new pack implementing `DocumentPack` +
   `GoldenRecord`. Register it in-tree or ship it as `docloom-yourpack` via the
   `docloom.packs` entry-point group.
-- **Variants of a document type** — e.g. an `identity` pack producing passports,
-  driver's licences, and national ID cards: one base document with per-variant
-  field overlays, not three packs. Model these as an internal variant axis of a
-  single pack (a base golden record + optional variant fields, shared builders
-  the variants *compose*), the same way the invoice pack carries business types
-  and archetypes under one registry entry.
+- **Variants of a document type** — e.g. a `statement` pack producing bank,
+  credit-card, and brokerage statements: one base document with per-variant field
+  overlays, not three packs. Model these as an internal variant axis of a single
+  pack (a base golden record + optional variant fields, shared builders the
+  variants *compose*), the same way the invoice pack carries business types and
+  archetypes under one registry entry.
 
 Two rules keep this from eroding the design:
 
 - **The kernel stays document-agnostic — its power is its ignorance.** Shared
   logic comes in three tiers: cross-document (seeding, claim/lease, rendering,
   `GoldenRecord`, money, locale, providers) belongs in the **kernel**;
-  domain-shared (a passport MRZ, an ID portrait, card layout) belongs in the
-  **pack**, *never* hoisted into core to avoid duplication; variant-specific
-  logic is a **variant overlay** in the pack.
+  domain-shared (a statement's account header, transaction ledger, running-balance
+  math) belongs in the **pack**, *never* hoisted into core to avoid duplication;
+  variant-specific logic is a **variant overlay** in the pack.
 - **Composition over a base pack.** Draw a pack boundary where the contract with
   the kernel is uniform (one golden-schema shape, one content mode, one renderer
   family). Split into a second pack only when that contract genuinely diverges —
