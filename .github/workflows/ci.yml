@@ -1,0 +1,61 @@
+name: ci
+
+# Runs the test suite on every push to main and every PR, and lints the Python
+# files a PR changed. Chromium- and emulator-backed tests skip themselves when
+# those services aren't present, and the cloud extras aren't installed, so the
+# core suite runs green on a plain runner.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: pip install -e '.[dev]'
+      - run: pytest -q
+
+  lint:
+    name: ruff (changed files)
+    # Lint only the files a PR changed — the repo's convention is "keep new code
+    # clean" rather than a repo-wide gate. Flip to `ruff check .` once the
+    # pre-existing lint debt is cleared.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - name: Ruff on changed Python files
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          mapfile -t files < <(git diff --name-only --diff-filter=ACM "$base"...HEAD -- '*.py')
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No changed Python files."
+          else
+            printf 'linting:\n%s\n' "${files[*]}"
+            ruff check "${files[@]}"
+          fi
