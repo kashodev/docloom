@@ -1344,6 +1344,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Running / resuming / status / export
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1360,6 +1378,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#follow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Follow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resume
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pause-cancel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pause / cancel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1540,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#follow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Follow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resume
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pause-cancel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pause / cancel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1622,48 @@
 
 
 <h1 id="running-resuming-status-export">Running / resuming / status / export<a class="headerlink" href="#running-resuming-status-export" title="Permanent link">&para;</a></h1>
-<p>Driving and following a run.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>The same lifecycle applies whether you drive it with the <a href="../../core/overview/"><code>docloom</code> CLI</a>
+locally, <a href="../deploy-tool/"><code>deploy.sh</code></a> on GCP, or the <a href="../../studio/overview/">studio</a>.</p>
+<h2 id="run">Run<a class="headerlink" href="#run" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Local:</strong> <code>docloom generate --run-id r1 --total 1000 [--catalogue &lt;uri&gt;] [--format pdf|html]</code>.</li>
+<li><strong>Cloud (blocking):</strong> <code>deploy.sh -c run.yaml run</code> — one execution per slice, waits.</li>
+<li><strong>Cloud (detached):</strong> <code>deploy.sh -c run.yaml dispatch</code> — returns immediately; a
+  multi-hour run outlives the terminal. This is the studio's default.</li>
+</ul>
+<p>Concurrency is just running the worker again — another process, another task —
+against the same <code>--state</code>; the <a href="../../architecture/concurrency/">atomic claim</a>
+splits the units. <code>job.tasks</code> is how many tasks a Cloud Run execution starts.</p>
+<h2 id="follow">Follow<a class="headerlink" href="#follow" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>docloom status --run-id r1 --state &lt;uri&gt;</code> — a snapshot; <code>--wait</code> streams until
+  the run is terminal.</li>
+<li><code>docloom studio status --project &lt;ref&gt; --run r1 [--wait]</code> — reattaches to a
+  dispatched cloud run from any machine that has the project registered, reading
+  the run's state store (no live job to hold). See <a href="../../studio/dispatch/">Studio → Dispatch &amp; status</a>.</li>
+<li><code>deploy.sh status</code> / <code>deploy.sh logs</code>.</li>
+</ul>
+<h2 id="resume">Resume<a class="headerlink" href="#resume" title="Permanent link">&para;</a></h2>
+<p>A run that leaves <strong>failed units exits non-zero</strong>, so a <code>--wait</code>, a Cloud Run
+execution, or a CI step reads a broken run as broken. Recover with:</p>
+<ul>
+<li><code>docloom generate … --resume</code> (local) or <code>deploy.sh resume</code> (cloud).</li>
+</ul>
+<p>Resume re-queues failed units and reclaims units abandoned by crashed workers
+(expired leases), then continues. It is safe to run repeatedly — generation is
+idempotent (a re-generated index overwrites identical content).</p>
+<h2 id="pause-cancel">Pause / cancel<a class="headerlink" href="#pause-cancel" title="Permanent link">&para;</a></h2>
+<p><code>docloom pause</code> / <code>docloom cancel</code> set the run state so workers stop claiming new
+units; <code>resume</code> clears a pause.</p>
+<h2 id="export">Export<a class="headerlink" href="#export" title="Permanent link">&para;</a></h2>
+<p>Once a run is complete, load its golden shards into a queryable sink:</p>
+<ul>
+<li><code>docloom export --run-id r1 --sink &lt;uri&gt; [--storage-prefix …]</code></li>
+<li><code>deploy.sh export</code> (uses <code>export.sink</code> from the config).</li>
+<li>Studio: the <strong>export</strong> step.</li>
+</ul>
+<p>Export is re-runnable and independent of generation — see
+<a href="../../invoice/export/">Invoice → Export</a>.</p>
 
 
 

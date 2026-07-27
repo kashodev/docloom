@@ -464,6 +464,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data model & the golden set
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -480,6 +498,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-golden-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The golden record
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#no-pii-in-the-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No PII in the data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#provenance-self-description" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provenance &amp; self-description
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-it-goes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where it goes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1529,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-golden-record" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The golden record
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#no-pii-in-the-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No PII in the data
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#provenance-self-description" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provenance &amp; self-description
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-it-goes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where it goes
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1600,45 @@
 
 
 <h1 id="data-model-the-golden-set">Data model &amp; the golden set<a class="headerlink" href="#data-model-the-golden-set" title="Permanent link">&para;</a></h1>
-<p>The computed golden record and the manifest.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>docloom's output is two things that must agree: the <strong>documents</strong> (what an
+extractor reads) and the <strong>golden set</strong> (the ground truth to score it against).
+The golden set is not extracted from the documents — it is the <strong>computed input</strong>
+the documents are rendered from, which is what makes it exact.</p>
+<h2 id="the-golden-record">The golden record<a class="headerlink" href="#the-golden-record" title="Permanent link">&para;</a></h2>
+<p>Every document is a projection of a <a href="../contract/"><code>GoldenRecord</code></a>. For invoices
+that is a <code>GoldenInvoice</code> — issuer/customer parties, line items (with tiers,
+discounts, usage), tax buckets, and reconciled totals, all cent-exact
+(<a href="../../core/misc/">money</a>). <code>to_rows()</code> flattens it to <strong>named tables</strong>:</p>
+<ul>
+<li><code>invoices</code> — one row per document (header, parties, totals, tax).</li>
+<li><code>line_items</code> — one row per <strong>printed</strong> line (a tiered line contributes its
+  parent plus a row per band).</li>
+</ul>
+<p>The 1:1-with-the-page rule matters: per-row precision/recall between the golden set
+and an extractor's output is only comparable if the rows correspond to what
+actually appears. A record that fails to reconcile refuses to render, so a wrong
+number never reaches either side.</p>
+<h2 id="no-pii-in-the-data">No PII in the data<a class="headerlink" href="#no-pii-in-the-data" title="Permanent link">&para;</a></h2>
+<p>Identifying details (addresses, phones, tax registrations) are <strong>derived
+deterministically at generation</strong> (<code>derive_identity</code>) and <strong>never stored</strong> in the
+catalogue artifact; generated descriptions are screened for PII/quality. The golden
+rows are fictional but format-valid — there is no PII-shaped field to leak
+(<strong>① Realistic — but no PII</strong>).</p>
+<h2 id="provenance-self-description">Provenance &amp; self-description<a class="headerlink" href="#provenance-self-description" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Each golden row carries the <strong><code>catalogue_version</code></strong> it was generated against, so
+  a corpus is traceable to its content build.</li>
+<li>A run is <strong>self-describing from the bucket alone</strong> via the
+  <a href="../../core/pipeline/">manifest</a>: a part per unit lists every document and shard
+  with a sha256; the root indexes the parts plus totals. A separate consumer can
+  reconstruct and verify the whole run from the manifest — no state store needed
+  (<code>read_run_manifest</code>, <code>verify_run</code>, <code>enumerate_document_keys</code>).</li>
+</ul>
+<h2 id="where-it-goes">Where it goes<a class="headerlink" href="#where-it-goes" title="Permanent link">&para;</a></h2>
+<p>The golden shards (<a href="../../core/pipeline/">gzipped JSONL</a>) are exported unchanged to a
+queryable <a href="../../core/storage/">sink</a> — Parquet / DuckDB / BigQuery — where the
+<code>invoices</code> and <code>line_items</code> tables (plus <code>llm_usage</code>, if a build recorded any)
+become the dataset you score against. See <a href="../../invoice/export/">Export</a>.</p>
 
 
 

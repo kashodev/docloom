@@ -408,6 +408,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution flows
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -424,6 +442,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#run-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#catalogue-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Catalogue build
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1518,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#run-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#catalogue-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Catalogue build
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1578,62 @@
 
 
 <h1 id="execution-flows">Execution flows<a class="headerlink" href="#execution-flows" title="Permanent link">&para;</a></h1>
-<p>High-level run / catalogue-build / export sequence diagrams.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>Three lifecycles, all built on the same <a href="../concurrency/">claim/lease/manifest contract</a>.</p>
+<h2 id="run-lifecycle">Run lifecycle<a class="headerlink" href="#run-lifecycle" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>sequenceDiagram
+    autonumber
+    participant C as create_run
+    participant S as state store
+    participant W as worker(s)
+    participant B as blob store
+    C-&gt;&gt;S: conditional create (plan units)
+    Note over C,S: exactly one planner wins; others resume
+    loop until pool empty
+        W-&gt;&gt;S: claim_next_unit (atomic, lease)
+        W-&gt;&gt;W: source.generate → render → degrade
+        W-&gt;&gt;B: put document · golden shards
+        W-&gt;&gt;B: write unit-manifest part
+        W-&gt;&gt;S: complete_unit
+    end
+    W-&gt;&gt;S: all done? set COMPLETED
+    W-&gt;&gt;B: write root manifest (once)</code></pre>
+<p><code>create_run</code> plans and records the run; workers drain the pool, each claiming a
+unit atomically and — before marking it done — writing its manifest part; the
+worker that flips the run to <code>COMPLETED</code> writes the <strong>root manifest</strong> exactly once.
+Its presence is the completion signal.</p>
+<h2 id="catalogue-build">Catalogue build<a class="headerlink" href="#catalogue-build" title="Permanent link">&para;</a></h2>
+<p>A catalogue build <em>is a run</em> over company ranges, so it reuses the same claim/lease
+machinery — with an LLM overlay inside each unit:</p>
+<pre class="mermaid"><code>sequenceDiagram
+    autonumber
+    participant P as build_catalogue_run
+    participant S as state store
+    participant R as CatalogueRunner
+    participant M as provider mix
+    P-&gt;&gt;S: plan company ranges · claim unit
+    P-&gt;&gt;P: procedural skeleton (key-free)
+    P-&gt;&gt;R: run(items) under budget
+    R-&gt;&gt;M: route(item) → provider.complete
+    Note over R,M: quarantine empties · fallback pool · batch slice
+    R--&gt;&gt;P: descriptions (rejects → procedural)
+    P-&gt;&gt;S: write shard + part
+    S-&gt;&gt;S: finalize root manifest + provenance</code></pre>
+<p>See <a href="../../invoice/catalogue/">Invoice → Catalogue building</a> and
+<a href="../../core/providers/">Providers</a>.</p>
+<h2 id="export">Export<a class="headerlink" href="#export" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>sequenceDiagram
+    autonumber
+    participant E as export_run
+    participant B as blob store
+    participant K as sink
+    E-&gt;&gt;B: iter_keys under &lt;prefix&gt;/golden/
+    loop per table, per shard (key order)
+        E-&gt;&gt;B: get shard
+        E-&gt;&gt;K: write(table, rows)
+    end
+    E-&gt;&gt;K: register (views / external tables)</code></pre>
+<p>Export is a separate, re-runnable step over a completed run's shards — see
+<a href="../../invoice/export/">Invoice → Export</a>.</p>
 
 
 

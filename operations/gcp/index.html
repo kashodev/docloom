@@ -1316,6 +1316,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploying on GCP
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1332,6 +1350,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-provision-creates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What provision creates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cloud-run-jobs-not-a-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloud Run Jobs, not a Service
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secrets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pieces-at-run-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pieces at run time
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1529,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-provision-creates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What provision creates
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cloud-run-jobs-not-a-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cloud Run Jobs, not a Service
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secrets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pieces-at-run-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pieces at run time
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1600,46 @@
 
 
 <h1 id="deploying-on-gcp">Deploying on GCP<a class="headerlink" href="#deploying-on-gcp" title="Permanent link">&para;</a></h1>
-<p>Cloud Run Jobs, the Firestore claim index, Secret Manager.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>The reference cloud stack is <strong>Cloud Run Jobs</strong> + <strong>GCS</strong> + <strong>Firestore</strong> +
+(optionally) <strong>BigQuery</strong>, stood up and driven by <a href="../deploy-tool/"><code>deploy.sh</code></a>.
+Nothing here is <em>required</em> — the same config runs on local backends first (<strong>③
+locally capable</strong>) — but it is the proven production path.</p>
+<h2 id="what-provision-creates">What <code>provision</code> creates<a class="headerlink" href="#what-provision-creates" title="Permanent link">&para;</a></h2>
+<p><code>deploy.sh provision</code> (idempotent) sets up:</p>
+<ul>
+<li><strong>APIs</strong> — Cloud Run, Firestore, Storage, Artifact Registry, Secret Manager.</li>
+<li><strong>GCS bucket</strong> — documents, golden shards, and catalogues (<code>gs://&lt;bucket&gt;/runs/…</code>,
+  <code>gs://&lt;bucket&gt;/catalogues/…</code>).</li>
+<li><strong>Firestore (Native)</strong> + the <strong>composite index for the claim query</strong> (<code>state</code>
+  ASC, <code>unit_index</code> ASC on <code>work_units</code>) — the atomic claim needs it; index build
+  takes a couple of minutes.</li>
+<li><strong>Service account</strong> (<code>docloom-run</code>) + IAM (run.invoker, datastore.user, storage).</li>
+</ul>
+<p><code>build</code> then builds the container (Playwright/Chromium version-pinned,
+<code>PYTHONUNBUFFERED=1</code>) via Cloud Build and pushes it to Artifact Registry.</p>
+<h2 id="cloud-run-jobs-not-a-service">Cloud Run Jobs, not a Service<a class="headerlink" href="#cloud-run-jobs-not-a-service" title="Permanent link">&para;</a></h2>
+<p>Generation runs as <strong>Jobs</strong> (batch), not a Service. One <code>execute</code> per document
+<strong>slice</strong>; <code>job.tasks</code> parallelize a slice's units, coordinated by the
+<a href="../../architecture/concurrency/">Firestore claim</a>. A catalogue build deploys its
+own job shape — single-task in-memory by default, or sharded multi-task when
+<code>catalogue.tasks &gt; 1</code>.</p>
+<h2 id="secrets">Secrets<a class="headerlink" href="#secrets" title="Permanent link">&para;</a></h2>
+<p>API keys for the LLM catalogue live <strong>only in Secret Manager</strong> — never in the
+image, the config, command args, the repo, or logs (<strong>① no-PII/no-secret-leak</strong>).
+<code>deploy.sh catalogue</code> verifies each configured secret exists, grants the service
+account access, and injects it at task start. The config carries only the secret
+<strong>names</strong> (<code>catalogue.secrets: {ENV_NAME: secret-name}</code>); the <a href="../../studio/catalogue/">studio</a>
+captures those names to its registry and prints the <code>gcloud secrets create</code> lines
+for any missing — it never handles a key value.</p>
+<h2 id="the-pieces-at-run-time">The pieces at run time<a class="headerlink" href="#the-pieces-at-run-time" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart LR
+    Job["Cloud Run Job&lt;br/&gt;N tasks"] --&gt;|claim| FS[(Firestore)]
+    Job --&gt;|documents + golden| GCS[(GCS bucket)]
+    Job --&gt;|secrets at start| SM[(Secret Manager)]
+    GCS --&gt;|export| BQ[(BigQuery)]</code></pre>
+<p>Follow a run with <a href="../running/">Running / resuming / status / export</a>. The
+<a href="../../studio/overview/">studio</a> drives all of this — including onboarding an
+existing project and detached dispatch — over the same <code>deploy.sh</code>.</p>
 
 
 

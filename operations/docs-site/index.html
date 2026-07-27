@@ -1372,6 +1372,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Deploying this docs site
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1388,6 +1406,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#run-it-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run it locally
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deploy-github-pages-via-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploy (GitHub Pages via Actions)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writing-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing pages
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1518,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#run-it-locally" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run it locally
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deploy-github-pages-via-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Deploy (GitHub Pages via Actions)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writing-pages" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing pages
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1578,32 @@
 
 
 <h1 id="deploying-this-docs-site">Deploying this docs site<a class="headerlink" href="#deploying-this-docs-site" title="Permanent link">&para;</a></h1>
-<p>mkdocs-material → GitHub Pages via <code>mkdocs gh-deploy</code>.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>This site is a standalone <a href="https://squidfunk.github.io/mkdocs-material/">mkdocs-material</a>
+project under <code>site-docs/</code>, with its <strong>own</strong> toolchain (<code>site-docs/requirements.txt</code>)
+— independent of the docloom package, buildable and shippable on its own. It is
+deployed to <strong>GitHub Pages</strong>.</p>
+<h2 id="run-it-locally">Run it locally<a class="headerlink" href="#run-it-locally" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>site-docs/requirements.txt
+mkdocs<span class="w"> </span>serve<span class="w"> </span>--config-file<span class="w"> </span>site-docs/mkdocs.yml<span class="w">    </span><span class="c1"># live reload at 127.0.0.1:8000</span>
+mkdocs<span class="w"> </span>build<span class="w"> </span>--strict<span class="w"> </span>--config-file<span class="w"> </span>site-docs/mkdocs.yml<span class="w">   </span><span class="c1"># → site-docs/site/ (gitignored)</span>
+</code></pre></div>
+<p><code>--strict</code> fails the build on a broken internal link or a bad Mermaid fence, so CI
+catches drift.</p>
+<h2 id="deploy-github-pages-via-actions">Deploy (GitHub Pages via Actions)<a class="headerlink" href="#deploy-github-pages-via-actions" title="Permanent link">&para;</a></h2>
+<p><code>.github/workflows/docs.yml</code> runs on push to <code>main</code> when <code>site-docs/**</code> changes
+(or via <em>Run workflow</em>), builds the site, and runs <code>mkdocs gh-deploy --force</code>,
+which pushes the static output to the <strong><code>gh-pages</code></strong> branch that Pages serves.</p>
+<p><strong>One-time setup:</strong> <em>Settings → Pages → Deploy from a branch → <code>gh-pages</code> / root.</em>
+After that, docs changes ship automatically. The site is at
+<code>https://kashodev.github.io/docloom/</code>.</p>
+<p>One-shot manual deploy: <code>mkdocs gh-deploy --config-file site-docs/mkdocs.yml</code>.</p>
+<h2 id="writing-pages">Writing pages<a class="headerlink" href="#writing-pages" title="Permanent link">&para;</a></h2>
+<p>The full audit and page plan lives in
+<code>feature_explorations/documentation-site.md</code>. The governing rule: <strong>the code is
+the source of truth</strong> — every page is re-derived from the source, and the stale
+<code>DESIGN.md</code> / <code>docs/*</code> are retired rather than copied. Diagrams are first-class
+(Mermaid via <code>pymdownx.superfences</code>); every flow and structural relationship gets
+one.</p>
 
 
 

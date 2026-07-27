@@ -436,6 +436,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concurrency & coordination
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -452,6 +470,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-unit-is-the-only-granularity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The unit is the only granularity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-levels-of-concurrency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two levels of concurrency
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-coordination-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The coordination contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fleet-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fleet budget
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1529,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-unit-is-the-only-granularity" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The unit is the only granularity
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-levels-of-concurrency" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two levels of concurrency
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-coordination-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The coordination contract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fleet-budget" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fleet budget
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1600,64 @@
 
 
 <h1 id="concurrency-coordination">Concurrency &amp; coordination<a class="headerlink" href="#concurrency-coordination" title="Permanent link">&para;</a></h1>
-<p>The unit; atomic claim + lease + reclaim; brokerless coordination; fleet budget.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>This section <em>is</em> the <strong>④ high-throughput</strong> principle worked out. The design is
+<strong>pull-based and leaderless</strong>: there is no broker and no coordinator process —
+workers pull work from the <a href="../../core/state/">state store</a>, and the store's atomic
+primitives are the only coordination. Because those primitives are backend-neutral
+(the same claim/lease contract over SQLite / Firestore / DynamoDB), throughput is
+<strong>② provider-agnostic</strong> too.</p>
+<h2 id="the-unit-is-the-only-granularity">The unit is the only granularity<a class="headerlink" href="#the-unit-is-the-only-granularity" title="Permanent link">&para;</a></h2>
+<p>A run is planned into <strong>work units</strong> — contiguous document index ranges. The unit
+is simultaneously the granularity of <strong>claiming</strong>, <strong>sharding</strong> (one golden shard
+per unit per table), the <strong>manifest part</strong>, and the <strong>export read</strong>. Size it
+(<code>unit_size</code>) so there are comfortably more units than tasks — ideally 2–3× — or
+some tasks finish with nothing to do.</p>
+<h2 id="two-levels-of-concurrency">Two levels of concurrency<a class="headerlink" href="#two-levels-of-concurrency" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart TB
+    subgraph Pool["one run = one unit pool (state store)"]
+        U1["unit"]:::u
+        U2["unit"]:::u
+        U3["unit"]:::u
+        U4["unit"]:::u
+    end
+    T1["task 1"] --&gt;|atomic claim| Pool
+    T2["task 2"] --&gt;|atomic claim| Pool
+    T3["task N"] --&gt;|atomic claim| Pool
+    classDef u fill:#eee,stroke:#999;</code></pre>
+<ul>
+<li><strong>Across tasks</strong> — N Cloud Run tasks run the same drain loop against one pool;
+  the atomic claim guarantees no unit is worked twice.</li>
+<li><strong>Within a task</strong> — a catalogue build makes <strong>async LLM calls</strong> concurrently
+  (bounded by <code>--concurrency</code>); document <em>rendering</em> is sequential per task
+  (Chromium), so within-task parallelism is the LLM path, not the render path.</li>
+</ul>
+<h2 id="the-coordination-contract">The coordination contract<a class="headerlink" href="#the-coordination-contract" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Atomic claim.</strong> <em>Advance this unit to RUNNING only if still PENDING</em> — one
+  conditional write per backend (SQLite <code>BEGIN IMMEDIATE</code>, Firestore transaction,
+  DynamoDB <code>ConditionExpression</code>). A lost race just moves to the next candidate.</li>
+<li><strong>Lease + reclaim.</strong> A claim stamps a lease; an expired lease is reclaimable, so
+  a crashed worker's unit returns to the pool. <strong>SQLite</strong> reclaims opportunistically
+  inside the claim (a draining fleet self-heals with no resume); <strong>Firestore /
+  DynamoDB</strong> reclaim explicitly (<code>reclaim_expired_units</code>) on resume and at the start
+  of a catalogue build — a per-claim scan would be too costly at scale.</li>
+<li><strong>Planning race.</strong> The run marker and its units are not one write, so <code>Run.planned</code>
+  gates claiming: a worker that loses the conditional <code>create_run</code> either waits for
+  the peer's plan to land or — if already planned (a re-run / retried task) — logs
+  "already planned; resuming" and proceeds. This is what makes cold-starting N tasks
+  safe.</li>
+<li><strong>Completion contract.</strong> The <strong>root manifest's presence = done.</strong> It refuses to
+  write over a gap, and a partial run leaves parts but no root, so a consumer never
+  reads an incomplete run as complete. A worker exits non-zero only for <strong>real
+  holes</strong> (failed units), never because peers are still finishing.</li>
+</ul>
+<h2 id="fleet-budget">Fleet budget<a class="headerlink" href="#fleet-budget" title="Permanent link">&para;</a></h2>
+<p>An LLM catalogue build under a fleet must not let N tasks each spend up to the cap.
+<code>DistributedBudgetGuard</code> counts against the run's <strong>spend rollup</strong> in the state
+store, so the budget holds <strong>across</strong> workers, not per process.</p>
+<p>The <a href="../../core/state/">work-unit lifecycle</a> and the per-backend claim internals are
+on the State stores page; the end-to-end sequences are in
+<a href="../flows/">Execution flows</a>.</p>
 
 
 

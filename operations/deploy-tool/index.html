@@ -1288,6 +1288,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The deploy tool
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1304,6 +1322,47 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#subcommands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subcommands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#config-surface-runyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config surface (run.yaml)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1507,36 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#subcommands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subcommands
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#config-surface-runyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Config surface (run.yaml)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1556,126 @@
 
 
 <h1 id="the-deploy-tool">The deploy tool<a class="headerlink" href="#the-deploy-tool" title="Permanent link">&para;</a></h1>
-<p><code>deploy.sh</code> subcommands and the config surface.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p><code>deploy/gcp/deploy.sh</code> runs docloom on GCP as <strong>Cloud Run Jobs</strong>. It is
+config-file driven — one <code>run.yaml</code> describes a whole run, and the same script and
+config shape run a 1,000-document smoke test and a multi-million-document
+production run; only the numbers differ. Every step is <strong>idempotent</strong> (re-running
+converges rather than failing on "already exists").</p>
+<div class="highlight"><pre><span></span><code>./deploy.sh<span class="w"> </span>-c<span class="w"> </span>run.yaml<span class="w"> </span>&lt;command&gt;<span class="w"> </span><span class="o">[</span>--set<span class="w"> </span>a.b.c<span class="o">=</span>value<span class="w"> </span>...<span class="o">]</span>
+</code></pre></div>
+<h2 id="subcommands">Subcommands<a class="headerlink" href="#subcommands" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>plan</code></td>
+<td>Show the plan; touch nothing.</td>
+</tr>
+<tr>
+<td><code>provision</code></td>
+<td>APIs, bucket, Firestore + claim index, service account, IAM.</td>
+</tr>
+<tr>
+<td><code>build</code></td>
+<td>Build + push the image (Cloud Build).</td>
+</tr>
+<tr>
+<td><code>deploy</code></td>
+<td>Create/update the Cloud Run job.</td>
+</tr>
+<tr>
+<td><code>run</code></td>
+<td>Execute — one execution per document slice, blocking (<code>--wait</code>).</td>
+</tr>
+<tr>
+<td><code>dispatch</code></td>
+<td>Execute <strong>detached</strong> — no <code>--wait</code>; follow with <code>status</code>.</td>
+</tr>
+<tr>
+<td><code>resume</code></td>
+<td>Re-queue failed units, reclaim crashed ones.</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>Run progress, from Firestore.</td>
+</tr>
+<tr>
+<td><code>logs</code></td>
+<td>Recent job logs.</td>
+</tr>
+<tr>
+<td><code>export</code></td>
+<td>Export golden shards to the configured sink.</td>
+</tr>
+<tr>
+<td><code>catalogue</code></td>
+<td>Build the LLM content catalogue (one-off).</td>
+</tr>
+<tr>
+<td><code>teardown</code></td>
+<td>Delete the job(s) and, with <code>TEARDOWN_BUCKET</code>, the bucket.</td>
+</tr>
+<tr>
+<td><code>all</code></td>
+<td>provision + build + deploy + run.</td>
+</tr>
+</tbody>
+</table>
+<p><code>dispatch</code> is what the <a href="../../studio/dispatch/">studio</a> uses so a cloud run outlives
+the terminal. <code>teardown</code> honours <code>ASSUME_YES</code> / <code>TEARDOWN_BUCKET</code> env so the studio
+can drive it non-interactively.</p>
+<p>Any value can be overridden without editing the file, repeatably:
+<code>--set run.total=1000 --set job.tasks=8</code>.</p>
+<h2 id="config-surface-runyaml">Config surface (<code>run.yaml</code>)<a class="headerlink" href="#config-surface-runyaml" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Block</th>
+<th>Keys</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>run.*</code></td>
+<td><code>id</code>, <code>total</code>, <code>unit_size</code>, <code>format</code>, <code>catalogue</code>, <code>max_line_items</code>, <code>llm_usage</code>, <code>date_range</code> (default issue-date window).</td>
+</tr>
+<tr>
+<td><code>documents[]</code></td>
+<td>Per-slice <code>count</code>/<code>share</code> + composition axes (locales, companies, archetypes, business_types, conditions, wear, goods_receipt, per-slice <code>date_range</code>).</td>
+</tr>
+<tr>
+<td><code>job.*</code></td>
+<td><code>tasks</code>, <code>parallelism</code>, <code>cpu</code>, <code>memory</code>, <code>task_timeout</code>, <code>max_retries</code>.</td>
+</tr>
+<tr>
+<td><code>catalogue.*</code></td>
+<td><code>providers</code>, <code>fallback</code>, <code>budget_usd</code>, <code>concurrency</code>, <code>tasks</code>, <code>unit_size</code>, <code>secrets</code>.</td>
+</tr>
+<tr>
+<td><code>export.sink</code></td>
+<td>The golden sink URI.</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Slices.</strong> <code>documents[]</code> splits a run into slices, each sized by <code>count</code> or
+  <code>share</code> (share needs <code>run.total</code>). A multi-slice run nests output under
+  <code>runs/&lt;run&gt;/&lt;slice&gt;/…</code>.</li>
+<li><strong>Issue-date range.</strong> <code>date_range: [from, to]</code> sets the window an invoice's issue
+  date is drawn from; every other date binds to it. Omitted ⇒ the default window.</li>
+<li><strong><code>run.catalogue</code></strong> wires a published catalogue into generation (<code>--catalogue</code>);
+  omitted ⇒ the built-in seed catalogue.</li>
+</ul>
+<p>The reference config is <code>deploy/gcp/run.example.yaml</code>. For the GCP resources and
+secrets see <a href="../gcp/">Deploying on GCP</a>; for driving a run see
+<a href="../running/">Running / resuming / status / export</a>. The <a href="../../studio/overview/">studio</a>
+synthesizes this same config, so a run is identical whether launched by hand or by
+<code>docloom studio</code>.</p>
 
 
 
