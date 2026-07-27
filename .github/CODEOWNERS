@@ -1,0 +1,8 @@
+# Code owners for docloom.
+# https://docs.github.com/articles/about-code-owners
+#
+# @kashodev owns everything in this repo by default — every path, one owner.
+# Add more specific rules below the global one if that ever changes (later rules
+# win over earlier ones for a matching path).
+
+* @kashodev
