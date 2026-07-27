@@ -65,7 +65,7 @@ fi
 load_config() {
   local overrides_joined=""
   [[ ${#OVERRIDES[@]} -gt 0 ]] && overrides_joined="$(printf '%s\n' "${OVERRIDES[@]}")"
-  "${PYTHON}" - "${CONFIG}" "${overrides_joined}" <<'PYEOF'
+  "${PYTHON}" - "${CONFIG}" "${overrides_joined}" "${COMMAND}" <<'PYEOF'
 import datetime as _dt
 import shlex, sys
 
@@ -75,6 +75,13 @@ except ImportError:
     sys.exit("this script parses YAML config; install it with: pip install pyyaml")
 
 path, raw_overrides = sys.argv[1], sys.argv[2]
+command = sys.argv[3] if len(sys.argv) > 3 else ""
+# Commands that actually generate documents need real per-slice counts (and thus
+# run.total when a slice is sized by share). The rest — provision/build/catalogue/
+# export/status/teardown/logs — never read the counts, so a step-scoped config
+# (e.g. the studio's catalogue-only or export-only config) may omit `documents`
+# and `run.total` entirely.
+NEEDS_COUNTS = {"run", "dispatch", "resume", "deploy", "all", "plan"}
 with open(path) as fh:
     cfg = yaml.safe_load(fh) or {}
 
@@ -188,14 +195,20 @@ else:
     if abs(shares - 100.0) > 1e-6:
         sys.exit(f"slice shares must total 100, got {shares:g}")
     if total <= 0:
-        sys.exit("`run.total` is required when slices are sized by `share`")
-    # Rounding remainder to the last slice, so the parts sum to exactly
-    # run.total — a silently short run is worse than an uneven split.
-    counts, assigned = [], 0
-    for i, s in enumerate(slices):
-        c = total - assigned if i == len(slices) - 1 else int(round(total * float(s["share"]) / 100.0))
-        counts.append(c)
-        assigned += c if i < len(slices) - 1 else 0
+        # A share split needs run.total to become concrete — but only for the
+        # commands that use the counts. For the rest the slice is just a name
+        # placeholder, so size it to zero rather than refuse a valid config.
+        if command in NEEDS_COUNTS:
+            sys.exit("`run.total` is required when slices are sized by `share`")
+        counts = [0 for _ in slices]
+    else:
+        # Rounding remainder to the last slice, so the parts sum to exactly
+        # run.total — a silently short run is worse than an uneven split.
+        counts, assigned = [], 0
+        for i, s in enumerate(slices):
+            c = total - assigned if i == len(slices) - 1 else int(round(total * float(s["share"]) / 100.0))
+            counts.append(c)
+            assigned += c if i < len(slices) - 1 else 0
 
 def as_list(value, field, allowed=None):
     """A slice constraint is a list, a scalar, or an int meaning 'use N of them'."""
