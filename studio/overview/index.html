@@ -1061,6 +1061,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1077,6 +1095,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-wizard-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The wizard flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Targets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pieces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pieces
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1518,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-wizard-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The wizard flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Targets
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pieces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The pieces
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1578,70 @@
 
 
 <h1 id="studio-overview">Studio — Overview<a class="headerlink" href="#studio-overview" title="Permanent link">&para;</a></h1>
-<p><code>docloom studio</code>: the wizard flow; local vs gcp targets.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p><code>docloom studio</code> is the interactive/scriptable orchestrator over the same kernel
+and <a href="../../operations/deploy-tool/"><code>deploy.sh</code></a>. In a terminal it is a wizard; with
+flags it is non-interactive (CI). It is the primary way an operator drives docloom
+end to end — pick where to run, provision or reuse a project, and run the three
+steps — without hand-writing a <code>run.yaml</code>.</p>
+<p><code>docloom</code> with no subcommand launches it; <code>docloom studio</code> does too.</p>
+<h2 id="the-wizard-flow">The wizard flow<a class="headerlink" href="#the-wizard-flow" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart LR
+    T["target&lt;br/&gt;local · gcp"] --&gt; P["project&lt;br/&gt;provision / onboard / pick"]
+    P --&gt; K["pack"] --&gt; S["step&lt;br/&gt;catalog · pdfs · export"]
+    S --&gt; A["args"] --&gt; C["confirm"] --&gt; R["run / dispatch"]
+    R --&gt; L["links + status"]</code></pre>
+<p>Each stage is prefilled by any flag already supplied and only prompts for what is
+missing, so the identical walk serves a fully-flagged run and a bare interactive
+one. Prompts are arrow-key selects (an optional <code>questionary</code>/<code>InquirerPy</code> dep,
+with a Rich/Typer fallback), with <strong>back / exit</strong> navigation and a spinner; the
+first screen is the <a href="#targets">target</a>. A cloud run is <strong>dispatched</strong> and returns
+handles + links immediately — you follow it with <a href="../dispatch/"><code>studio status</code></a>.</p>
+<h2 id="targets">Targets<a class="headerlink" href="#targets" title="Permanent link">&para;</a></h2>
+<p>The studio runs against a <code>DeploymentTarget</code>. Two ship:</p>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th><code>provision</code></th>
+<th>steps run on</th>
+<th>content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>local</code></td>
+<td>make a workspace dir (<code>blobs/</code>, <code>runs.db</code>)</td>
+<td>this machine, synchronously</td>
+<td><code>file://</code> / <code>sqlite://</code> / <code>duckdb://</code></td>
+</tr>
+<tr>
+<td><code>gcp</code></td>
+<td>shells <code>deploy.sh provision + build</code></td>
+<td>Cloud Run Jobs</td>
+<td><code>gs://</code> / <code>firestore://</code> / <code>bigquery://</code></td>
+</tr>
+</tbody>
+</table>
+<p>The <strong><code>gcp</code></strong> target synthesizes the exact <code>run.yaml</code> that
+<a href="../../operations/deploy-tool/"><code>deploy.sh</code></a> understands and shells into it, so a
+run is identical whether launched from the studio or by hand — one source of truth
+for the GCP wiring. <code>aws</code> / <code>azure</code> are named for a clear "not yet" message.</p>
+<p><code>DeploymentTarget</code> is a small protocol (<code>normalise</code> / <code>provision</code> / <code>adopt</code> /
+<code>run_catalogue</code> / <code>run_generate</code> / <code>run_export</code> / <code>teardown</code> / <code>catalogue_info</code> /
+<code>scaffold</code>); a <code>dry_run</code> on any step resolves the command without executing, which
+is how the whole surface is testable without a cloud account.</p>
+<h2 id="the-pieces">The pieces<a class="headerlink" href="#the-pieces" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><a href="../projects/">Projects &amp; provisioning</a></strong> — the registry, provision/onboard, and
+  the <code>projects</code> / <code>provision</code> / <code>teardown</code> subcommands.</li>
+<li><strong><a href="../steps/">Steps</a></strong> — catalog / pdfs / export and their args.</li>
+<li><strong><a href="../dispatch/">Dispatch &amp; status</a></strong> — detached cloud runs and reattach.</li>
+<li><strong><a href="../catalogue/">LLM catalogue &amp; secrets</a></strong> — provider-mix presets, budget,
+  Secret Manager name capture, and catalogue re-use.</li>
+<li><strong><a href="../tuning/">Tuning &amp; scaffolding</a></strong> — <code>--concurrency</code> / <code>--tasks</code>, re-use,
+  <code>--scaffold</code>.</li>
+</ul>
+<p>The full design is in <code>feature_explorations/interactive-cli-studio.md</code>.</p>
 
 
 

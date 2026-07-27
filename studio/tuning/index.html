@@ -1201,6 +1201,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tuning & scaffolding
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1217,6 +1235,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#concurrency-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concurrency &amp; tasks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#catalogue-re-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Catalogue re-use
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#-scaffold-write-a-runyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --scaffold — write a run.yaml
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1518,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#concurrency-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concurrency &amp; tasks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#catalogue-re-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Catalogue re-use
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#-scaffold-write-a-runyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        --scaffold — write a run.yaml
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,11 +1578,62 @@
 
 
 <h1 id="tuning-scaffolding">Tuning &amp; scaffolding<a class="headerlink" href="#tuning-scaffolding" title="Permanent link">&para;</a></h1>
-<p><code>--concurrency</code> / <code>--tasks</code>; catalogue re-use; <code>--scaffold</code> run.yaml.</p>
+<p>The studio surfaces the throughput knobs that the kernel and <code>deploy.sh</code> have, and
+can emit a reusable <code>run.yaml</code> instead of running.</p>
+<h2 id="concurrency-tasks">Concurrency &amp; tasks<a class="headerlink" href="#concurrency-tasks" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>catalog step</th>
+<th>pdfs step</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--concurrency</code></td>
+<td>→ <code>catalogue.concurrency</code> (LLM calls in flight)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>--tasks</code></td>
+<td>→ <code>catalogue.tasks</code> (&gt;1 = a <strong>sharded</strong>, resumable build)</td>
+<td>→ <code>job.tasks</code> (Cloud Run workers)</td>
+</tr>
+<tr>
+<td><code>--parallelism</code></td>
+<td>—</td>
+<td>→ <code>job.parallelism</code> (0 ⇒ = tasks)</td>
+</tr>
+</tbody>
+</table>
+<p><code>0</code> means the step's default (catalog <code>8</code> / <code>1</code>, pdfs <code>4</code> / <code>=tasks</code>), so nothing
+changes unless you set a flag. <code>tasks &gt; 1</code> on the catalog step makes the build a
+<a href="../../invoice/catalogue/">sharded run</a> over company ranges, coordinated by the same
+<a href="../../architecture/concurrency/">atomic claim</a> as generation. <code>tasks</code> is a Cloud
+Run concept, so <code>local</code> honours only <code>--concurrency</code>.</p>
+<p>These are advanced knobs: passed as flags <strong>and</strong> prompted in the wizard
+(concurrency + tasks on the catalog step, tasks on pdfs).</p>
+<h2 id="catalogue-re-use">Catalogue re-use<a class="headerlink" href="#catalogue-re-use" title="Permanent link">&para;</a></h2>
+<p>An existing catalogue for a version is reused by default rather than rebuilt —
+<code>--rebuild-catalogue</code> forces a rebuild. See
+<a href="../catalogue/#re-use">LLM catalogue &amp; secrets → Re-use</a>.</p>
+<h2 id="-scaffold-write-a-runyaml"><code>--scaffold</code> — write a run.yaml<a class="headerlink" href="#-scaffold-write-a-runyaml" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>docloom<span class="w"> </span>studio<span class="w"> </span>-p<span class="w"> </span>gcp<span class="w"> </span>--project<span class="w"> </span>&lt;ref&gt;<span class="w"> </span>--step<span class="w"> </span>pdfs<span class="w"> </span>--run-id<span class="w"> </span>r1<span class="w"> </span>--total<span class="w"> </span><span class="m">5000</span><span class="w"> </span>--scaffold<span class="w"> </span>run.yaml
+</code></pre></div>
+<p>Writes the step's config to a <strong>named, commented <code>run.yaml</code></strong> (instead of a
+throwaway temp file) that you can drive <a href="../../operations/deploy-tool/"><code>deploy.sh</code></a>
+with directly:</p>
+<div class="highlight"><pre><span></span><code>deploy/gcp/deploy.sh<span class="w"> </span>-c<span class="w"> </span>run.yaml<span class="w"> </span>&lt;command&gt;
+</code></pre></div>
+<p>It reuses the exact config the studio would have run, so <code>--scaffold</code> is the bridge
+from "let the studio drive it" to "hand-tune the config and drive <code>deploy.sh</code>
+yourself." gcp only (local has no <code>run.yaml</code>).</p>
 <div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
+<p class="admonition-title">Deferred</p>
+<p>A <strong>cost preview</strong> before the catalog confirm is a tracked TODO — a naive
+estimate is fragile (prices drift; a reasoning model that ignores <code>max_tokens</code>
+breaks it), so the hard <code>--budget</code> cap remains the real protection meanwhile.</p>
 </div>
 
 

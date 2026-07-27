@@ -1117,6 +1117,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Steps — catalog / pdfs / export
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1133,6 +1151,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#catalog-build-the-content-catalogue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        catalog — build the content catalogue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pdfs-generate-documents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pdfs — generate documents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#export-golden-shards-a-sink" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        export — golden shards → a sink
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-them" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running them
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1529,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#catalog-build-the-content-catalogue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        catalog — build the content catalogue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pdfs-generate-documents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pdfs — generate documents
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#export-golden-shards-a-sink" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        export — golden shards → a sink
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#running-them" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running them
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1600,39 @@
 
 
 <h1 id="steps-catalog-pdfs-export">Steps — catalog / pdfs / export<a class="headerlink" href="#steps-catalog-pdfs-export" title="Permanent link">&para;</a></h1>
-<p>The three studio steps and their args.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>The studio runs the same three things the CLI does, mapped onto the
+<a href="../../architecture/flows/">kernel flows</a>. Each is a <code>--step</code>, with args prompted
+interactively or passed as flags.</p>
+<h2 id="catalog-build-the-content-catalogue"><code>catalog</code> — build the content catalogue<a class="headerlink" href="#catalog-build-the-content-catalogue" title="Permanent link">&para;</a></h2>
+<p>Builds the invoice pack's <a href="../../invoice/catalogue/">catalogue</a>. Procedural by
+default (key-free); an <a href="../catalogue/">LLM provider mix</a> writes richer descriptions
+under a budget.</p>
+<p>Args: <code>--version</code>, <code>--companies</code>, <code>--products-per-company</code>, <code>--mix</code>, <code>--budget</code>,
+<code>--concurrency</code>, <code>--tasks</code>. On a cloud target it writes to
+<code>gs://&lt;bucket&gt;/catalogues/&lt;pack&gt;/&lt;version&gt;</code>; the studio <a href="../catalogue/#re-use">detects an existing
+catalogue</a> and reuses it rather than rebuild (a rebuild costs
+money).</p>
+<h2 id="pdfs-generate-documents"><code>pdfs</code> — generate documents<a class="headerlink" href="#pdfs-generate-documents" title="Permanent link">&para;</a></h2>
+<p>The run: render N documents + the golden set. A <strong>single inline slice</strong> is prompted;
+a full multi-slice composition points at a <code>run.yaml</code> (<code>--config</code>).</p>
+<p>Args: <code>--run-id</code>, <code>--total</code>, <code>--catalogue</code>, <code>--format</code>, <code>--condition</code>,
+<code>--issue-date-from/-to</code>, <code>--tasks</code>, <code>--parallelism</code>. On <code>gcp</code> the run is
+<strong><a href="../dispatch/">dispatched detached</a></strong> (<code>deploy.sh deploy + dispatch</code>) and returns
+handles + links immediately; on <code>local</code> it runs synchronously.</p>
+<h2 id="export-golden-shards-a-sink"><code>export</code> — golden shards → a sink<a class="headerlink" href="#export-golden-shards-a-sink" title="Permanent link">&para;</a></h2>
+<p>Loads a completed run's golden shards into a queryable sink
+(<a href="../../invoice/export/">Export</a>).</p>
+<p>Args: <code>--run-id</code>, <code>--sink</code> (default <code>bigquery://&lt;project&gt;/golden</code> on gcp, a local
+DuckDB on <code>local</code>).</p>
+<h2 id="running-them">Running them<a class="headerlink" href="#running-them" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Interactive: <code>docloom studio</code> → pick the target, project, and step; confirm.</li>
+<li>Flagged: <code>docloom studio -p gcp --project &lt;ref&gt; --step catalog --version v2 --mix cheap-mix --budget 5 --yes</code>.</li>
+<li>Preview: add <code>--dry-run</code> to print the resolved <code>deploy.sh</code> command without running,
+  or <a href="../tuning/"><code>--scaffold &lt;path&gt;</code></a> to write a reusable <code>run.yaml</code>.</li>
+</ul>
+<p>The wizard loops back to the step menu after each run, so a session can catalog →
+pdfs → export against one project.</p>
 
 
 

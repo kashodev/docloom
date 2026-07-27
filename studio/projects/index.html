@@ -1089,6 +1089,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projects & provisioning
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1105,6 +1123,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The registry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-a-project" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting a project
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#subcommands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subcommands
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1518,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-registry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The registry
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-a-project" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Getting a project
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#subcommands" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Subcommands
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1578,51 @@
 
 
 <h1 id="projects-provisioning">Projects &amp; provisioning<a class="headerlink" href="#projects-provisioning" title="Permanent link">&para;</a></h1>
-<p>The registry; provision / onboard; projects / provision / teardown.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>A <strong>project</strong> is a provisioned environment on a target — a local workspace, or a
+GCP project with its bucket and Firestore. The studio remembers them in a registry
+so you name a project once and reuse it.</p>
+<h2 id="the-registry">The registry<a class="headerlink" href="#the-registry" title="Permanent link">&para;</a></h2>
+<p>One human-readable file, <code>~/.docloom/projects.yaml</code> (or <code>$DOCLOOM_HOME</code>). It is a
+<strong>cache</strong> over what each target already knows, so a lost or hand-edited file is
+never fatal — provisioning is idempotent and re-discovers. Two hard rules:</p>
+<ul>
+<li>It stores secret <strong>names only, never values</strong> — keys live in Secret Manager
+  (<strong>① no secret leak</strong>).</li>
+<li>Adding a project that already exists <strong>adopts</strong> it rather than erroring,
+  mirroring idempotent provisioning.</li>
+</ul>
+<p>Each entry records the target, id, region/bucket (or root), what provisioning
+created, the secret names present, and the last run.</p>
+<h2 id="getting-a-project">Getting a project<a class="headerlink" href="#getting-a-project" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Provision a new one.</strong> First use of a new <code>--project</code> on a target stands it up:
+  <code>local</code> makes a workspace dir; <code>gcp</code> runs <code>deploy.sh provision + build</code> (APIs,
+  bucket, Firestore + claim index, service account/IAM, image — a few minutes).</li>
+<li><strong>Onboard an existing one</strong> (<code>--onboard</code>). Registers an already-set-up cloud
+  project with its real region/bucket <strong>without creating anything</strong> — for a project
+  you (or a prior <code>deploy.sh provision</code>) already stood up. Cloud only; a local
+  workspace has nothing remote to adopt.</li>
+<li><strong>Pick a saved one.</strong> Interactively, the project screen lists saved projects (the
+  default starred) plus "provision new" / "onboard existing".</li>
+</ul>
+<h2 id="subcommands">Subcommands<a class="headerlink" href="#subcommands" title="Permanent link">&para;</a></h2>
+<p><code>studio</code> is a command group; alongside <a href="../dispatch/"><code>status</code></a>:</p>
+<ul>
+<li><strong><code>docloom studio projects</code></strong> — list saved projects.
+  <div class="highlight"><pre><span></span><code>gcp    crawler-rag-data-2026   us-central1 · gs://…-docloom  provisioned 2026-07-20 · last run adhoc-5k *
+local  corpus-v2               ./corpus-v2  created 2026-07-24
+</code></pre></div></li>
+<li><strong><code>docloom studio provision --project &lt;ref&gt;</code></strong> — (re)provision the selected
+  project; idempotent, safe to re-run.</li>
+<li><strong><code>docloom studio teardown --project &lt;ref&gt; [--delete-data] [--yes]</code></strong> — delete a
+  project's resources and forget it. <strong>Keeps data unless <code>--delete-data</code></strong> (then the
+  bucket / local workspace goes too). Destructive → requires confirmation
+  (interactive prompt or <code>--yes</code>); cloud teardown deletes the Cloud Run job(s),
+  leaving Firestore and the service account in place. It drives <code>deploy.sh teardown</code>
+  non-interactively (<code>ASSUME_YES</code> / <code>TEARDOWN_BUCKET</code>).</li>
+</ul>
+<p>Once a project is saved, later commands (<code>pdfs</code>, <code>export</code>, <code>status</code>) find it by
+<code>--project &lt;ref&gt;</code> (a <code>&lt;target&gt;:&lt;id&gt;</code> ref, a bare id, or the default).</p>
 
 
 

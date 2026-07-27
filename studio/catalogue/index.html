@@ -1173,6 +1173,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    LLM catalogue & secrets
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1189,6 +1207,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#provider-mix-presets-studiomixespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provider-mix presets (studio/mixes.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secret-manager-name-capture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secret Manager name capture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#re-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-use
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1518,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#provider-mix-presets-studiomixespy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provider-mix presets (studio/mixes.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secret-manager-name-capture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Secret Manager name capture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#re-use" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-use
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1578,75 @@
 
 
 <h1 id="llm-catalogue-secrets">LLM catalogue &amp; secrets<a class="headerlink" href="#llm-catalogue-secrets" title="Permanent link">&para;</a></h1>
-<p>Provider-mix presets; budget; Secret Manager name capture.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>The <code>catalog</code> step can be <strong>procedural</strong> (key-free, the default) or <strong>LLM-backed</strong>.
+The studio makes the LLM path a matter of picking a preset — it never hand-authors
+the provider block and never touches a key value.</p>
+<h2 id="provider-mix-presets-studiomixespy">Provider-mix presets (<code>studio/mixes.py</code>)<a class="headerlink" href="#provider-mix-presets-studiomixespy" title="Permanent link">&para;</a></h2>
+<p>A <strong>mix</strong> names which providers write descriptions, in what proportion, which
+Secret Manager keys they need, and how a quarantined provider's share is
+redistributed. It expands to the exact <code>catalogue.providers</code> / <code>fallback</code> /
+<code>secrets</code> block <a href="../../operations/deploy-tool/"><code>deploy.sh</code></a> runs.</p>
+<table>
+<thead>
+<tr>
+<th>Mix</th>
+<th>Providers</th>
+<th>Keys</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>procedural</code></td>
+<td>— (combinatorial, no LLM)</td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>cheap-mix</code></td>
+<td>deepseek 50 / dashscope 50</td>
+<td>deepseek + dashscope</td>
+</tr>
+<tr>
+<td><code>balanced</code></td>
+<td>deepseek 40 / dashscope 40 / anthropic 20</td>
+<td>all three</td>
+</tr>
+<tr>
+<td><code>anthropic</code></td>
+<td>anthropic 100</td>
+<td>anthropic</td>
+</tr>
+</tbody>
+</table>
+<p>Both reasoning models have thinking disabled in-mix (deepseek
+<code>extra_body.thinking.type=disabled</code>, dashscope <code>enable_thinking=false</code>) — otherwise
+they burn the budget reasoning and return empty completions. See
+<a href="../../core/providers/">Providers</a> for the mix / fallback / budget mechanics.</p>
+<p>The wizard prompts for the <strong>mix</strong> and, for an LLM mix, a <strong>budget</strong> (a hard USD
+cap); <code>--mix</code> / <code>--budget</code> bypass. Procedural never asks for a budget.</p>
+<h2 id="secret-manager-name-capture">Secret Manager name capture<a class="headerlink" href="#secret-manager-name-capture" title="Permanent link">&para;</a></h2>
+<p>For an LLM mix on a cloud target, the studio records the mix's secret <strong>names</strong> on
+the project (never a value) and prints the <code>gcloud secrets create</code> line for any
+that are missing:</p>
+<div class="highlight"><pre><span></span><code>this mix needs 2 Secret Manager secret(s) (names saved; values stay in Secret Manager):
+  DEEPSEEK_API_KEY    → deepseek-api-key
+  DASHSCOPE_API_KEY   → dashscope-api-key
+create any that are missing (once), then the build reads them:
+  printf %s &quot;$YOUR_KEY&quot; | gcloud secrets create deepseek-api-key --data-file=- --project=…
+</code></pre></div>
+<p><code>deploy.sh catalogue</code> then verifies each secret exists, grants the service account
+access, and injects it at task start. Keys never touch the studio, the config, or
+the registry — only their names (<strong>① no secret leak</strong>).</p>
+<h2 id="re-use">Re-use<a class="headerlink" href="#re-use" title="Permanent link">&para;</a></h2>
+<p>A published catalogue is copied and generated from for months, so a <strong>rebuild costs
+money</strong> — the studio never rebuilds silently. Before the catalog step it reads the
+version's <code>manifest.json</code> (<code>catalogue_info</code>, via a local file or <code>gcloud storage
+cat</code>); if one exists it is <strong>reused by default</strong>:</p>
+<ul>
+<li>interactive: <em>"catalogue 'v2' already exists (built 2026-07-20 · \$3.41) — rebuild
+  (costs money)?"</em></li>
+<li>scripted: reuse unless <code>--rebuild-catalogue</code> forces a rebuild.</li>
+</ul>
+<p>See <a href="../tuning/">Tuning &amp; scaffolding</a> for the concurrency/tasks knobs on the build.</p>
 
 
 

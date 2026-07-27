@@ -1145,6 +1145,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dispatch & status
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1161,6 +1179,47 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#dispatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dispatch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#studio-status-reattach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        studio status — reattach
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1507,36 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#dispatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dispatch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#studio-status-reattach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        studio status — reattach
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1556,34 @@
 
 
 <h1 id="dispatch-status">Dispatch &amp; status<a class="headerlink" href="#dispatch-status" title="Permanent link">&para;</a></h1>
-<p>Detached cloud runs; <code>docloom studio status</code> reattach.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>A GCP run can take hours and <strong>outlive the terminal</strong> that launched it, so the
+studio does not block on it. It <strong>dispatches</strong> the run and returns handles + links
+immediately; you reattach later with <code>studio status</code>.</p>
+<h2 id="dispatch">Dispatch<a class="headerlink" href="#dispatch" title="Permanent link">&para;</a></h2>
+<p>On the <code>pdfs</code> step against <code>gcp</code>, the studio runs <code>deploy.sh deploy</code> (quick) then
+<a href="../../operations/deploy-tool/"><code>deploy.sh dispatch</code></a> — execute <strong>without <code>--wait</code></strong>,
+returning as soon as the Cloud Run executions are created. It prints the run's
+links and how to reattach:</p>
+<div class="highlight"><pre><span></span><code>✔ dispatched 5000 invoice → gs://…/runs/corpus1
+  dispatched — not waiting. Reattach with:
+    docloom studio status -p gcp --project corpus1 --run corpus1
+</code></pre></div>
+<p>(A <code>local</code> run is synchronous — nothing to detach.)</p>
+<h2 id="studio-status-reattach"><code>studio status</code> — reattach<a class="headerlink" href="#studio-status-reattach" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>docloom<span class="w"> </span>studio<span class="w"> </span>status<span class="w"> </span>--project<span class="w"> </span>&lt;ref&gt;<span class="w"> </span>--run<span class="w"> </span>&lt;run-id&gt;<span class="w"> </span><span class="o">[</span>--wait<span class="o">]</span>
+</code></pre></div>
+<p>It resolves the run's <strong>state store</strong> from the saved project (<code>firestore://…</code> for
+gcp, the sqlite path for local) and reads progress with <code>docloom status</code> — so it
+works <strong>from any machine that has the project registered</strong>, with no live job or
+terminal to hold. <code>--wait</code> streams until the run reaches a terminal state (exits
+non-zero if the run drained with failed units).</p>
+<pre class="mermaid"><code>flowchart LR
+    Dispatch["studio pdfs → deploy + dispatch&lt;br/&gt;(returns immediately)"] --&gt; Cloud["Cloud Run job(s)&lt;br/&gt;report into Firestore"]
+    Cloud --&gt; Status["studio status --wait&lt;br/&gt;reads Firestore, streams"]</code></pre>
+<p>Because status just reads the state store, it is cheap to poll and needs no
+running job — the reader half of detached dispatch. Underneath, <code>docloom status
+--wait</code> polls the <a href="../../core/state/">state store</a> and prints on change; the studio
+resolves which store from the project registry.</p>
 
 
 
