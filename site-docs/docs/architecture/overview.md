@@ -1,6 +1,6 @@
 # Architecture — Overview
 
-docloom has two parts and a hard line between them.
+docsynth has two parts and a hard line between them.
 
 - A **document-agnostic kernel** does all the mechanical work: dividing a run into
   units, coordinating workers, formatting money and dates, running the Jinja/
@@ -10,7 +10,7 @@ docloom has two parts and a hard line between them.
   model, its templates, its label vocabulary, and the mapping from a record to a
   render context. The first pack is `invoice`.
 
-Everything docloom does is one of those two things collaborating across a small,
+Everything docsynth does is one of those two things collaborating across a small,
 explicit contract ([Kernel ↔ pack contract](contract.md)). Testing the spine once
 and adding document types as packs — not forks — is the whole point.
 
@@ -30,8 +30,8 @@ then-generate-locally split is the shape of the entire system.
 ```mermaid
 flowchart TB
     subgraph Entry["Entry points"]
-        CLI["docloom (CLI)"]
-        Studio["docloom studio"]
+        CLI["docsynth (CLI)"]
+        Studio["docsynth studio"]
         Deploy["deploy.sh · Cloud Run Jobs"]
     end
     subgraph Kernel["Kernel — document-agnostic"]
@@ -56,8 +56,8 @@ flowchart TB
     Kernel --> Backends
 ```
 
-- **Entry points** all drive the same kernel. The `docloom` CLI is the primitive
-  (`generate` / `export` / `catalogue` / `status` / …); `docloom studio` is the
+- **Entry points** all drive the same kernel. The `docsynth` CLI is the primitive
+  (`generate` / `export` / `catalogue` / `status` / …); `docsynth studio` is the
   interactive/scriptable orchestrator over it and `deploy.sh`; `deploy.sh` runs it
   as Cloud Run Jobs. See [Studio](../studio/overview.md) and
   [Operations](../operations/deploy-tool.md).

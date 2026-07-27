@@ -14,8 +14,8 @@ import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
-from docloom.core.enums import DocumentCondition
-from docloom.core.pipeline.degrade import (
+from docsynth.core.enums import DocumentCondition
+from docsynth.core.pipeline.degrade import (
     degrade_image,
     degrade_pdf,
     images_to_pdf,
@@ -138,14 +138,14 @@ def test_degrade_pdf_is_deterministic_at_the_pixel_level() -> None:
 # ── The wear dial ───────────────────────────────────────────────────────────
 def test_wear_1_leaves_the_profile_untouched() -> None:
     """The default is the existing well-used look — no silent change to samples."""
-    from docloom.core.pipeline.degrade import _PROFILES, scale_profile
+    from docsynth.core.pipeline.degrade import _PROFILES, scale_profile
 
     base = _PROFILES[DocumentCondition.HANDWRITTEN]
     assert scale_profile(base, 1.0) == base
 
 
 def test_lower_wear_eases_every_degradation_and_raises_jpeg_quality() -> None:
-    from docloom.core.pipeline.degrade import _PROFILES, scale_profile
+    from docsynth.core.pipeline.degrade import _PROFILES, scale_profile
 
     base = _PROFILES[DocumentCondition.HANDWRITTEN]
     crisp = scale_profile(base, 0.0)
@@ -155,7 +155,7 @@ def test_lower_wear_eases_every_degradation_and_raises_jpeg_quality() -> None:
 
 
 def test_wear_is_monotonic() -> None:
-    from docloom.core.pipeline.degrade import _PROFILES, scale_profile
+    from docsynth.core.pipeline.degrade import _PROFILES, scale_profile
 
     base = _PROFILES[DocumentCondition.HEAVY_SCAN]
     noises = [scale_profile(base, w / 10)["noise"] for w in range(11)]
@@ -163,7 +163,7 @@ def test_wear_is_monotonic() -> None:
 
 
 def test_wear_is_clamped_to_the_unit_range() -> None:
-    from docloom.core.pipeline.degrade import _PROFILES, scale_profile
+    from docsynth.core.pipeline.degrade import _PROFILES, scale_profile
 
     base = _PROFILES[DocumentCondition.LIGHT_SCAN]
     assert scale_profile(base, -5.0) == scale_profile(base, 0.0)

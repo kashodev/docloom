@@ -10,11 +10,11 @@ the things you want proven before spending real money at scale:
   * cost is computed from real token usage;
   * the budget guard trips before an overspend.
 
-It is NOT the deploy path (there is no `docloom catalogue` command yet) — it
+It is NOT the deploy path (there is no `docsynth catalogue` command yet) — it
 calls the runner directly, which is the smallest honest test of the provider
 layer. Keys come from the environment; nothing is written anywhere.
 
-Needs the anthropic extra for the Claude slice:  pip install 'docloom[anthropic]'
+Needs the anthropic extra for the Claude slice:  pip install 'docsynth[anthropic]'
 
     export ANTHROPIC_API_KEY=... DEEPSEEK_API_KEY=... DASHSCOPE_API_KEY=...
     python scripts/smoke_catalogue.py                 # ~9 items, $0.50 cap, synchronous
@@ -34,11 +34,11 @@ from pathlib import Path
 # Run from a source checkout without installing.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from docloom.core.providers.base import CompletionRequest
-from docloom.core.providers.budget import BudgetExceeded, BudgetGuard
-from docloom.core.providers.catalogue_runner import CatalogueItem, CatalogueRunner
-from docloom.core.providers.factory import build_provider
-from docloom.core.providers.mix import ProviderMix
+from docsynth.core.providers.base import CompletionRequest
+from docsynth.core.providers.budget import BudgetExceeded, BudgetGuard
+from docsynth.core.providers.catalogue_runner import CatalogueItem, CatalogueRunner
+from docsynth.core.providers.factory import build_provider
+from docsynth.core.providers.mix import ProviderMix
 
 # The same mix as deploy/gcp/run.yaml. Model ids are the config's — a wrong id is
 # exactly the kind of thing this smoke should surface, as a per-item failure.
@@ -96,7 +96,7 @@ async def dump_raw() -> None:
 
     import httpx
 
-    from docloom.core.providers.factory import PRESETS
+    from docsynth.core.providers.factory import PRESETS
 
     req = CompletionRequest(
         system="You write invoice line-item labels: a terse noun phrase with a spec, never a sentence.",
@@ -161,7 +161,7 @@ async def main() -> int:
     # Show the deterministic routing plan first — proves the mix spreads work
     # without spending anything.
     print("\n── routing plan (deterministic per item id) ───────────")
-    from docloom.core.providers.catalogue_runner import item_seed
+    from docsynth.core.providers.catalogue_runner import item_seed
     plan: dict[str, int] = {}
     for it in items:
         p = mix.choose(item_seed(it.item_id))

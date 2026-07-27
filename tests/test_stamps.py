@@ -13,7 +13,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from docloom.packs.invoice.stamps import INKS, SHAPES, stamp_svg
+from docsynth.packs.invoice.stamps import INKS, SHAPES, stamp_svg
 
 
 def a_stamp(**kw):

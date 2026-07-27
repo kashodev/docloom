@@ -31,10 +31,10 @@ def bucket_store():
     from google.auth.credentials import AnonymousCredentials
     from google.cloud import storage
 
-    from docloom.core.storage.gcs import GcsBlobStore
+    from docsynth.core.storage.gcs import GcsBlobStore
 
-    client = storage.Client(project="docloom-test", credentials=AnonymousCredentials())
-    name = f"docloom-{uuid.uuid4().hex[:12]}"
+    client = storage.Client(project="docsynth-test", credentials=AnonymousCredentials())
+    name = f"docsynth-{uuid.uuid4().hex[:12]}"
     client.create_bucket(name)
     return GcsBlobStore(name, prefix="runs", client=client)
 

@@ -16,9 +16,9 @@ from decimal import Decimal as D
 
 import pytest
 
-from docloom.core.usage.base import LlmUsage
-from docloom.core.usage.dynamodb import usage_sort_key, usage_to_item
-from docloom.core.usage.firestore import usage_doc_id, usage_to_doc
+from docsynth.core.usage.base import LlmUsage
+from docsynth.core.usage.dynamodb import usage_sort_key, usage_to_item
+from docsynth.core.usage.firestore import usage_doc_id, usage_to_doc
 
 
 def a_usage(**kw) -> LlmUsage:
@@ -115,8 +115,8 @@ requires_dynamodb = pytest.mark.skipif(
 def dynamo_sink():
     import boto3
 
-    from docloom.core.state.dynamodb import DynamoDbStateStore
-    from docloom.core.usage.dynamodb import DynamoDbUsageSink
+    from docsynth.core.state.dynamodb import DynamoDbStateStore
+    from docsynth.core.usage.dynamodb import DynamoDbUsageSink
 
     mock = None
     if _dynamo_backend() == "moto":
@@ -157,7 +157,7 @@ def test_dynamodb_replay_overwrites_rather_than_double_counting(dynamo_sink) -> 
     sink.flush()
     assert table.scan()["Count"] == 5
 
-    from docloom.core.usage.dynamodb import DynamoDbUsageSink
+    from docsynth.core.usage.dynamodb import DynamoDbUsageSink
     replay = DynamoDbUsageSink(table_resource=table)
     for i in range(5):
         replay.record(a_usage(unit_index=2, call_index=i))
@@ -190,12 +190,12 @@ requires_firestore = pytest.mark.skipif(
 
 @requires_firestore
 def test_firestore_replay_overwrites_rather_than_double_counting() -> None:  # pragma: no cover
-    from docloom.core.usage.firestore import FirestoreUsageSink
+    from docsynth.core.usage.firestore import FirestoreUsageSink
 
     collection = f"usage_{uuid.uuid4().hex[:10]}"
 
     def write() -> None:
-        sink = FirestoreUsageSink(project="docloom-test", collection=collection)
+        sink = FirestoreUsageSink(project="docsynth-test", collection=collection)
         for i in range(5):
             sink.record(a_usage(unit_index=2, call_index=i))
         sink.flush()
@@ -204,5 +204,5 @@ def test_firestore_replay_overwrites_rather_than_double_counting() -> None:  # p
     write()   # the unit is retried
 
     from google.cloud import firestore
-    client = firestore.Client(project="docloom-test")
+    client = firestore.Client(project="docsynth-test")
     assert len(list(client.collection(collection).stream())) == 5

@@ -14,8 +14,8 @@ from decimal import Decimal as D
 
 import pytest
 
-from docloom.core import Currency, Jurisdiction, Locale, get_pack, render_record
-from docloom.core.locale import (
+from docsynth.core import Currency, Jurisdiction, Locale, get_pack, render_record
+from docsynth.core.locale import (
     LOCALE_FORMATS,
     format_amount,
     format_date,
@@ -24,8 +24,8 @@ from docloom.core.locale import (
     format_rate,
     language_for,
 )
-from docloom.core.locale.formatting import NNBSP
-from docloom.packs.invoice.labels import COLUMN_VOCABULARIES, LABEL_REGISTRY, LABELS
+from docsynth.core.locale.formatting import NNBSP
+from docsynth.packs.invoice.labels import COLUMN_VOCABULARIES, LABEL_REGISTRY, LABELS
 from tests.factories import invoice, simple_lines
 
 # The exact separator French locales use. Asserted by codepoint because it is

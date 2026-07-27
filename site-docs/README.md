@@ -1,8 +1,8 @@
-# docloom docs site
+# docsynth docs site
 
-The standalone documentation site for docloom, built with
+The standalone documentation site for docsynth, built with
 [mkdocs-material](https://squidfunk.github.io/mkdocs-material/) and deployed to
-**GitHub Pages**. It is independent of the docloom package — its own toolchain
+**GitHub Pages**. It is independent of the docsynth package — its own toolchain
 (`requirements.txt`), buildable and shippable on its own.
 
 ## Run it locally

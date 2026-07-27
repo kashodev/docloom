@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 from decimal import Decimal as D
 
-from docloom.core.providers import (
+from docsynth.core.providers import (
     BudgetGuard,
     CatalogueItem,
     CatalogueRunner,
@@ -22,12 +22,12 @@ from docloom.core.providers import (
     item_seed,
     pricing_for,
 )
-from docloom.core.providers.anthropic_provider import (
+from docsynth.core.providers.anthropic_provider import (
     AnthropicProvider,
     batch_custom_id_index,
     build_batch_requests,
 )
-from docloom.core.providers.base import CompletionResult, Usage
+from docsynth.core.providers.base import CompletionResult, Usage
 
 
 def run(coro):

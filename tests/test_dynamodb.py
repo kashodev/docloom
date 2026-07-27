@@ -15,7 +15,7 @@ available:
 
 Both honour ``ConditionExpression`` (and raise ``ConditionalCheckFailedException``
 when a race is lost), which is the property under test. Skipped when neither is
-installed — the default environment has no boto3, matching the ``docloom[aws]``
+installed — the default environment has no boto3, matching the ``docsynth[aws]``
 extra being optional.
 """
 
@@ -28,9 +28,9 @@ from decimal import Decimal as D
 
 import pytest
 
-from docloom.core.enums import RunState, WorkUnitState
-from docloom.core.state.base import Run, WorkUnit
-from docloom.core.state.dynamodb import (
+from docsynth.core.enums import RunState, WorkUnitState
+from docsynth.core.state.base import Run, WorkUnit
+from docsynth.core.state.dynamodb import (
     item_to_run,
     item_to_spend,
     item_to_unit,
@@ -114,7 +114,7 @@ requires_dynamodb = pytest.mark.skipif(
 def store():
     import boto3
 
-    from docloom.core.state.dynamodb import DynamoDbStateStore
+    from docsynth.core.state.dynamodb import DynamoDbStateStore
 
     mock = None
     if _backend() == "moto":
@@ -127,7 +127,7 @@ def store():
             "dynamodb", endpoint_url=_ENDPOINT, region_name="us-east-1",
             aws_access_key_id="test", aws_secret_access_key="test",
         )
-        name = f"docloom-{uuid.uuid4().hex[:12]}"
+        name = f"docsynth-{uuid.uuid4().hex[:12]}"
         table = DynamoDbStateStore.create_table(resource, name)
         table.wait_until_exists()
         yield DynamoDbStateStore(name, resource=resource)
@@ -372,7 +372,7 @@ def test_a_half_written_plan_yields_no_claims(store) -> None:
 def test_an_abandoned_marker_is_taken_over(store) -> None:
     """A planner that dies mid-plan must not wedge the run forever: once its
     marker is older than the takeover window, the next worker replans it."""
-    from docloom.core.state.base import PLANNING_TAKEOVER_SECONDS
+    from docsynth.core.state.base import PLANNING_TAKEOVER_SECONDS
 
     run = Run(run_id="run_1", pack="invoice", config_id="cfg", total_units=2,
               state=RunState.RUNNING)

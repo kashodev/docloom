@@ -1,12 +1,12 @@
 # Studio — Overview
 
-`docloom studio` is the interactive/scriptable orchestrator over the same kernel
+`docsynth studio` is the interactive/scriptable orchestrator over the same kernel
 and [`deploy.sh`](../operations/deploy-tool.md). In a terminal it is a wizard; with
-flags it is non-interactive (CI). It is the primary way an operator drives docloom
+flags it is non-interactive (CI). It is the primary way an operator drives docsynth
 end to end — pick where to run, provision or reuse a project, and run the three
 steps — without hand-writing a `run.yaml`.
 
-`docloom` with no subcommand launches it; `docloom studio` does too.
+`docsynth` with no subcommand launches it; `docsynth studio` does too.
 
 ## The wizard flow
 

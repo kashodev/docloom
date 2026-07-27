@@ -15,9 +15,9 @@ from pathlib import Path
 import pyarrow.parquet as pq
 import pytest
 
-from docloom.core.sinks import ParquetSink, open_sink
-from docloom.core.sinks.arrow import rows_to_table
-from docloom.core.sinks.duckdb_sink import DuckDBSink
+from docsynth.core.sinks import ParquetSink, open_sink
+from docsynth.core.sinks.arrow import rows_to_table
+from docsynth.core.sinks.duckdb_sink import DuckDBSink
 from tests.factories import invoice, simple_lines, tiered_line
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ def test_factory_defaults_to_parquet(tmp_path: Path) -> None:
 def test_factory_bare_db_path_is_duckdb(tmp_path: Path) -> None:
     """`--sink out/golden.db` resolves to DuckDB relatively; a Parquet dir
     otherwise."""
-    from docloom.core.sinks.duckdb_sink import DuckDBSink
+    from docsynth.core.sinks.duckdb_sink import DuckDBSink
 
     assert isinstance(open_sink(str(tmp_path / "golden.db")), DuckDBSink)
     assert isinstance(open_sink(str(tmp_path / "golden")), ParquetSink)
@@ -107,13 +107,13 @@ def test_factory_bare_db_path_is_duckdb(tmp_path: Path) -> None:
 def test_factory_bigquery_needs_gcp_extra() -> None:
     # A GCS staging location is required; reaching it (or the BQ client) needs
     # the GCP extra, so the actionable message fires either way.
-    with pytest.raises(ImportError, match=r"docloom\[gcp\]"):
-        open_sink("bigquery://my-project/docloom_golden?staging=gs://bucket/staging")
+    with pytest.raises(ImportError, match=r"docsynth\[gcp\]"):
+        open_sink("bigquery://my-project/docsynth_golden?staging=gs://bucket/staging")
 
 
 def test_factory_bigquery_without_staging_explains_why() -> None:
     with pytest.raises(ValueError, match="staging"):
-        open_sink("bigquery://my-project/docloom_golden")
+        open_sink("bigquery://my-project/docsynth_golden")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from docloom.core import (
+from docsynth.core import (
     Currency,
     DocumentPack,
     GoldenRecord,
@@ -21,9 +21,9 @@ from docloom.core import (
     get_pack,
     render_record,
 )
-from docloom.core.pack import RunningHeader
-from docloom.core.registry import register_pack
-from docloom.packs.invoice import GoldenInvoice, InvoicePack
+from docsynth.core.pack import RunningHeader
+from docsynth.core.registry import register_pack
+from docsynth.packs.invoice import GoldenInvoice, InvoicePack
 from tests.factories import invoice, simple_lines, tiered_line
 
 PACK = get_pack("invoice")
@@ -49,10 +49,10 @@ def test_registering_the_same_pack_twice_is_idempotent() -> None:
 
 
 def test_a_second_instance_of_the_same_pack_is_not_a_conflict() -> None:
-    """The bug that broke every installed copy of docloom.
+    """The bug that broke every installed copy of docsynth.
 
-    A built-in pack is registered on import by `docloom.packs` *and* declared as
-    a `docloom.packs` entry point, so an installed wheel registers it twice from
+    A built-in pack is registered on import by `docsynth.packs` *and* declared as
+    a `docsynth.packs` entry point, so an installed wheel registers it twice from
     two code paths that know nothing about each other. Comparing by identity
     made that a fatal `ValueError`, so `available_packs()` raised before
     returning anything.
@@ -60,7 +60,7 @@ def test_a_second_instance_of_the_same_pack_is_not_a_conflict() -> None:
     Invisible locally: the suite and local development both run from a source
     checkout, where no entry points are declared and the second registration
     never happens. It only surfaced when the Docker image ran
-    `docloom.available_packs()` against the installed wheel.
+    `docsynth.available_packs()` against the installed wheel.
     """
     try:
         register_pack(InvoicePack())            # a *different* instance
@@ -73,9 +73,9 @@ def test_the_entry_point_path_does_not_collide_with_the_builtin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Reproduces the installed-wheel path directly: force entry-point loading
-    with the built-in pack already registered, exactly as `pip install docloom`
+    with the built-in pack already registered, exactly as `pip install docsynth`
     arranges it."""
-    from docloom.core import registry
+    from docsynth.core import registry
 
     class FakeEntryPoint:
         name = "invoice"

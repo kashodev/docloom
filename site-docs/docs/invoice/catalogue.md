@@ -63,7 +63,7 @@ flowchart TB
 
 ## Driving it
 
-- CLI: `docloom catalogue --out … --version … [--providers <file>] [--budget-usd N] [--concurrency N] [--state <uri> --tasks …]`.
+- CLI: `docsynth catalogue --out … --version … [--providers <file>] [--budget-usd N] [--concurrency N] [--state <uri> --tasks …]`.
 - Studio: the **catalog** step, with provider-mix presets and Secret Manager name
   capture — see [Studio → LLM catalogue & secrets](../studio/catalogue.md).
 - Cloud: `deploy.sh catalogue` — see [Operations](../operations/deploy-tool.md).

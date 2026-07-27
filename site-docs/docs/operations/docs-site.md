@@ -2,7 +2,7 @@
 
 This site is a standalone [mkdocs-material](https://squidfunk.github.io/mkdocs-material/)
 project under `site-docs/`, with its **own** toolchain (`site-docs/requirements.txt`)
-— independent of the docloom package, buildable and shippable on its own. It is
+— independent of the docsynth package, buildable and shippable on its own. It is
 deployed to **GitHub Pages**.
 
 ## Run it locally
@@ -24,7 +24,7 @@ which pushes the static output to the **`gh-pages`** branch that Pages serves.
 
 **One-time setup:** *Settings → Pages → Deploy from a branch → `gh-pages` / root.*
 After that, docs changes ship automatically. The site is at
-`https://kashodev.github.io/docloom/`.
+`https://kashodev.github.io/docsynth/`.
 
 One-shot manual deploy: `mkdocs gh-deploy --config-file site-docs/mkdocs.yml`.
 

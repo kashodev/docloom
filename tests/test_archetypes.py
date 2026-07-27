@@ -11,10 +11,10 @@ from __future__ import annotations
 import re
 from collections import Counter
 
-import docloom.packs  # noqa: F401
-from docloom.core import get_pack
-from docloom.core.render import render_record
-from docloom.packs.invoice import InvoiceSampler, SeedCatalogue
+import docsynth.packs  # noqa: F401
+from docsynth.core import get_pack
+from docsynth.core.render import render_record
+from docsynth.packs.invoice import InvoiceSampler, SeedCatalogue
 from tests.factories import invoice, profile, simple_lines
 
 PACK = get_pack("invoice")
@@ -71,7 +71,7 @@ def test_font_stack_is_not_html_escaped() -> None:
 
 
 def test_typefaces_resolve_to_distinct_stacks() -> None:
-    from docloom.core.fonts import font_stack
+    from docsynth.core.fonts import font_stack
     serif = render_record(PACK, invoice(simple_lines(),
                                         render_profile=profile(typeface="serif-classic")))
     mono = render_record(PACK, invoice(simple_lines(),
@@ -160,7 +160,7 @@ def test_watermark_reaches_the_standalone_archetypes_too() -> None:
 
 # ── variation matrix: modifiers, not new templates ──────────────────────────
 def test_top_row_meta_gets_the_banner_modifier() -> None:
-    from docloom.packs.invoice import body_classes
+    from docsynth.packs.invoice import body_classes
     inv = invoice(simple_lines(), render_profile=profile(meta_position="top-row"))
     assert "meta-banner" in body_classes(inv)
     assert "meta-banner" in render_record(PACK, inv)

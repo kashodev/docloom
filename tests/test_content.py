@@ -14,8 +14,8 @@ from decimal import Decimal as D
 
 import pytest
 
-import docloom.packs  # noqa: F401 - registers the invoice pack
-from docloom.core import (
+import docsynth.packs  # noqa: F401 - registers the invoice pack
+from docsynth.core import (
     ContentCapability,
     ContentMode,
     LlmContentBuilder,
@@ -23,13 +23,13 @@ from docloom.core import (
     capability_of,
     get_pack,
 )
-from docloom.core.providers import (
+from docsynth.core.providers import (
     CatalogueItem,
     CompletionRequest,
     ProviderMix,
 )
-from docloom.core.providers.base import CompletionResult, Usage
-from docloom.core.providers.pricing import pricing_for
+from docsynth.core.providers.base import CompletionResult, Usage
+from docsynth.core.providers.pricing import pricing_for
 
 
 def run(coro):

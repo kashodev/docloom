@@ -8,8 +8,8 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       keywords, and trove classifiers.
 - [x] **Change the copyright holder in the MIT `LICENSE`** to `Adam Okasha`
       (and the matching `authors` in `pyproject.toml`).
-- [x] **Add the project logo to the README.** `docloom-logo-page-slate.svg` now
-      leads the README (it already reads "docloom", so it replaced the H1).
+- [x] **Add the project logo to the README.** `docsynth-logo-page-slate.svg` now
+      leads the README (it already reads "docsynth", so it replaced the H1).
 - [x] **Check the generated `samples/` PDFs into git.** Dropped the stale
       `templates/*.pdf` ignore, kept the blanket `*.pdf` guard, and added a
       scoped `!samples/**/*.pdf` exception; committed 45 synthetic samples
@@ -82,7 +82,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         live terminal. Open questions: where the slice list comes from (config vs
         bucket discovery), how the operator/tool knows every slice is complete
         (per-slice roots exist ⇒ complete — that's the building block), and where it
-        belongs (a `docloom` subcommand, a `scripts/` helper, or the studio flow).
+        belongs (a `docsynth` subcommand, a `scripts/` helper, or the studio flow).
       - Separately (**fixed**): `deploy.sh` passed `--parallelism=1` to `gcloud run
         jobs execute` in `status()` and `export_golden()`, which gcloud rejects as
         an unrecognized argument (it's a create/update flag, not an execute-time
@@ -164,7 +164,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         issuers, and no match is an error.
       - **"Use N of them" is seeded from the run id**, so a resumed unit draws
         the same pool rather than quietly changing the corpus mid-run.
-      - **Surfaced twice**: `docloom generate --locale/--company/--archetype/
+      - **Surfaced twice**: `docsynth generate --locale/--company/--archetype/
         --business-type/--condition/--wear/--goods-receipt`, and
         `--selection-file` taking the same YAML block. One parser behind both.
         `deploy.sh` emits the flags per slice, so a config finally executes.
@@ -189,7 +189,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       `deploy.sh --wait`, and a CI step all read a broken run as a good one. The
       units were always recoverable with `--resume`; the silence was the problem.
 
-- [x] **Expose the catalogue build on the CLI (`docloom catalogue`).**
+- [x] **Expose the catalogue build on the CLI (`docsynth catalogue`).**
       *Shipped: builds a per-company catalogue, runs the quality/PII gates, and
       writes a versioned Parquet artifact whose manifest carries the audit.
       The pool is generated procedurally today — the LLM-backed build lands
@@ -201,7 +201,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       command line — so "which LLMs, in what proportion, under what budget" is
       configurable in `deploy/gcp/run.example.yaml`, validated by the deploy
       script, and then not executable.
-      - Shape: `docloom catalogue --pack contract --providers <spec> --budget 50
+      - Shape: `docsynth catalogue --pack contract --providers <spec> --budget 50
         --state … --usage …`, building the mix via the existing
         `providers.factory.build_mix` and running `content.build_catalogue`.
       - Needs a way to express the mix on the command line or from a config file;
@@ -213,7 +213,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
 
 - [x] **LLM-backed catalogue build.** `packs/invoice/llm_build.py` drives the
       existing `CatalogueRunner` to write product descriptions (and a co-generated
-      price band) behind the same `docloom catalogue` command and the same
+      price band) behind the same `docsynth catalogue` command and the same
       validation/PII gates. Structural fields, the roster and the fallback all
       stay procedural: any slot the LLM cannot fill (failed call, unparseable
       output, rejected description, bad band) keeps its procedural product, so a
@@ -264,7 +264,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
            the wrong fix — it captures tokens you never wanted.
         3. **Some endpoints want `max_completion_tokens`, not `max_tokens`** —
            worth checking as the mechanism behind Qwen ignoring the cap.
-      - Cross-references the budget item below and the missing `docloom
+      - Cross-references the budget item below and the missing `docsynth
         catalogue` command above: none of this is reachable today (no LLM-backed
         pack, no CLI), so it blocks nothing yet — but it must be fixed before the
         catalogue path is wired, or the first real run wastes money on garbage.
@@ -288,7 +288,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       empty completion still *costs* — a reasoning model that spends its whole
       token budget on `reasoning_content` and returns `content: ""` is billed for
       those output tokens (observed live: deepseek-v4-flash, 2,000 output tokens
-      per empty, execution `docloom-generate-catalogue-h6w2x`). The circuit-breaker
+      per empty, execution `docsynth-generate-catalogue-h6w2x`). The circuit-breaker
       (`empty_streak_limit`, default 10) quarantines a provider that returns empties
       — but it does **not cap the money spent getting there**, and it is weak
       *within a round*: `build_llm_catalogue` submits a whole round's chunks in one
@@ -372,7 +372,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       - **Per-writer consistency:** a style vector per catalogue company gives
         the same "person" a consistent hand across their invoices, while each
         instance still varies — the realism property fonts cannot provide.
-      - **Packaging:** ship behind an optional `docloom[handwriting]` extra
+      - **Packaging:** ship behind an optional `docsynth[handwriting]` extra
         (PyTorch or, better, an exported ONNX model for a light CPU runtime).
         Keep it out of core: it is a heavy dependency and the font path must
         remain the key-free, local-first default. Determinism via a seeded
@@ -417,7 +417,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       documents the contract.
 
 ## Rendering fidelity
-- [x] **Move the font bundle into the kernel.** `docloom.core.fonts` now owns the
+- [x] **Move the font bundle into the kernel.** `docsynth.core.fonts` now owns the
       woff2 files, the semantic stacks and the base64 `@font-face` embedding;
       packs keep only selection *policy* (which faces they draw from). A second
       pack gets byte-identical typography without duplicating the bundle. Also
@@ -436,15 +436,15 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       JetBrains Mono) now embed a bundled OFL woff2 (weights 400/700) as base64
       `@font-face` via `fonts.font_face_css`, and `font_stack` leads with the
       embedded family — byte-identical rendering for those typefaces on any host.
-      Files + licence in `src/docloom/core/fonts/`. Remaining keys still
+      Files + licence in `src/docsynth/core/fonts/`. Remaining keys still
       resolve from their semantic fallback stack; add more the same way (drop
       woff2 into `fonts/files/`, extend `BUNDLED`, note it in `OFL.txt`).
 
 - [ ] **The test suite never exercises the installed wheel.** Everything runs
       from a source checkout (`PYTHONPATH=src`), where no entry points are
-      declared. That hid a bug which broke *every* installed copy of docloom:
+      declared. That hid a bug which broke *every* installed copy of docsynth:
       the invoice pack is registered both on import and through its
-      `docloom.packs` entry point, and `register_pack` compared by identity, so
+      `docsynth.packs` entry point, and `register_pack` compared by identity, so
       `available_packs()` raised `ValueError` before returning anything. 556
       passing tests said nothing; the Docker build's one-line smoke check caught
       it.
@@ -454,13 +454,13 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         until something installs the wheel.
       - Shape: a CI job that `pip install dist/*.whl` into a clean venv and runs
         a handful of smoke assertions — `available_packs()`, `get_pack`, fonts
-        and templates resolving from package data, `docloom --help`. Cheap, and
+        and templates resolving from package data, `docsynth --help`. Cheap, and
         it covers the whole class rather than this one instance.
 
 ## Concurrency & multi-cloud portability
 - [~] **Surface task/concurrency control in the studio (catalogue + generate),
       and reconsider export parallelism.** *Catalogue + generate flags **done**
-      (`feat/studio-concurrency-flags`): `docloom studio --concurrency`
+      (`feat/studio-concurrency-flags`): `docsynth studio --concurrency`
       (→ `catalogue.concurrency`), `--tasks` (→ `catalogue.tasks` for catalog =
       sharded resumable build, `job.tasks` for pdfs), `--parallelism`
       (→ `job.parallelism`); 0 ⇒ each step's default (catalog 8/1, pdfs 4/=tasks).
@@ -468,10 +468,10 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       `LocalTarget` (local honours `--concurrency`; `tasks` is a Cloud-Run concept,
       not threaded there). **Export parallelism still open — see the last bullet.***
       The knobs exist in the kernel and
-      `deploy.sh` but the studio bakes in fixed values, so a `docloom studio` run
+      `deploy.sh` but the studio bakes in fixed values, so a `docsynth studio` run
       can't scale up without hand-editing config. Split into three parts:
       - **[done] Catalogue is single-task unless sharded — and the studio never shards.**
-        `docloom catalogue` runs a single-process, in-memory build **unless
+        `docsynth catalogue` runs a single-process, in-memory build **unless
         `--state` is given**, which switches it to `_sharded_catalogue` (a
         resumable build over company ranges, worked by N Cloud Run tasks via the
         same atomic claim as generation). Within the single task it still runs
@@ -519,9 +519,9 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         worse failure than the duplicate work. Absent on older rows ⇒ `True`
         (they were only ever visible fully planned). A planner that dies mid-plan
         is taken over after `PLANNING_TAKEOVER_SECONDS`.
-      - **`docloom plan` shipped alongside** — not required (`generate` plans
+      - **`docsynth plan` shipped alongside** — not required (`generate` plans
         safely from every worker), but it lets a large run be planned and
-        inspected with `docloom status` before compute is committed to it.
+        inspected with `docsynth status` before compute is committed to it.
       - **Rejected: worker-ordinal gating** (`CLOUD_RUN_TASK_INDEX` /
         `AWS_BATCH_JOB_ARRAY_INDEX`). It puts coordination in the platform, which
         is backwards — `docs/concurrency.md` is explicit that coordination lives
@@ -605,7 +605,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       **Firestore emulator** — real SDK calls, env-gated, skipped without the
       emulator. BigQuery has no local emulator (external tables read real GCS),
       so its end-to-end test is gated on a real project
-      (`DOCLOOM_BQ_PROJECT/DATASET/STAGING`). Also fixed a deprecated positional
+      (`DOCSYNTH_BQ_PROJECT/DATASET/STAGING`). Also fixed a deprecated positional
       Firestore `where()` call surfaced by the emulator run.
 - [x] **`(cont'd)` markers on page-spanning sections** (telecom archetype). The
       PDF renderer now measures each section table's top/bottom in the print-

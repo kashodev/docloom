@@ -8,10 +8,10 @@ skipped everywhere else.
 
 To run it:
 
-    export DOCLOOM_BQ_PROJECT=your-project
-    export DOCLOOM_BQ_DATASET=docloom_ci          # must already exist
-    export DOCLOOM_BQ_STAGING=gs://your-bucket/ci  # real GCS the project can read
-    pip install 'docloom[gcp]'
+    export DOCSYNTH_BQ_PROJECT=your-project
+    export DOCSYNTH_BQ_DATASET=docsynth_ci          # must already exist
+    export DOCSYNTH_BQ_STAGING=gs://your-bucket/ci  # real GCS the project can read
+    pip install 'docsynth[gcp]'
     pytest tests/test_bigquery_integration.py
 
 It writes two golden rows, registers the external table, and asserts the
@@ -27,25 +27,25 @@ from urllib.parse import urlparse
 
 import pytest
 
-_PROJECT = os.environ.get("DOCLOOM_BQ_PROJECT")
-_DATASET = os.environ.get("DOCLOOM_BQ_DATASET")
-_STAGING = os.environ.get("DOCLOOM_BQ_STAGING")
+_PROJECT = os.environ.get("DOCSYNTH_BQ_PROJECT")
+_DATASET = os.environ.get("DOCSYNTH_BQ_DATASET")
+_STAGING = os.environ.get("DOCSYNTH_BQ_STAGING")
 
 pytestmark = pytest.mark.skipif(
     not (_PROJECT and _DATASET and _STAGING),
-    reason="needs a real BigQuery project (DOCLOOM_BQ_PROJECT/DATASET/STAGING)",
+    reason="needs a real BigQuery project (DOCSYNTH_BQ_PROJECT/DATASET/STAGING)",
 )
 
 
 def _staging_store():
-    from docloom.core.storage.gcs import GcsBlobStore
+    from docsynth.core.storage.gcs import GcsBlobStore
 
     parsed = urlparse(_STAGING)  # gs://bucket/prefix
     return GcsBlobStore(parsed.netloc, parsed.path.lstrip("/"))
 
 
 def test_numeric_survives_the_external_table_roundtrip() -> None:  # pragma: no cover - real cloud
-    from docloom.core.sinks.bigquery import BigQuerySink
+    from docsynth.core.sinks.bigquery import BigQuerySink
 
     sink = BigQuerySink(_PROJECT, _DATASET, _staging_store())
     sink.write("invoices", [

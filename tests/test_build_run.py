@@ -15,12 +15,12 @@ from pathlib import Path
 
 import pytest
 
-from docloom.core.enums import RunState
-from docloom.core.state.sqlite import SqliteStateStore
-from docloom.packs.invoice.artifact import load_catalogue, write_catalogue
-from docloom.packs.invoice.build_run import build_catalogue_run
-from docloom.packs.invoice.procedural import generate_catalogue
-from docloom.packs.invoice.sampler import InvoiceSampler
+from docsynth.core.enums import RunState
+from docsynth.core.state.sqlite import SqliteStateStore
+from docsynth.packs.invoice.artifact import load_catalogue, write_catalogue
+from docsynth.packs.invoice.build_run import build_catalogue_run
+from docsynth.packs.invoice.procedural import generate_catalogue
+from docsynth.packs.invoice.sampler import InvoiceSampler
 
 
 def _state(tmp_path: Path, name: str = "b.db") -> SqliteStateStore:
@@ -92,7 +92,7 @@ def test_many_workers_split_the_units_without_collision(tmp_path: Path) -> None:
 # ── A partial build is not mistaken for complete ────────────────────────────
 def test_a_failed_unit_leaves_no_root_manifest(tmp_path: Path, monkeypatch) -> None:
     """No root ⇒ do not consume it — the same completion contract as a run."""
-    from docloom.packs.invoice import build_run
+    from docsynth.packs.invoice import build_run
 
     real = build_run.generate_company_range
 
@@ -119,7 +119,7 @@ def test_an_incomplete_build_never_reports_itself_complete(tmp_path: Path, monke
     no PENDING units and drains cleanly. Unless completion is reported from the
     *build*, that retry exits 0 and the execution goes green over a broken build.
     """
-    from docloom.packs.invoice import build_run
+    from docsynth.packs.invoice import build_run
 
     real = build_run.generate_company_range
 
@@ -175,8 +175,8 @@ def test_a_build_reclaims_a_unit_a_crashed_worker_abandoned(tmp_path: Path, monk
     for exactly this reason.)"""
     from datetime import UTC, datetime, timedelta
 
-    from docloom.core.pipeline.run import create_run
-    from docloom.packs.invoice.build_run import CATALOGUE_PACK
+    from docsynth.core.pipeline.run import create_run
+    from docsynth.packs.invoice.build_run import CATALOGUE_PACK
 
     out = str(tmp_path / "cat")
     state = _state(tmp_path)
@@ -212,8 +212,8 @@ def test_a_worker_finishing_before_its_peers_is_not_a_failure(tmp_path: Path) ->
 
     Simulated by leaving one unit claimed-but-unfinished (a stand-in for a peer
     that is still working it) while this worker drains the rest."""
-    from docloom.core.pipeline.run import create_run
-    from docloom.packs.invoice.build_run import CATALOGUE_PACK
+    from docsynth.core.pipeline.run import create_run
+    from docsynth.packs.invoice.build_run import CATALOGUE_PACK
 
     out = str(tmp_path / "cat")
     state = _state(tmp_path)
@@ -232,8 +232,8 @@ def test_a_worker_finishing_before_its_peers_is_not_a_failure(tmp_path: Path) ->
 
 
 def test_a_resume_completes_the_build(tmp_path: Path, monkeypatch) -> None:
-    from docloom.core.pipeline import resume_run
-    from docloom.packs.invoice import build_run
+    from docsynth.core.pipeline import resume_run
+    from docsynth.packs.invoice import build_run
 
     real = build_run.generate_company_range
     fail = {"on": True}
@@ -278,9 +278,9 @@ def test_the_llm_build_shards_and_falls_back(tmp_path: Path) -> None:
     procedural fallback, proving the sharded LLM path degrades the same way."""
     from decimal import Decimal as D
 
-    from docloom.core.providers.base import CompletionResult, Usage
-    from docloom.core.providers.mix import ProviderMix
-    from docloom.core.providers.pricing import pricing_for
+    from docsynth.core.providers.base import CompletionResult, Usage
+    from docsynth.core.providers.mix import ProviderMix
+    from docsynth.core.providers.pricing import pricing_for
 
     class Empty:
         name = "f"
@@ -311,9 +311,9 @@ def test_quarantine_persists_across_units_and_lands_in_the_manifest(tmp_path: Pa
     """
     from decimal import Decimal as D
 
-    from docloom.core.providers.base import CompletionResult, Usage
-    from docloom.core.providers.mix import ProviderMix
-    from docloom.core.providers.pricing import pricing_for
+    from docsynth.core.providers.base import CompletionResult, Usage
+    from docsynth.core.providers.mix import ProviderMix
+    from docsynth.core.providers.pricing import pricing_for
 
     class Empty:
         name = "deepseek"
@@ -361,9 +361,9 @@ def test_a_budget_too_small_completes_procedurally_it_does_not_fail(tmp_path: Pa
     before the ceiling and the remainder procedural."""
     from decimal import Decimal as D
 
-    from docloom.core.providers.base import CompletionResult, Usage
-    from docloom.core.providers.mix import ProviderMix
-    from docloom.core.providers.pricing import pricing_for
+    from docsynth.core.providers.base import CompletionResult, Usage
+    from docsynth.core.providers.mix import ProviderMix
+    from docsynth.core.providers.pricing import pricing_for
 
     class Priced:
         name = "p"

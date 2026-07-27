@@ -11,7 +11,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from docloom.cli import app
+from docsynth.cli import app
 
 runner = CliRunner()
 
@@ -112,7 +112,7 @@ def test_status_wait_returns_on_a_completed_run(tmp_path: Path) -> None:
 def test_status_wait_exits_nonzero_when_a_unit_is_left_failed(tmp_path: Path) -> None:
     """A run drained with a failed unit (nothing pending) is terminal-for-wait and
     exits non-zero — it needs a resume, and a follower should learn that."""
-    from docloom.core.state import Run, SqliteStateStore, WorkUnit
+    from docsynth.core.state import Run, SqliteStateStore, WorkUnit
     db = tmp_path / "runs.db"
     store = SqliteStateStore(db)
     store.create_run(Run(run_id="rf", pack="invoice", config_id="c", total_units=1),
@@ -252,7 +252,7 @@ def test_a_worker_retrying_into_an_all_failed_run_still_exits_nonzero(
     units already FAILED and out of the claimable pool, so it claims nothing and
     records no failures of its own. Exiting on *its* stats would report success
     over a run that produced zero documents. It must read the run's state."""
-    from docloom.core.pipeline import HtmlRenderer
+    from docsynth.core.pipeline import HtmlRenderer
 
     def boom(self, record):
         raise RuntimeError("render exploded")
@@ -278,11 +278,11 @@ def test_generate_draws_from_a_catalogue_artifact(tmp_path: Path) -> None:
     reading a Parquet file needs no credential, so this stays local-first."""
     from decimal import Decimal as D
 
-    from docloom.core.locale.enums import Currency, Locale
-    from docloom.packs.invoice.artifact import CompanyRow, write_catalogue
-    from docloom.packs.invoice.catalog import ProductTemplate
-    from docloom.packs.invoice.enums import BusinessType
-    from docloom.packs.invoice.jurisdictions import Jurisdiction
+    from docsynth.core.locale.enums import Currency, Locale
+    from docsynth.packs.invoice.artifact import CompanyRow, write_catalogue
+    from docsynth.packs.invoice.catalog import ProductTemplate
+    from docsynth.packs.invoice.enums import BusinessType
+    from docsynth.packs.invoice.jurisdictions import Jurisdiction
 
     art = tmp_path / "catalogue"
     rows = [CompanyRow("solo", "Solo Supply Ltd", BusinessType.RETAIL,
@@ -326,7 +326,7 @@ def test_a_missing_catalogue_fails_before_generating(tmp_path: Path) -> None:
     assert bad.exit_code != 0
 
 
-# ── docloom catalogue ───────────────────────────────────────────────────────
+# ── docsynth catalogue ───────────────────────────────────────────────────────
 def test_catalogue_builds_validates_and_generates(tmp_path: Path) -> None:
     """The full step-5 loop: build a pool, gate it, publish it, generate from
     it — with no API key anywhere."""
@@ -376,7 +376,7 @@ def test_a_catalogue_for_an_unknown_pack_is_rejected(tmp_path: Path) -> None:
     assert "no catalogue builder" in bad.output
 
 
-# ── docloom catalogue --providers (LLM build) ───────────────────────────────
+# ── docsynth catalogue --providers (LLM build) ───────────────────────────────
 def _mock_openai_transport():
     """A MockTransport that answers the catalogue prompt with valid JSON products,
     standing in for a real OpenAI-compatible endpoint."""
@@ -405,7 +405,7 @@ def test_catalogue_llm_build_end_to_end(tmp_path: Path) -> None:
 
     import httpx
 
-    from docloom.core.providers import factory
+    from docsynth.core.providers import factory
 
     client = httpx.AsyncClient(transport=_mock_openai_transport())
     real = factory.build_provider
@@ -447,7 +447,7 @@ def test_catalogue_llm_build_rejects_a_bad_providers_file(tmp_path: Path) -> Non
 
 
 def test_catalogue_llm_build_from_inline_env_var(tmp_path: Path, monkeypatch) -> None:
-    """The Cloud Run path: the mix arrives inline via DOCLOOM_PROVIDERS, not a
+    """The Cloud Run path: the mix arrives inline via DOCSYNTH_PROVIDERS, not a
     file. On Linux (the container) `Path(inline_json).is_file()` raises
     ENAMETOOLONG on the long JSON — the real job died on it. macOS returns False
     for the same string, so the OSError is simulated here to reproduce the Linux
@@ -455,7 +455,7 @@ def test_catalogue_llm_build_from_inline_env_var(tmp_path: Path, monkeypatch) ->
     unstattable value as inline content, not crash."""
     import httpx
 
-    from docloom.core.providers import factory
+    from docsynth.core.providers import factory
 
     real_is_file = Path.is_file
 
@@ -475,7 +475,7 @@ def test_catalogue_llm_build_from_inline_env_var(tmp_path: Path, monkeypatch) ->
     globals()["_mock_client"] = client
     inline = ('{"providers": [{"name": "dashscope", "model": "qwen3.5-flash", '
               '"weight": 100, "extra_body": {"enable_thinking": false}}]}')
-    monkeypatch.setenv("DOCLOOM_PROVIDERS", inline)
+    monkeypatch.setenv("DOCSYNTH_PROVIDERS", inline)
     out = tmp_path / "cat"
 
     import unittest.mock as mock

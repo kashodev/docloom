@@ -7,7 +7,7 @@ family per company — no company mixing apparel with computer parts. Run it aft
 `deploy.sh -c run.coherence.yaml catalogue`:
 
     /path/to/.venv/bin/python verify_coherence.py \
-        gs://crawler-rag-data-2026-docloom/catalogues/invoice/v2-test
+        gs://crawler-rag-data-2026-docsynth/catalogues/invoice/v2-test
 
 Reads the parquet via `gcloud storage cp` + pyarrow, so it needs no GCP extra —
 just gcloud auth and pyarrow (both already in the project venv).
@@ -22,7 +22,7 @@ import tempfile
 import pyarrow.parquet as pq
 
 URI = (sys.argv[1] if len(sys.argv) > 1
-       else "gs://crawler-rag-data-2026-docloom/catalogues/invoice/v2-test").rstrip("/")
+       else "gs://crawler-rag-data-2026-docsynth/catalogues/invoice/v2-test").rstrip("/")
 PROJECT = "crawler-rag-data-2026"
 SAMPLE = 12
 

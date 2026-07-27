@@ -23,7 +23,7 @@ Keys are deterministic and unit-sharded, e.g.
 `<prefix>/golden/<table>/unit-000123.jsonl.gz`, where `<prefix>` defaults to the
 run id (a multi-slice run nests under `runs/<run>/<slice>/…`). `iter_keys` is what
 [export](../invoice/export.md) and manifest verification walk. Cloud backends need
-the matching extra (`docloom[gcp]` / `[aws]`); a missing one raises an actionable
+the matching extra (`docsynth[gcp]` / `[aws]`); a missing one raises an actionable
 error naming the install.
 
 ## Golden sinks (`core/sinks/`)

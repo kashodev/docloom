@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 580 240" role="img" aria-label="docloom logo, slate and amber">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 580 240" role="img" aria-label="docsynth logo, slate and amber">
   <!-- Mark: a document page with a single thread weaving over/under its text lines -->
   <g>
     <rect x="25" y="15" width="120" height="170" rx="16" fill="#EEF3F9" stroke="#2C4A6E" stroke-width="10"/>
@@ -14,7 +14,7 @@
       <path d="M85 107 C 78 126, 92 146, 85 165 C 80 178, 88 196, 84 214"/>
     </g>
   </g>
-  <!-- Wordmark: geometric monoline "docloom" -->
+  <!-- Wordmark: geometric monoline "docsynth" -->
   <g transform="translate(185,52)" fill="none" stroke-width="11" stroke-linecap="round">
     <g stroke="#2C4A6E">
       <!-- d -->

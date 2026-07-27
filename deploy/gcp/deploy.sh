@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# docloom on GCP — provision, build, deploy and run, driven by a config file.
+# docsynth on GCP — provision, build, deploy and run, driven by a config file.
 #
 # The same script and the same config shape run a 1,000-document smoke test and a
 # multi-million-document production run; only the numbers differ. Nothing about
@@ -124,10 +124,10 @@ if not project:
 
 emit("PROJECT", project)
 emit("REGION", get("region", "us-central1"))
-emit("BUCKET", get("bucket", f"{project}-docloom"))
+emit("BUCKET", get("bucket", f"{project}-docsynth"))
 emit("FIRESTORE_DB", get("firestore.database", "(default)"))
 emit("FIRESTORE_LOCATION", get("firestore.location", "nam5"))
-emit("AR_REPO", get("artifact_registry.repo", "docloom"))
+emit("AR_REPO", get("artifact_registry.repo", "docsynth"))
 emit("IMAGE_TAG", get("artifact_registry.image_tag", "v1"))
 
 emit("RUN_ID", get("run.id", "run"))
@@ -143,8 +143,8 @@ emit("LLM_USAGE", get("run.llm_usage", "shard://"))
 # here, so every task and every slice can share one.
 emit("CATALOGUE_URI", get("run.catalogue", ""))
 
-emit("JOB", get("job.name", "docloom-generate"))
-emit("SA_NAME", get("job.service_account", "docloom-run"))
+emit("JOB", get("job.name", "docsynth-generate"))
+emit("SA_NAME", get("job.service_account", "docsynth-run"))
 emit("TASKS", int(get("job.tasks", 1)))
 emit("PARALLELISM", int(get("job.parallelism", get("job.tasks", 1))))
 emit("CPU", get("job.cpu", 2))
@@ -155,7 +155,7 @@ emit("SINK_URI", get("export.sink", ""))
 
 # ── Document slices ─────────────────────────────────────────────────────────
 # Vocabularies are validated so a typo fails here rather than 40 minutes into a
-# run. Sources: docloom.core.locale.enums.Locale, core.enums.DocumentCondition,
+# run. Sources: docsynth.core.locale.enums.Locale, core.enums.DocumentCondition,
 # and packs/invoice/templates/archetypes/.
 LOCALES = {"en-US", "en-CA", "en-GB", "fr-CA", "fr-FR"}
 CONDITIONS = {"clean", "light_scan", "heavy_scan", "handwritten"}
@@ -278,7 +278,7 @@ for i, (s, count) in enumerate(zip(slices, counts), start=1):
             sys.exit(f"unknown wear {wear!r} (known: {', '.join(sorted(NAMED_WEAR))}, "
                      "a number, or a [low, high] range)")
 
-    # The composition is emitted as ready-made `docloom generate` flags rather
+    # The composition is emitted as ready-made `docsynth generate` flags rather
     # than as more positional fields. One source of truth for the vocabulary
     # (here), and bash never has to thread a dozen optional columns through a
     # `read` loop where one omission shifts everything left.
@@ -346,7 +346,7 @@ else:
 
 # Catalogue build parameters + the full provider mix as YAML. The mix (with each
 # provider's extra_body, e.g. enable_thinking) travels to the container in the
-# DOCLOOM_PROVIDERS env var — it is configuration, not secret; the API keys go
+# DOCSYNTH_PROVIDERS env var — it is configuration, not secret; the API keys go
 # through Secret Manager separately.
 emit("CAT_OUT", get("catalogue.out", ""))
 emit("CAT_VERSION", get("catalogue.version", "v1"))
@@ -379,7 +379,7 @@ CONFIG_ENV="$(load_config)"
 eval "${CONFIG_ENV}"
 
 SA="${SA_NAME}@${PROJECT}.iam.gserviceaccount.com"
-IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${AR_REPO}/docloom:${IMAGE_TAG}"
+IMAGE="${REGION}-docker.pkg.dev/${PROJECT}/${AR_REPO}/docsynth:${IMAGE_TAG}"
 STORAGE_URI="gs://${BUCKET}/runs"
 STATE_URI="firestore://${PROJECT}/${FIRESTORE_DB}"
 
@@ -513,9 +513,9 @@ EOF
     else
       echo "  fallback: none → a quarantined provider's share goes to procedural"
     fi
-    echo "    build once with:  docloom catalogue --providers <this catalogue block>"
+    echo "    build once with:  docsynth catalogue --providers <this catalogue block>"
     echo "      --out gs://…/catalogues/invoice/v1 --version v1"
-    echo "    then generation draws from it: docloom generate --catalogue gs://…/v1"
+    echo "    then generation draws from it: docsynth generate --catalogue gs://…/v1"
     echo "    Document generation itself still makes no LLM calls."
   fi
 }
@@ -531,7 +531,7 @@ provision() {
     echo "  exists"
   else
     gcloud artifacts repositories create "${AR_REPO}" --repository-format=docker \
-      --location="${REGION}" --description="docloom images" --project="${PROJECT}"
+      --location="${REGION}" --description="docsynth images" --project="${PROJECT}"
   fi
 
   say "Bucket: gs://${BUCKET}"
@@ -557,7 +557,7 @@ provision() {
     echo "  exists"
   else
     gcloud iam service-accounts create "${SA_NAME}" \
-      --display-name="docloom Cloud Run job" --project="${PROJECT}"
+      --display-name="docsynth Cloud Run job" --project="${PROJECT}"
     await_service_account
   fi
 
@@ -658,7 +658,7 @@ run_job() { _execute_slices "--wait"; }
 dispatch_job() {
   _execute_slices ""
   say "dispatched — the run continues in the cloud. Follow it with:"
-  say "    ./deploy.sh -c ${CONFIG} status        (or: docloom status --run-id … --state ${STATE_URI} --wait)"
+  say "    ./deploy.sh -c ${CONFIG} status        (or: docsynth status --run-id … --state ${STATE_URI} --wait)"
 }
 
 resume() {
@@ -787,7 +787,7 @@ build_catalogue() {
     tasks=1; parallelism=1; retries=0
   fi
 
-  # The mix rides in DOCLOOM_PROVIDERS (config); the keys are injected from
+  # The mix rides in DOCSYNTH_PROVIDERS (config); the keys are injected from
   # Secret Manager. Args are joined with `|` (no catalogue value contains one),
   # matching the `^|^` delimiter used for the generate job.
   local joined; joined="$(IFS='|'; echo "${cat_args[*]}")"
@@ -796,7 +796,7 @@ build_catalogue() {
     --service-account="${SA}" \
     --tasks="${tasks}" --parallelism="${parallelism}" --max-retries="${retries}" \
     --task-timeout="${TASK_TIMEOUT}" --cpu="${CPU}" --memory="${MEMORY}" \
-    --set-env-vars="^@^DOCLOOM_PROVIDERS=${CAT_PROVIDERS_JSON}" \
+    --set-env-vars="^@^DOCSYNTH_PROVIDERS=${CAT_PROVIDERS_JSON}" \
     "${secret_args[@]}" \
     --args="^|^${joined}"
 

@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import pytest
 
-from docloom.packs.invoice.procedural import generate_catalogue
-from docloom.packs.invoice.validation import (
+from docsynth.packs.invoice.procedural import generate_catalogue
+from docsynth.packs.invoice.validation import (
     MAX_LENGTH,
     check_text,
     find_duplicates,
@@ -39,7 +39,7 @@ def test_realistic_descriptions_pass(text: str) -> None:
 
 
 def test_the_reserved_example_domain_is_not_flagged() -> None:
-    """docloom's own synthetic identity uses `.example` (RFC 2606) deliberately —
+    """docsynth's own synthetic identity uses `.example` (RFC 2606) deliberately —
     flagging it would reject the safe thing."""
     assert "pii_email" not in rules("Support billing@northwind.example included")
     assert "pii_url" not in rules("Setup guide at www.northwind.example")

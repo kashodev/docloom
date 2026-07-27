@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from docloom.core.fonts import (
+from docsynth.core.fonts import (
     BUNDLED,
     FONT_STACKS,
     HANDWRITING_KEYS,
@@ -23,7 +23,7 @@ from docloom.core.fonts import (
     weights_for,
 )
 
-_FILES = Path(__file__).resolve().parents[1] / "src/docloom/core/fonts/files"
+_FILES = Path(__file__).resolve().parents[1] / "src/docsynth/core/fonts/files"
 
 
 @pytest.mark.parametrize("key", sorted(BUNDLED))
@@ -80,14 +80,14 @@ def test_font_face_css_empty_for_unbundled_keys() -> None:
 def test_fonts_live_in_core_not_in_a_pack() -> None:
     """Typography is kernel infrastructure: a second pack must not have to
     duplicate the bundle to get byte-identical rendering."""
-    import docloom.core.fonts as module
+    import docsynth.core.fonts as module
 
-    assert module.__name__ == "docloom.core.fonts"
+    assert module.__name__ == "docsynth.core.fonts"
     assert "packs" not in str(_FILES)
 
 
 def test_packaging_ships_the_font_files_exactly_once() -> None:
-    """Regression: `packages = ["src/docloom"]` already ships non-.py assets, so a
+    """Regression: `packages = ["src/docsynth"]` already ships non-.py assets, so a
     `force-include` for them adds a second copy at the same path and the wheel
     build fails outright. Keep the table empty."""
     import tomllib
@@ -95,7 +95,7 @@ def test_packaging_ships_the_font_files_exactly_once() -> None:
     root = Path(__file__).resolve().parents[1]
     cfg = tomllib.load((root / "pyproject.toml").open("rb"))
     wheel = cfg["tool"]["hatch"]["build"]["targets"]["wheel"]
-    assert wheel["packages"] == ["src/docloom"]
+    assert wheel["packages"] == ["src/docsynth"]
     forced = wheel.get("force-include", {})
     assert not forced, f"force-include duplicates packaged assets: {forced}"
 
