@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="docsynth-logo-page-slate.svg" alt="docsynth" width="420">
-</p>
+# docsynth
 
 Weave templates and generated data into realistic **synthetic documents** — and
 get a **computed golden dataset** alongside them, exact to the cent. The primary

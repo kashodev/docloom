@@ -8,8 +8,12 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       keywords, and trove classifiers.
 - [x] **Change the copyright holder in the MIT `LICENSE`** to `Adam Okasha`
       (and the matching `authors` in `pyproject.toml`).
-- [x] **Add the project logo to the README.** `docsynth-logo-page-slate.svg` now
-      leads the README (it already reads "docsynth", so it replaced the H1).
+- [x] **Add the project logo to the README.** A slate logo led the README.
+      Removed in the `docloom` → `docsynth` rename — it was docloom-branded and
+      the file was deleted. See the follow-up below.
+- [ ] **Add a new `docsynth` logo to the README.** Design a docsynth logo and
+      restore a centered banner at the top of the README (replacing the current
+      plain `# docsynth` H1); consider reusing it for the docs-site header too.
 - [x] **Check the generated `samples/` PDFs into git.** Dropped the stale
       `templates/*.pdf` ignore, kept the blanket `*.pdf` guard, and added a
       scoped `!samples/**/*.pdf` exception; committed 45 synthetic samples
