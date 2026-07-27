@@ -1,0 +1,29 @@
+name: docs
+
+# Build the mkdocs-material site and deploy it to GitHub Pages (the gh-pages
+# branch) whenever the docs change on main. Enable Pages once in
+# Settings → Pages → Deploy from branch: gh-pages.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site-docs/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - run: pip install -r site-docs/requirements.txt
+      - name: Build & deploy to GitHub Pages
+        run: mkdocs gh-deploy --force --config-file site-docs/mkdocs.yml

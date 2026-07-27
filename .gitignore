@@ -65,3 +65,6 @@ htmlcov/
 run.yaml
 run.*.yaml
 !run.example.yaml
+
+# mkdocs build output for the docs site
+site-docs/site/
