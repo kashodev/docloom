@@ -946,6 +946,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Composition & selection
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -962,6 +980,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-axes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The axes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#realism-rules-validated-not-silently-ignored" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Realism rules (validated, not silently ignored)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-surfaces-one-parser" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two surfaces, one parser
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1518,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-axes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The axes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#realism-rules-validated-not-silently-ignored" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Realism rules (validated, not silently ignored)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#two-surfaces-one-parser" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two surfaces, one parser
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1578,87 @@
 
 
 <h1 id="composition-selection">Composition &amp; selection<a class="headerlink" href="#composition-selection" title="Permanent link">&para;</a></h1>
-<p>Constraining a run by locale / company / template / condition.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>A run rarely wants "any invoice." <strong>Composition</strong> constrains what a slice may draw
+from — a locale, a company, a template, a capture condition — and the invoice pack
+<strong>resolves and validates that up front</strong> so a nonsensical corpus fails at config
+time, not 40 minutes into a run.</p>
+<p>The vocabulary is the kernel's <a href="../../core/misc/"><code>Selection</code></a>; <code>composition.py</code>
+resolves it against the roster (<code>resolve</code>), raising <code>UnsupportedConstraint</code> for
+anything the pack can't honour.</p>
+<h2 id="the-axes">The axes<a class="headerlink" href="#the-axes" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Axis</th>
+<th>Constrains</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>locales</code></td>
+<td>Issuer jurisdiction (currency, tax model, language follow it).</td>
+</tr>
+<tr>
+<td><code>companies</code></td>
+<td>A pinned company id, or "use N" (seeded from the run id).</td>
+</tr>
+<tr>
+<td><code>archetypes</code></td>
+<td>Which of the 7 <a href="../rendering/">templates</a>.</td>
+</tr>
+<tr>
+<td><code>business_types</code></td>
+<td>e.g. <code>retail</code>, <code>telecom</code>, <code>b2b_saas</code>, <code>ai_platform</code> (<code>enums.py</code>).</td>
+</tr>
+<tr>
+<td><code>conditions</code></td>
+<td><code>clean</code> / <code>light_scan</code> / <code>heavy_scan</code> / <code>handwritten</code>.</td>
+</tr>
+<tr>
+<td><code>wear</code></td>
+<td>Crisp ↔ worn (a value or a range).</td>
+</tr>
+<tr>
+<td><code>goods_receipt</code></td>
+<td>Delivery notes with a receiver's signature.</td>
+</tr>
+<tr>
+<td><code>date_range</code></td>
+<td>The issue-date window.</td>
+</tr>
+</tbody>
+</table>
+<p>"Use N of them" is <strong>seeded from the run id</strong>, so a resumed unit draws the same
+pool rather than quietly changing the corpus mid-run. Currency, tax model, and
+address are not separate knobs — they follow the issuer's jurisdiction, so
+<code>locales: [en-GB]</code> is how a slice asks for GBP and UK addresses.</p>
+<h2 id="realism-rules-validated-not-silently-ignored">Realism rules (validated, not silently ignored)<a class="headerlink" href="#realism-rules-validated-not-silently-ignored" title="Permanent link">&para;</a></h2>
+<p>A slice named <code>french</code> that emits English is a wasted run nobody notices, so the
+pack <strong>refuses</strong> impossible combinations rather than dropping them:</p>
+<ul>
+<li><strong>Handwritten always renders as the handwritten pad</strong> (<code>handwritten-form-01</code>) —
+  there is no typeset handwritten archetype.</li>
+<li><strong>Handwritten ≠ telecom</strong> — a 50-page hand-filled itemised bill is nonsense.</li>
+<li><strong>Goods-receipt is physical goods only</strong> — a receiver's signature only makes
+  sense for a delivery.</li>
+<li><strong>Born-digital issuers are CLEAN-only.</strong> A software/AI business (<code>b2b_saas</code>,
+  <code>ai_platform</code>) is dropped from any non-clean condition (scan <em>or</em> handwritten) —
+  too new to have a hand-filled or aged-paper original. Pinning such a type <em>and</em> a
+  scan/handwritten condition is a hard <code>UnsupportedConstraint</code>.</li>
+<li><strong>Era floor (soft, opt-out).</strong> An issue date is floored up to the issuer type's
+  era (e.g. <code>ai_platform</code> → 2025) — but this <strong>never blocks a run</strong>: it caps within
+  the window, and <code>--no-date-era-floor</code> / <code>enforce_date_era: false</code> turns it off so
+  a run can deliberately produce anachronistic dates.</li>
+</ul>
+<p>See <a href="../../design-decisions/#selection-realism-constraints">Design decisions → Selection</a>
+for the <em>why</em> behind each.</p>
+<h2 id="two-surfaces-one-parser">Two surfaces, one parser<a class="headerlink" href="#two-surfaces-one-parser" title="Permanent link">&para;</a></h2>
+<p>Composition is expressed twice — as <code>docloom generate</code> flags
+(<code>--locale</code>/<code>--company</code>/<code>--archetype</code>/<code>--business-type</code>/<code>--condition</code>/<code>--wear</code>/
+<code>--goods-receipt</code>) and as a <code>--selection-file</code> YAML block (the same block a
+<code>deploy.sh</code> slice uses) — behind one parser, so they cannot drift. The
+<a href="../../studio/steps/">studio</a> prompts a single inline slice or points at a
+<code>run.yaml</code> for a full multi-slice composition.</p>
 
 
 

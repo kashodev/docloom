@@ -918,6 +918,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rendering
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -934,6 +952,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#templates-archetypes-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Templates &amp; archetypes (templates/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capture-conditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capture conditions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#brand-marks-logospy-stampspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Brand marks (logos.py, stamps.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-render-step-in-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The render step in context
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1529,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#templates-archetypes-templates" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Templates &amp; archetypes (templates/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#capture-conditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Capture conditions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#brand-marks-logospy-stampspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Brand marks (logos.py, stamps.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-render-step-in-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The render step in context
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1600,55 @@
 
 
 <h1 id="rendering">Rendering<a class="headerlink" href="#rendering" title="Permanent link">&para;</a></h1>
-<p>Templates, archetypes, styles, degrade, handwriting, logos, stamps.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>Rendering turns a computed <code>GoldenInvoice</code> into the artefact an extractor sees. It
+must <strong>look real</strong> — a pristine, identical-looking corpus tests nothing (<strong>①
+realistic</strong>) — so the pack carries visual variety (7 archetypes), physical realism
+(scan degradation, handwriting), and brand marks, all while the golden rows stay
+identical across every finish.</p>
+<h2 id="templates-archetypes-templates">Templates &amp; archetypes (<code>templates/</code>)<a class="headerlink" href="#templates-archetypes-templates" title="Permanent link">&para;</a></h2>
+<p>Jinja templates, rendered by the kernel's <a href="../../core/misc/">environment</a> then
+printed to PDF by Chromium. A shared <code>_base.html.j2</code>, <code>_macros.j2</code>, and
+<code>_styles.css.j2</code> back <strong>7 archetypes</strong> — genuinely different layouts, not restyles:</p>
+<p><code>banner-header-06</code> · <code>boxed-form-01</code> · <code>fullbleed-05</code> · <code>handwritten-form-01</code> ·
+<code>meta-sidebar-01</code> · <code>receipt-compact-01</code> · <code>telecom-itemized-37</code>.</p>
+<p><code>archetype_for(record)</code> picks one. <code>telecom-itemized-37</code> is the long, multi-page
+itemised layout (hundreds of line items); <code>handwritten-form-01</code> is the pre-printed
+pad the handwritten condition always uses. Labels come from <code>labels.py</code> (per-locale
+printed strings); the running header is composed by the pack. Page-fit (<code>fit_scale</code>)
+avoids a near-empty trailing page, and <code>(cont'd)</code> markers repeat on page-spanning
+sections.</p>
+<h2 id="capture-conditions">Capture conditions<a class="headerlink" href="#capture-conditions" title="Permanent link">&para;</a></h2>
+<p>The <code>RenderProfile</code> on the record selects the finish; golden rows are unchanged
+across all of them.</p>
+<ul>
+<li><strong>Clean</strong> — the printed PDF, text layer intact (no cost).</li>
+<li><strong>Scan</strong> (<code>degrade.py</code>) — rasterise at 150 dpi, apply skew / blur / gaussian noise
+  / dust speckle / JPEG artefacts / desaturation (heavy scan), and re-wrap as an
+  <strong>image-only PDF with no text layer</strong>, so OCR must read pixels. Seeded per record.</li>
+<li><strong>Handwritten</strong> (<code>handwriting.py</code>) — a ruled pad with every value written in one of
+  four bundled OFL handwriting faces with per-field jitter, signed in a script face,
+  and stamped. Face choice is a legibility dial for HTR difficulty.</li>
+</ul>
+<p><strong><code>wear</code></strong> (crisp ↔ worn, 0..1) drives the ink roughening <em>and</em> the scan degradation
+<strong>together</strong>, so crisp and worn are ends of one dial rather than two code paths.
+Neither end reaches zero — a crisp document is still a capture of paper.</p>
+<h2 id="brand-marks-logospy-stampspy">Brand marks (<code>logos.py</code>, <code>stamps.py</code>)<a class="headerlink" href="#brand-marks-logospy-stampspy" title="Permanent link">&para;</a></h2>
+<p>Both <strong>procedural and key-free</strong>: <code>logos.py</code> draws a per-company brand mark and
+watermark; <code>stamps.py</code> draws a company seal (circular/oval/rectangular, desaturated
+pad ink, roughened) keyed to the company so one office keeps one stamp across its
+invoices. On handwritten and goods-receipt layouts a signature and, for receipts, a
+separate <strong>received-by</strong> block (a different hand) are drawn in.</p>
+<h2 id="the-render-step-in-context">The render step in context<a class="headerlink" href="#the-render-step-in-context" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart LR
+    Rec["GoldenInvoice"] --&gt; Ctx["build_context"] --&gt; Jinja["archetype + _base/_macros/_styles"]
+    Jinja --&gt; Chrome["Chromium → PDF"]
+    Chrome --&gt; Cond{"condition"}
+    Cond --&gt;|clean| Out["PDF/HTML"]
+    Cond --&gt;|scan| Deg["degrade.py"] --&gt; Out
+    Cond --&gt;|handwritten| Hand["handwriting + stamp + signature"] --&gt; Out</code></pre>
+<p>Fonts are the kernel's — bundled OFL faces embedded as data-URIs for
+<strong>byte-identical typography on any host</strong> (<a href="../../core/misc/">render/fonts</a>). See
+<a href="../generation/">Invoice generation</a> for the full run flow.</p>
 
 
 

@@ -890,6 +890,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Content
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -906,6 +924,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-catalogue-model-catalogpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The catalogue model (catalog.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#procedural-proceduralpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Procedural (procedural.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#llm-overlay-llm_buildpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM overlay (llm_build.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-validationpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation (validation.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#artifact-artifactpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Artifact (artifact.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1540,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-catalogue-model-catalogpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The catalogue model (catalog.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#procedural-proceduralpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Procedural (procedural.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#llm-overlay-llm_buildpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LLM overlay (llm_build.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-validationpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation (validation.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#artifact-artifactpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Artifact (artifact.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1622,53 @@
 
 
 <h1 id="content-catalogue-procedural-llm-artifact">Content: catalogue, procedural, LLM, artifact<a class="headerlink" href="#content-catalogue-procedural-llm-artifact" title="Permanent link">&para;</a></h1>
-<p>Where invoice content comes from and how it's validated.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>"Content" is everything a run needs to invent an invoice that isn't computed on the
+spot: the roster of companies, and for each the product line it sells. It comes in
+layers — a procedural baseline, an optional LLM overlay, published as an artifact —
+all sitting behind the <a href="../catalogue/">catalogue</a>.</p>
+<h2 id="the-catalogue-model-catalogpy">The catalogue model (<code>catalog.py</code>)<a class="headerlink" href="#the-catalogue-model-catalogpy" title="Permanent link">&para;</a></h2>
+<p><code>Catalogue</code> / <code>CompanyRoster</code> / <code>Company</code> / <code>ProductTemplate</code> are the shape:
+a company (with its business type, jurisdiction, product category and niche) and
+the products it can bill. <code>SeedCatalogue</code> is the built-in one shipped in the pack,
+so a run works with <strong>no build at all</strong>.</p>
+<p><strong>Identity is derived, not stored.</strong> A company's address, phones, emails, and tax
+registrations come from <code>derive_identity(company_id)</code> at generation — deterministic
+and format-valid, but <strong>never written to the artifact</strong> (<strong>① no PII</strong>).</p>
+<h2 id="procedural-proceduralpy">Procedural (<code>procedural.py</code>)<a class="headerlink" href="#procedural-proceduralpy" title="Permanent link">&para;</a></h2>
+<p>The key-free baseline: a combinatorial pool (~7,900 base descriptions) expands into
+each company and its products deterministically per index
+(<code>generate_company</code> / <code>generate_company_range</code>). This is always present — the
+skeleton the LLM overlays, and the <strong>fallback</strong> for anything the LLM can't fill.</p>
+<h2 id="llm-overlay-llm_buildpy">LLM overlay (<code>llm_build.py</code>)<a class="headerlink" href="#llm-overlay-llm_buildpy" title="Permanent link">&para;</a></h2>
+<p>When a <a href="../../core/providers/">provider mix</a> is configured, an LLM rewrites product
+descriptions (and co-generates a price band) in chunks — the semantic long tail a
+combinatorial pool can't reach. Structural fields, the roster, and the fallback stay
+procedural: any slot the LLM can't fill keeps its procedural product, so a build is
+<strong>always complete</strong>. The price band is a <em>sampling input</em>, never a golden number — a
+bad one is dropped for the procedural band.</p>
+<h2 id="validation-validationpy">Validation (<code>validation.py</code>)<a class="headerlink" href="#validation-validationpy" title="Permanent link">&para;</a></h2>
+<p>Every generated description is screened before it is written — <strong>quality</strong> (empty,
+assistant preamble, markdown, marketing prose, too long/short) and <strong>PII</strong> (emails,
+URLs, long digit runs, honorific+name, entity suffixes), plus cross-item dedup. A
+flagged description is <strong>rejected and falls back to procedural text</strong>; too high a
+rejection rate fails the build. The same gates run over procedural content (that is
+how they're tested without a key), and the results are recorded in the manifest as
+an audit.</p>
+<h2 id="artifact-artifactpy">Artifact (<code>artifact.py</code>)<a class="headerlink" href="#artifact-artifactpy" title="Permanent link">&para;</a></h2>
+<p>The published form: <strong>per-company Parquet</strong>, decimal128 money, sharded read/write,
+a <strong>sha256 per shard</strong>, and a root <strong>manifest</strong> carrying the <code>catalogue_version</code>
+(stamped on every golden row a run produces), <code>created_at</code>, and the build
+<strong>provenance</strong> (models, fill rate, cost, rounds). Reading it needs no credential
+(<code>file://</code> / <code>gs://</code> / <code>s3://</code>), so a pack with a rich catalogue is as local-first
+as one without.</p>
+<pre class="mermaid"><code>flowchart LR
+    Proc["procedural skeleton"] --&gt; Merge
+    LLM["LLM overlay&lt;br/&gt;(optional)"] --&gt; Gate["validation.py&lt;br/&gt;quality + PII"]
+    Gate --&gt;|accept| Merge
+    Gate --&gt;|reject| Proc
+    Merge["per-company records"] --&gt; Art["artifact.py&lt;br/&gt;parquet · sha256 · manifest"]</code></pre>
+<p>See <a href="../catalogue/">Catalogue building</a> for the <em>build</em> flow (a sharded run under a
+budget) and <a href="../../core/providers/">Providers</a> for the mix mechanics.</p>
 
 
 

@@ -974,6 +974,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -990,6 +1008,36 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#vocabularies-enumspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vocabularies (enums.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1496,25 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#vocabularies-enumspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Vocabularies (enums.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1534,122 @@
 
 
 <h1 id="invoice-pack-reference">Invoice pack — Reference<a class="headerlink" href="#invoice-pack-reference" title="Permanent link">&para;</a></h1>
-<p>Every component in the pack.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>Every module in <code>packs/invoice/</code>, and where it is covered in depth.</p>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Purpose</th>
+<th>Covered in</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>__init__.py</code></td>
+<td><code>InvoicePack</code> — implements <a href="../../architecture/contract/"><code>DocumentPack</code></a>.</td>
+<td><a href="../overview/">Overview</a></td>
+</tr>
+<tr>
+<td><code>sampler.py</code></td>
+<td><code>InvoiceSampler</code> — the pack's <code>DocumentSource</code>; per-index deterministic invoice generation.</td>
+<td><a href="../generation/">Generation</a></td>
+</tr>
+<tr>
+<td><code>record.py</code></td>
+<td><code>GoldenInvoice</code> + parts: <code>Party</code>, <code>LineItem</code>, <code>PricingTier</code>, <code>TaxBucket</code>, <code>InvoiceTotals</code>, <code>RenderProfile</code>.</td>
+<td><a href="../generation/">Generation</a></td>
+</tr>
+<tr>
+<td><code>context.py</code></td>
+<td>Golden invoice → Jinja context (<code>build_context</code>).</td>
+<td><a href="../generation/">Generation</a></td>
+</tr>
+<tr>
+<td><code>catalog.py</code></td>
+<td><code>Catalogue</code> / <code>CompanyRoster</code> / <code>Company</code> / <code>ProductTemplate</code>; <code>SeedCatalogue</code>; <code>derive_identity</code>.</td>
+<td><a href="../content/">Content</a></td>
+</tr>
+<tr>
+<td><code>procedural.py</code></td>
+<td>Key-free combinatorial catalogue; <code>generate_company[_range]</code>.</td>
+<td><a href="../content/">Content</a></td>
+</tr>
+<tr>
+<td><code>llm_build.py</code></td>
+<td>LLM overlay: prompt, parse, price-band coercion, procedural fallback.</td>
+<td><a href="../content/">Content</a></td>
+</tr>
+<tr>
+<td><code>build_run.py</code></td>
+<td>Distributed catalogue build = a run over company ranges (<code>build_catalogue_run</code>).</td>
+<td><a href="../catalogue/">Catalogue building</a></td>
+</tr>
+<tr>
+<td><code>artifact.py</code></td>
+<td>Versioned artifact: per-company Parquet, decimal128, sha256, sharded read/write, manifest.</td>
+<td><a href="../content/">Content</a></td>
+</tr>
+<tr>
+<td><code>validation.py</code></td>
+<td>Quality + PII gates on catalogue content.</td>
+<td><a href="../content/">Content</a></td>
+</tr>
+<tr>
+<td><code>composition.py</code></td>
+<td>Resolve a <code>Selection</code> against the roster; constraint validation.</td>
+<td><a href="../composition/">Composition</a></td>
+</tr>
+<tr>
+<td><code>enums.py</code></td>
+<td><code>BusinessType</code>, <code>BillingModel</code>, <code>LineItemKind</code>, <code>UsageUnit</code>, <code>DiscountScheme</code>, …</td>
+<td>this page</td>
+</tr>
+<tr>
+<td><code>jurisdictions.py</code></td>
+<td>Tax model, currency, mandatory issuer fields per jurisdiction.</td>
+<td><a href="../composition/">Composition</a></td>
+</tr>
+<tr>
+<td><code>labels.py</code></td>
+<td>Printed label dictionaries per locale.</td>
+<td><a href="../rendering/">Rendering</a></td>
+</tr>
+<tr>
+<td><code>handwriting.py</code></td>
+<td>Handwriting params (fonts, jitter) for the handwritten pad.</td>
+<td><a href="../rendering/">Rendering</a></td>
+</tr>
+<tr>
+<td><code>logos.py</code></td>
+<td>Procedural key-free brand marks + watermark.</td>
+<td><a href="../rendering/">Rendering</a></td>
+</tr>
+<tr>
+<td><code>stamps.py</code></td>
+<td>Procedural company seals/stamps.</td>
+<td><a href="../rendering/">Rendering</a></td>
+</tr>
+<tr>
+<td><code>templates/</code></td>
+<td><code>_base</code>, <code>_macros</code>, <code>_styles</code>, and 7 archetypes.</td>
+<td><a href="../rendering/">Rendering</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="vocabularies-enumspy">Vocabularies (<code>enums.py</code>)<a class="headerlink" href="#vocabularies-enumspy" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><code>BusinessType</code></strong> — <code>retail</code>, <code>ecommerce</code>, <code>grocery</code>, <code>wholesale</code>, <code>auto_repair</code>,
+  <code>construction</code>, <code>manufacturing</code>, <code>b2b_saas</code>, <code>ai_platform</code>, <code>telecom</code>,
+  <code>accounting</code>, <code>legal</code>, <code>consulting</code>, <code>healthcare</code>, <code>logistics</code>, <code>utilities</code>.</li>
+<li><strong><code>BillingModel</code></strong> — <code>flat_rate</code>, <code>per_unit</code>, <code>graduated_tier</code>, <code>volume_tier</code>,
+  <code>metered_usage</code>, <code>subscription</code>, <code>seat_based</code>, <code>hourly_labour</code>, <code>milestone</code>,
+  <code>interest</code>.</li>
+<li><code>LineItemKind</code>, <code>UsageUnit</code>, <code>DiscountScheme</code> — the line-item and pricing
+  vocabularies the sampler draws from.</li>
+</ul>
+<p>The kernel vocabularies a pack shares (<code>Jurisdiction</code>, <code>DocumentCondition</code>,
+<code>RunState</code>, <code>WorkUnitState</code>) live in <code>core/enums.py</code> — see
+<a href="../../core/misc/">Core → Locale / render / money / logging</a>.</p>
 
 
 
