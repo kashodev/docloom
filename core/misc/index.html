@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#locale-render-fonts-money-logging" class="md-skip">
+        <a href="#locale-render-money-logging" class="md-skip">
           Skip to content
         </a>
       
@@ -691,6 +691,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Locale / render / fonts / money / logging
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -707,6 +725,91 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#money-coremoneypy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Money (core/money.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#locale-corelocale" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Locale (core/locale/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#render-fonts-corerender-corefonts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Render &amp; fonts (core/render/, core/fonts/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#selection-coreselectionpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selection (core/selection.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logging-coreloggingpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logging (core/logging.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#registry-enums-coreregistrypy-coreenumspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registry &amp; enums (core/registry.py, core/enums.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1551,80 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#money-coremoneypy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Money (core/money.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#locale-corelocale" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Locale (core/locale/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#render-fonts-corerender-corefonts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Render &amp; fonts (core/render/, core/fonts/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#selection-coreselectionpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selection (core/selection.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logging-coreloggingpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Logging (core/logging.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#registry-enums-coreregistrypy-coreenumspy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registry &amp; enums (core/registry.py, core/enums.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1466,13 +1643,52 @@
   
 
 
-<h1 id="locale-render-fonts-money-logging">Locale / render / fonts / money / logging<a class="headerlink" href="#locale-render-fonts-money-logging" title="Permanent link">&para;</a></h1>
-<p>The remaining cross-document kernel modules.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<h1 id="locale-render-money-logging">Locale / render / money / logging<a class="headerlink" href="#locale-render-money-logging" title="Permanent link">&para;</a></h1>
+<p>The cross-cutting kernel services the pipeline and packs read throughout. None is
+document-specific; a pack composes them.</p>
+<h2 id="money-coremoneypy">Money (<code>core/money.py</code>)<a class="headerlink" href="#money-coremoneypy" title="Permanent link">&para;</a></h2>
+<p><code>money</code>, <code>pct</code>, <code>sum_money</code> — all <code>Decimal</code> with <code>ROUND_HALF_UP</code>, <strong>never float</strong>.
+This is what "cent-exact" means: totals are computed and reconciled in exact
+decimal, carried through the golden record as strings, and stored as decimal128 in
+the artifact/Parquet. A record that doesn't reconcile refuses to exist, so a
+rounding drift can never reach a document or the golden set (<strong>① realistic</strong>).</p>
+<h2 id="locale-corelocale">Locale (<code>core/locale/</code>)<a class="headerlink" href="#locale-corelocale" title="Permanent link">&para;</a></h2>
+<p><code>Language</code> / <code>Locale</code> / <code>Currency</code> enums, a <strong>table-driven <code>formatting</code></strong> module
+(number, currency, and date formats per locale), and a <code>LabelRegistry</code> (printed
+vocabulary per language). The kernel's Jinja filters read <code>locale</code>, <code>currency</code>,
+and <code>labels</code> from the render context, so templates never format explicitly and a
+new language is a table entry, not code.</p>
+<h2 id="render-fonts-corerender-corefonts">Render &amp; fonts (<code>core/render/</code>, <code>core/fonts/</code>)<a class="headerlink" href="#render-fonts-corerender-corefonts" title="Permanent link">&para;</a></h2>
+<p><code>core/render/environment.py</code> builds the Jinja environment with the locale-aware
+filters and exposes <code>render_record(pack, record)</code> =
+<code>render_template(pack.template_root, pack.archetype_for(record), pack.build_context(record))</code>
+— the one call the <a href="../pipeline/">renderer</a> makes into a pack. <code>core/fonts/</code> owns
+the semantic font stacks and the <strong>bundled OFL fonts embedded as base64
+<code>@font-face</code> data-URIs</strong>, so a chosen typeface renders <strong>byte-identically on any
+host</strong> (no system-font drift between a laptop and Cloud Run). Packs supply only
+font <em>selection policy</em>.</p>
+<h2 id="selection-coreselectionpy">Selection (<code>core/selection.py</code>)<a class="headerlink" href="#selection-coreselectionpy" title="Permanent link">&para;</a></h2>
+<p><code>Selection</code> is the vocabulary for constraining what a run slice may draw from —
+locales, companies (a list or "use N"), archetypes, business types, a condition
+mix, a wear range, goods receipts, an issue-date window. The kernel <strong>carries</strong> it
+but does not interpret it: a pack resolves it against its roster and raises
+<code>UnsupportedConstraint</code> for anything it can't honour (a <code>french</code> slice that emits
+English is a wasted run nobody notices). It is surfaced twice — as <code>docloom
+generate</code> flags and as a <code>--selection-file</code> YAML block — behind one parser.</p>
+<h2 id="logging-coreloggingpy">Logging (<code>core/logging.py</code>)<a class="headerlink" href="#logging-coreloggingpy" title="Permanent link">&para;</a></h2>
+<p><code>structlog</code> configuration: <strong>console</strong> rendering at a terminal, <strong>JSON</strong> to a pipe
+or Cloud Run (with Cloud Logging severity/message fields), and <code>contextvars</code>
+binding so a run id / unit index thread through log lines without passing a logger
+everywhere.</p>
+<h2 id="registry-enums-coreregistrypy-coreenumspy">Registry &amp; enums (<code>core/registry.py</code>, <code>core/enums.py</code>)<a class="headerlink" href="#registry-enums-coreregistrypy-coreenumspy" title="Permanent link">&para;</a></h2>
+<p><code>registry.py</code> discovers packs through the <code>docloom.packs</code> <strong>entry-point group</strong>
+(<code>register_pack</code>, <code>get_pack</code>, <code>available_packs</code>) — so a third-party pack ships as
+<code>docloom-yourpack</code> and is found without a code change. <code>enums.py</code> holds the kernel
+vocabularies every pack shares: <code>Jurisdiction</code>, <code>DocumentCondition</code>, <code>RunState</code>,
+<code>WorkUnitState</code>.</p>
+<p>The two contracts (<code>DocumentPack</code>, <code>GoldenRecord</code>, <code>ContentCapability</code>) live
+alongside these and are covered on the
+<a href="../../architecture/contract/">Kernel ↔ pack contract</a> page.</p>
 
 
 

@@ -607,6 +607,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    State stores
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -623,6 +641,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-protocol-corestatebasepy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The protocol (core/state/base.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-atomic-claim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The atomic claim
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lease-reclaim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lease + reclaim
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#work-unit-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Work-unit lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spend-quarantine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spend &amp; quarantine
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1540,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-protocol-corestatebasepy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The protocol (core/state/base.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-atomic-claim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The atomic claim
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lease-reclaim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lease + reclaim
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#work-unit-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Work-unit lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spend-quarantine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spend &amp; quarantine
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1622,104 @@
 
 
 <h1 id="state-stores">State stores<a class="headerlink" href="#state-stores" title="Permanent link">&para;</a></h1>
-<p>Protocol + sqlite / firestore / dynamodb; claim, lease, spend, quarantine.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>The state store is docloom's <strong>single coordination point</strong>. It holds runs and
+their work units, hands out units atomically, tracks leases so a crashed worker's
+unit can be reclaimed, and carries the spend rollup and the provider quarantine
+set. Coordination lives here — not in a broker, not in the compute layer — which
+is what lets N workers drain one run with no leader (<strong>④ High throughput</strong>).</p>
+<p>Chosen by URI (<code>open_state</code>): <code>sqlite://</code> (default, single box) · <code>firestore://</code>
+· <code>dynamodb://</code>.</p>
+<h2 id="the-protocol-corestatebasepy">The protocol (<code>core/state/base.py</code>)<a class="headerlink" href="#the-protocol-corestatebasepy" title="Permanent link">&para;</a></h2>
+<p><code>StateStore</code> is a <code>Protocol</code>; every backend implements the same surface.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>create_run(run, units) -&gt; bool</code></td>
+<td>Conditional write — returns whether <em>this</em> caller planned the run (the rest wait).</td>
+</tr>
+<tr>
+<td><code>get_run</code> / <code>set_run_state</code></td>
+<td>Read the <code>Run</code>; move it PENDING/RUNNING/PAUSED/CANCELLED/COMPLETED/FAILED.</td>
+</tr>
+<tr>
+<td><code>claim_next_unit(run_id) -&gt; WorkUnit \| None</code></td>
+<td>The <strong>atomic claim</strong> — hand exactly one pending unit to one worker, stamping a lease.</td>
+</tr>
+<tr>
+<td><code>complete_unit</code> / <code>fail_unit</code></td>
+<td>Mark a claimed unit DONE, or FAILED with an error.</td>
+</tr>
+<tr>
+<td><code>reset_failed_units</code> / <code>reclaim_expired_units</code></td>
+<td>Return failed units, or units with a lapsed lease, to the pool (resume / self-heal).</td>
+</tr>
+<tr>
+<td><code>units</code> / <code>progress</code></td>
+<td>Iterate units; counts by <code>WorkUnitState</code>.</td>
+</tr>
+<tr>
+<td><code>add_spend</code> / <code>spend</code> / <code>total_spend</code></td>
+<td>The per-(run, model) spend rollup, exact via integer nano-dollars.</td>
+</tr>
+<tr>
+<td><code>quarantine_providers</code> / <code>quarantined_providers</code></td>
+<td>The set of providers a build has quarantined for empty output.</td>
+</tr>
+<tr>
+<td><code>close</code></td>
+<td>Release resources.</td>
+</tr>
+</tbody>
+</table>
+<p><code>Run</code> and <code>WorkUnit</code> are the two records. A unit is an <strong>index range</strong>
+(<code>start_index … end_index</code>) — the single granularity of claiming, sharding, and
+export. A unit carries a <code>lease_expires_at</code>; <code>lease_is_expired(now)</code> is what makes
+reclaim possible.</p>
+<h2 id="the-atomic-claim">The atomic claim<a class="headerlink" href="#the-atomic-claim" title="Permanent link">&para;</a></h2>
+<p>The claim is one conditional write — <em>advance this unit to RUNNING only if it is
+still PENDING</em> — implemented natively per backend:</p>
+<ul>
+<li><strong>SQLite</strong> — <code>BEGIN IMMEDIATE</code>; also reclaims expired leases opportunistically
+  inside the claim's write lock, so a draining fleet self-heals without a resume.</li>
+<li><strong>Firestore</strong> — a transaction; reclaim is explicit (<code>reclaim_expired_units</code>), run
+  on resume — a per-claim scan would be too costly at scale.</li>
+<li><strong>DynamoDB</strong> — a conditional <code>UpdateItem</code> (<code>attribute condition state = pending</code>).</li>
+</ul>
+<p>A worker that loses the race simply advances to the next candidate. This is the
+same primitive used for <strong>run creation</strong> (<code>ON CONFLICT DO NOTHING</code> /
+<code>document.create()</code> / <code>attribute_not_exists(pk)</code>), so cold-starting N tasks
+produces exactly one planner and the losers wait.</p>
+<h2 id="lease-reclaim">Lease + reclaim<a class="headerlink" href="#lease-reclaim" title="Permanent link">&para;</a></h2>
+<p>Each claim stamps a lease (default 15 min, configurable per store) and clears it
+on complete/fail/reset. <code>reclaim_expired_units</code> returns <code>RUNNING</code> units whose lease
+lapsed to the pool — so a worker that crashed mid-unit doesn't strand its work.
+Reclaim runs on <code>resume_run</code> and at the start of a catalogue build.</p>
+<h2 id="work-unit-lifecycle">Work-unit lifecycle<a class="headerlink" href="#work-unit-lifecycle" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>stateDiagram-v2
+    [*] --&gt; PENDING: plan_units
+    PENDING --&gt; RUNNING: claim_next_unit (lease stamped)
+    RUNNING --&gt; DONE: complete_unit
+    RUNNING --&gt; FAILED: fail_unit
+    RUNNING --&gt; PENDING: lease expired → reclaim_expired_units
+    FAILED --&gt; PENDING: reset_failed_units (resume)
+    DONE --&gt; [*]</code></pre>
+<p>The run reaches <code>COMPLETED</code> only when no unit is PENDING/RUNNING/FAILED — and that
+transition is what writes the <a href="../pipeline/">root manifest</a>.</p>
+<h2 id="spend-quarantine">Spend &amp; quarantine<a class="headerlink" href="#spend-quarantine" title="Permanent link">&para;</a></h2>
+<p><code>add_spend</code> increments a <code>(run, model)</code> row and a <code>(run, "*")</code> total in <strong>integer
+nano-dollars</strong>, so the counter is exact and a fleet-wide budget
+(<a href="../providers/"><code>DistributedBudgetGuard</code></a>) can hold across N workers rather than
+per process. The quarantine set records providers a catalogue build found to
+return only empty completions, so later shards route around them.</p>
+<p>Backends are verified against real emulators (SQLite in-process, the Firestore
+emulator, DynamoDB Local / moto). See
+<a href="../../architecture/concurrency/">Concurrency &amp; coordination</a> for the design.</p>
 
 
 

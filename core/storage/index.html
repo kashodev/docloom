@@ -635,6 +635,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage / Sinks / Usage
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -651,6 +669,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#blob-store-corestorage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blob store (core/storage/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#golden-sinks-coresinks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Golden sinks (core/sinks/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage-telemetry-coreusage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage telemetry (core/usage/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1518,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#blob-store-corestorage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Blob store (core/storage/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#golden-sinks-coresinks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Golden sinks (core/sinks/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage-telemetry-coreusage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage telemetry (core/usage/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1578,57 @@
 
 
 <h1 id="storage-sinks-usage">Storage / Sinks / Usage<a class="headerlink" href="#storage-sinks-usage" title="Permanent link">&para;</a></h1>
-<p>URI-scheme backends for blobs, golden sinks, and usage telemetry.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>Three more URI-scheme backend groups, each a small protocol with interchangeable
+implementations chosen by config (<strong>② provider-agnostic</strong>). The generation and
+export code is identical across them.</p>
+<h2 id="blob-store-corestorage">Blob store (<code>core/storage/</code>)<a class="headerlink" href="#blob-store-corestorage" title="Permanent link">&para;</a></h2>
+<p>Where rendered documents and golden shards land. <code>open_store(uri)</code> →
+<code>file://</code> · <code>gs://</code> · <code>s3://</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">BlobStore</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">put</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">content_type</span><span class="o">=</span><span class="s2">&quot;application/octet-stream&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">exists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">iter_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">uri_for</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>Keys are deterministic and unit-sharded, e.g.
+<code>&lt;prefix&gt;/documents/unit-000123/&lt;id&gt;.pdf</code> and
+<code>&lt;prefix&gt;/golden/&lt;table&gt;/unit-000123.jsonl.gz</code>, where <code>&lt;prefix&gt;</code> defaults to the
+run id (a multi-slice run nests under <code>runs/&lt;run&gt;/&lt;slice&gt;/…</code>). <code>iter_keys</code> is what
+<a href="../../invoice/export/">export</a> and manifest verification walk. Cloud backends need
+the matching extra (<code>docloom[gcp]</code> / <code>[aws]</code>); a missing one raises an actionable
+error naming the install.</p>
+<h2 id="golden-sinks-coresinks">Golden sinks (<code>core/sinks/</code>)<a class="headerlink" href="#golden-sinks-coresinks" title="Permanent link">&para;</a></h2>
+<p>Export targets. <code>open_sink(uri)</code> → <code>parquet://</code> · <code>duckdb://</code> · <code>bigquery://</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">GoldenSink</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="n">rows</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span> <span class="o">...</span>   <span class="c1"># append rows to a table</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>            <span class="c1"># make the tables queryable (views / external tables)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p><code>export_run</code> calls <code>write</code> per shard in key order (deterministic Parquet parts)
+and <code>register</code> once at the end. Rows are plain dicts converted through <strong>Arrow</strong>;
+money stays exact (decimal, not float). DuckDB adds views over the Parquet;
+BigQuery stages Parquet in GCS and creates external tables; plain Parquet's
+<code>register</code> is a no-op. See <a href="../../invoice/export/">Export</a>.</p>
+<h2 id="usage-telemetry-coreusage">Usage telemetry (<code>core/usage/</code>)<a class="headerlink" href="#usage-telemetry-coreusage" title="Permanent link">&para;</a></h2>
+<p>Records what every LLM call cost — model, tokens, exact <code>Decimal</code> cost, and what
+it was generating — as its own <code>llm_usage</code> table. <strong>On by default</strong> (a procedural
+pack makes no calls, so it writes nothing). <code>open_usage_sink(uri)</code> → <code>shard://</code>
+(default, gzipped-JSONL beside the golden data) · <code>firestore://</code> · <code>dynamodb://</code> ·
+<code>off</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">UsageSink</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">record</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">usage</span><span class="p">:</span> <span class="n">LlmUsage</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">flush</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>It is deliberately <strong>not</strong> golden data — token counts aren't reproducible, and the
+golden record's value is that it is exactly recomputable. A replayed unit
+<strong>overwrites</strong> its rows (shard key / deterministic id / sort key), so retries
+can't double-count. Because <code>export_run</code> discovers tables by prefix, the
+<code>shard://</code> usage exports to Parquet/DuckDB/BigQuery with no export change.</p>
+<p>Distinct from the <strong>spend rollup</strong> in the <a href="../state/">state store</a>: the rollup is a
+live per-(run, model) counter a budget guard reads across a fleet; <code>llm_usage</code> is
+the analytics fact table. The two agree on how a run is identified.</p>
 
 
 

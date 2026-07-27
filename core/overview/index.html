@@ -551,6 +551,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -567,6 +585,47 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-subsystems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The subsystems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-they-compose-in-one-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How they compose in one run
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1507,36 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-subsystems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The subsystems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-they-compose-in-one-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How they compose in one run
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1556,76 @@
 
 
 <h1 id="core-reference-overview">Core reference — Overview<a class="headerlink" href="#core-reference-overview" title="Permanent link">&para;</a></h1>
-<p>Every pack-involving flow, high level.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>The kernel (<code>src/docloom/core/</code>) is everything that isn't a document type. It
+divides into a <strong>generation pipeline</strong>, three sets of <strong>pluggable backends</strong>, the
+<strong>LLM providers</strong>, and a layer of <strong>cross-cutting services</strong> the rest lean on.
+Nothing here knows what an invoice is — packs supply that through the
+<a href="../../architecture/contract/">contract</a>.</p>
+<h2 id="the-subsystems">The subsystems<a class="headerlink" href="#the-subsystems" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>What it is</th>
+<th>Page</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pipeline (<code>core/pipeline/</code>)</td>
+<td>Plan a run, drive workers, render, degrade, compute golden shards, write the manifest, export.</td>
+<td><a href="../pipeline/">Pipeline</a></td>
+</tr>
+<tr>
+<td>State (<code>core/state/</code>)</td>
+<td>The coordination store: runs, work units, the atomic claim, leases, the spend rollup, the quarantine set.</td>
+<td><a href="../state/">State stores</a></td>
+</tr>
+<tr>
+<td>Storage / Sinks / Usage</td>
+<td>Blob store for documents+shards; golden sinks for export; usage telemetry.</td>
+<td><a href="../storage/">Storage / Sinks / Usage</a></td>
+</tr>
+<tr>
+<td>Providers (<code>core/providers/</code>)</td>
+<td>LLM text providers, the weighted mix + fallback pool, the budget, the catalogue runner.</td>
+<td><a href="../providers/">Providers &amp; LLM catalogue</a></td>
+</tr>
+<tr>
+<td>Cross-cutting</td>
+<td>Locale/labels/formatting, the Jinja render environment + fonts, cent-exact money, <code>Selection</code>, logging, the pack registry, kernel enums.</td>
+<td><a href="../misc/">Locale / render / money / logging</a></td>
+</tr>
+</tbody>
+</table>
+<p>The two contracts that bind packs to all of this — <code>DocumentPack</code>,
+<code>GoldenRecord</code>, <code>ContentCapability</code> — live in <code>core/pack.py</code>, <code>core/record.py</code>,
+<code>core/content.py</code> and are covered on the
+<a href="../../architecture/contract/">Kernel ↔ pack contract</a> page.</p>
+<h2 id="how-they-compose-in-one-run">How they compose in one run<a class="headerlink" href="#how-they-compose-in-one-run" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart LR
+    Run["pipeline.run&lt;br/&gt;plan · create · work"] --&gt; State[(state store)]
+    Run --&gt; Worker["worker (drain loop)"]
+    Worker --&gt; Source["pack source"]
+    Worker --&gt; Renderer["renderer + pdf + degrade"]
+    Worker --&gt; Storage[(blob store)]
+    Worker --&gt; Manifest["golden shards + manifest"]
+    Manifest --&gt; Export["export → sink"]
+    Renderer --&gt; Cross["locale · render/fonts · money"]</code></pre>
+<p><code>work_run</code> plans the run into units and records them in the <strong>state store</strong>; a
+<code>GenerationWorker</code> claims units atomically, calls the pack's <strong>source</strong> for each
+record and the <strong>renderer</strong> for the document, writes bytes to the <strong>blob store</strong>
+and golden <strong>shards</strong>, and records a per-unit <strong>manifest</strong> part. <strong>Export</strong> later
+streams those shards into a <strong>sink</strong>. The <strong>cross-cutting</strong> services (locale,
+money, fonts) are read throughout.</p>
+<ul>
+<li><strong>② Provider-agnostic</strong> is realised by the three URI-scheme backend groups plus
+  the provider factory — every one is chosen by config, not code.</li>
+<li><strong>④ High throughput</strong> is realised by the state store's atomic claim + leases,
+  which let N workers drain one unit pool without a broker
+  (<a href="../../architecture/concurrency/">Concurrency</a>).</li>
+</ul>
+<p>Read the pages above for each subsystem's protocol and adapters.</p>
 
 
 

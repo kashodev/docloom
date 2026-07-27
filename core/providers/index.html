@@ -663,6 +663,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Providers & LLM catalogue
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -679,6 +697,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#providers-basepy-and-the-two-implementations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Providers (base.py, and the two implementations)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-provider-mix-mixpy-factorypy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The provider mix (mix.py, factory.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#budget-budgetpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Budget (budget.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-catalogue-runner-catalogue_runnerpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The catalogue runner (catalogue_runner.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1529,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#providers-basepy-and-the-two-implementations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Providers (base.py, and the two implementations)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-provider-mix-mixpy-factorypy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The provider mix (mix.py, factory.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#budget-budgetpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Budget (budget.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-catalogue-runner-catalogue_runnerpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The catalogue runner (catalogue_runner.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,11 +1600,100 @@
 
 
 <h1 id="providers-llm-catalogue">Providers &amp; LLM catalogue<a class="headerlink" href="#providers-llm-catalogue" title="Permanent link">&para;</a></h1>
-<p>base, mix, budget, catalogue_runner, factory, pricing.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
+<p><code>core/providers/</code> is the LLM layer used by the offline <strong>catalogue</strong> step (not by
+document generation, which is key-free once a catalogue exists). It is entirely
+config-driven — models, weights, and keys come from config and the environment,
+never from calling code (<strong>② provider-agnostic</strong>).</p>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>base.py</code></td>
+<td><code>TextProvider</code> protocol; <code>CompletionRequest</code> / <code>CompletionResult</code> / <code>Usage</code>.</td>
+</tr>
+<tr>
+<td><code>openai_compatible.py</code></td>
+<td>OpenAI-compatible chat (deepseek, dashscope); <code>extra_body</code> passthrough; per-call timeout.</td>
+</tr>
+<tr>
+<td><code>anthropic_provider.py</code></td>
+<td>Anthropic/Claude, including the batch API.</td>
+</tr>
+<tr>
+<td><code>factory.py</code></td>
+<td><code>build_provider</code> / <code>build_mix</code> from a config block; presets; keys from env.</td>
+</tr>
+<tr>
+<td><code>mix.py</code></td>
+<td><code>ProviderMix</code> — deterministic per-item routing + the fallback pool.</td>
+</tr>
+<tr>
+<td><code>budget.py</code></td>
+<td><code>BudgetGuard</code>, <code>DistributedBudgetGuard</code>, <code>BudgetExceeded</code>.</td>
+</tr>
+<tr>
+<td><code>catalogue_runner.py</code></td>
+<td><code>CatalogueRunner</code> — drives a mix over items under a budget; the circuit breaker.</td>
+</tr>
+<tr>
+<td><code>pricing.py</code></td>
+<td>Model pricing table; <code>pricing_for</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="providers-basepy-and-the-two-implementations">Providers (<code>base.py</code>, and the two implementations)<a class="headerlink" href="#providers-basepy-and-the-two-implementations" title="Permanent link">&para;</a></h2>
+<p>A <code>TextProvider</code> turns a <code>CompletionRequest</code> into a <code>CompletionResult</code> (text +
+<code>Usage</code> + exact cost). Two implementations ship: <code>OpenAICompatibleProvider</code>
+(deepseek, dashscope, ollama — base URL + key from env, <code>extra_body</code> passed
+straight through so a vendor param like <code>thinking: {type: disabled}</code> or
+<code>enable_thinking: false</code> disables reasoning) and <code>AnthropicProvider</code> (incl.
+<code>complete_batch</code> for the half-price Anthropic Batch API). An <strong>empty completion is
+treated as a failure</strong>, not success — a reasoning model that spends its budget on
+<code>reasoning_content</code> and returns <code>""</code> must not bake blanks into a catalogue.</p>
+<h2 id="the-provider-mix-mixpy-factorypy">The provider mix (<code>mix.py</code>, <code>factory.py</code>)<a class="headerlink" href="#the-provider-mix-mixpy-factorypy" title="Permanent link">&para;</a></h2>
+<p><code>build_mix(config)</code> constructs a <strong>weighted <code>ProviderMix</code></strong> from a <code>providers:</code>
+block (name, model, weight, optional <code>extra_body</code>) plus an optional <code>fallback:</code>
+list. <code>mix.route(item_seed, quarantined=…)</code> routes each item to a provider
+<strong>deterministically by a stable hash</strong> of the item id — so the same item always
+goes to the same model, and a build is reproducible. A provider in the
+<code>quarantined</code> set (below) has its share redistributed by the fallback pool;
+<code>procedural</code> is the free sink of last resort.</p>
+<pre class="mermaid"><code>flowchart LR
+    Item["item id"] --&gt; Hash["stable hash → weighted pick"]
+    Hash --&gt; Q{"provider quarantined?"}
+    Q -- "no" --&gt; P["provider.complete"]
+    Q -- "yes" --&gt; FB["fallback pool&lt;br/&gt;survivor / procedural"]</code></pre>
+<h2 id="budget-budgetpy">Budget (<code>budget.py</code>)<a class="headerlink" href="#budget-budgetpy" title="Permanent link">&para;</a></h2>
+<p><code>BudgetGuard.add(cost)</code> raises <code>BudgetExceeded</code> once cumulative real spend passes
+the cap — per-call damage is always bounded. <code>DistributedBudgetGuard</code> counts
+against the <a href="../state/">state store's spend rollup</a> so a <strong>fleet</strong> of tasks shares
+one budget rather than each spending up to the cap. The pre-flight estimate floors
+itself with observed output, so a model that overruns <code>max_tokens</code> self-corrects
+after one call.</p>
+<h2 id="the-catalogue-runner-catalogue_runnerpy">The catalogue runner (<code>catalogue_runner.py</code>)<a class="headerlink" href="#the-catalogue-runner-catalogue_runnerpy" title="Permanent link">&para;</a></h2>
+<p><code>CatalogueRunner.run(items)</code> drives the mix over many items under the budget,
+concurrently (async, bounded), and <strong>batches</strong> the batch-capable slice as one
+request. It owns the <strong>circuit breaker</strong>: a provider that returns a streak of
+empty completions (or errors) is <strong>quarantined</strong> — its in-flight calls cancelled
+mid-round (<code>as_completed</code>, not <code>gather</code>, so a <em>hanging</em> provider can't burn the
+task's wall clock), and its share routed through the fallback pool. The quarantine
+set is persisted to the <a href="../state/">state store</a> so later shards of a sharded build
+skip it. Budget declines are excluded from the streak.</p>
+<p><code>build_catalogue(pack, mix, …)</code> (in <code>core/content.py</code>) is the entry point that
+wires a pack's <code>catalogue_items()</code> through the runner and hands the results back
+via <code>ingest()</code>. See <a href="../../invoice/catalogue/">Invoice → Catalogue building</a> and,
+for the studio's preset mixes + Secret Manager capture,
+<a href="../../studio/catalogue/">Studio → LLM catalogue &amp; secrets</a>.</p>
+<div class="admonition warning">
+<p class="admonition-title">Known limits (tracked in TODO.md)</p>
+<p>The OpenAI-compatible provider hardening for reasoning models and a <em>separate</em>
+budget cap for empty completions are open follow-ups — the streak breaker
+quarantines a bad provider but doesn't cap the spend before it does.</p>
 </div>
 
 

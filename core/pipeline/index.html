@@ -579,6 +579,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pipeline
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -595,6 +613,80 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#run-orchestration-runpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run orchestration (run.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-worker-loop-workerpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The worker loop (worker.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#determinism-sourcepy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Determinism (source.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rendering-rendererpy-pdfpy-degradepy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rendering (renderer.py, pdf.py, degrade.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#golden-shards-manifest-goldenpy-manifestpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Golden shards &amp; manifest (golden.py, manifest.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1540,69 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#run-orchestration-runpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Run orchestration (run.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-worker-loop-workerpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The worker loop (worker.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#determinism-sourcepy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Determinism (source.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rendering-rendererpy-pdfpy-degradepy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rendering (renderer.py, pdf.py, degrade.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#golden-shards-manifest-goldenpy-manifestpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Golden shards &amp; manifest (golden.py, manifest.py)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1622,113 @@
 
 
 <h1 id="pipeline">Pipeline<a class="headerlink" href="#pipeline" title="Permanent link">&para;</a></h1>
-<p>run, worker, planner, source, renderer, pdf, degrade, golden, manifest, export.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p><code>core/pipeline/</code> is the document-agnostic spine of a run: plan → create → drive →
+render → persist → manifest, then export. It calls the pack only through the
+<a href="../../architecture/contract/">contract</a> hooks.</p>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>run.py</code></td>
+<td>Orchestration — <code>create_run</code>, <code>work_run</code>, <code>resume_run</code>.</td>
+</tr>
+<tr>
+<td><code>planner.py</code></td>
+<td><code>plan_units</code> — a document count → a list of work units (index ranges).</td>
+</tr>
+<tr>
+<td><code>worker.py</code></td>
+<td><code>GenerationWorker</code> — the drain loop: claim → generate → render → persist per unit.</td>
+</tr>
+<tr>
+<td><code>source.py</code></td>
+<td><code>DocumentSource</code> protocol, <code>stable_seed</code>, <code>prepare_source</code>.</td>
+</tr>
+<tr>
+<td><code>renderer.py</code></td>
+<td><code>DocumentRenderer</code> protocol, <code>HtmlRenderer</code>; <code>render()</code> → bytes.</td>
+</tr>
+<tr>
+<td><code>pdf.py</code></td>
+<td><code>PdfRenderer</code> — Chromium/Playwright print; running header; page-fit.</td>
+</tr>
+<tr>
+<td><code>degrade.py</code></td>
+<td><code>degrade_pdf</code> — scan post-processing (rasterise, noise, JPEG, no text layer).</td>
+</tr>
+<tr>
+<td><code>golden.py</code></td>
+<td><code>encode_shard</code> / <code>decode_shard</code> — the exactness-preserving golden codec.</td>
+</tr>
+<tr>
+<td><code>manifest.py</code></td>
+<td><code>UnitManifest</code> / <code>RunManifest</code> — the self-describing per-run manifest.</td>
+</tr>
+<tr>
+<td><code>export.py</code></td>
+<td><code>export_run</code> — golden shards → a sink (see <a href="../../invoice/export/">Export</a>).</td>
+</tr>
+</tbody>
+</table>
+<h2 id="run-orchestration-runpy">Run orchestration (<code>run.py</code>)<a class="headerlink" href="#run-orchestration-runpy" title="Permanent link">&para;</a></h2>
+<p>Three entry points, all called by a CLI command or a Cloud Run task:</p>
+<ul>
+<li><strong><code>create_run</code></strong> plans the run into units and records it. Safe to call from every
+  worker at once — creation is a <strong>conditional write</strong>, so exactly one worker plans
+  and the rest wait for the plan to land (<code>Run.planned</code> closes the follow-on race).</li>
+<li><strong><code>work_run</code></strong> drives one worker until the unit pool is empty. Multiple processes
+  calling it against the same store <em>is</em> the multi-worker case; the atomic claim
+  keeps them from colliding. On the transition to <code>COMPLETED</code> (and only then) it
+  writes the <strong>root manifest</strong> — so the root's presence is the completion signal.</li>
+<li><strong><code>resume_run</code></strong> clears any pause, returns failed units to the pool, and reclaims
+  units abandoned by crashed workers (expired leases).</li>
+</ul>
+<p>A run's identity lives in the <strong>state store</strong>, not a Python object, so any process
+that can reach the store can start, resume, pause, or cancel it.</p>
+<h2 id="the-worker-loop-workerpy">The worker loop (<code>worker.py</code>)<a class="headerlink" href="#the-worker-loop-workerpy" title="Permanent link">&para;</a></h2>
+<p><code>GenerationWorker.run()</code> claims the next unit and processes it until none remain.
+For each document index in a unit it: <code>source.generate(run_id, index)</code> → a
+<code>GoldenRecord</code>; <code>renderer.render(record)</code> → bytes; <code>blob.put(key, …)</code>;
+<code>record.to_rows()</code> → golden shards; and — <strong>before</strong> marking the unit done —
+writes the unit's manifest part. That order is load-bearing: a completed unit
+always has a manifest part, so the root manifest can trust the parts. A failed
+document marks the unit failed and the worker moves on (retried on the next
+resume, not in a hot loop).</p>
+<h2 id="determinism-sourcepy">Determinism (<code>source.py</code>)<a class="headerlink" href="#determinism-sourcepy" title="Permanent link">&para;</a></h2>
+<p><code>stable_seed(run_id, index)</code> is a SHA-256 over <code>(run_id, index)</code> — every draw an
+invoice makes is seeded from it, so the same index always yields the same
+document. That is what makes a run <strong>resumable</strong> (re-generating an index
+overwrites identical content) and the golden set <strong>reproducible</strong>.
+<code>prepare_source</code> runs a source's one-time, run-scoped setup (e.g. resolving a
+<code>Selection</code> against the roster) once, up front, so a bad configuration stops the
+run rather than failing document after document.</p>
+<h2 id="rendering-rendererpy-pdfpy-degradepy">Rendering (<code>renderer.py</code>, <code>pdf.py</code>, <code>degrade.py</code>)<a class="headerlink" href="#rendering-rendererpy-pdfpy-degradepy" title="Permanent link">&para;</a></h2>
+<p><code>HtmlRenderer</code> produces the HTML via the kernel's Jinja environment
+(<code>render_record(pack, record)</code>). <code>PdfRenderer</code> prints that through
+Chromium/Playwright, using <code>header_fields(record)</code> for the running header and
+handling page-fit (<code>fit_scale</code>) and <code>(cont'd)</code> markers on page-spanning sections
+(<code>spanning_sections</code>). <code>degrade.py</code> then realises the capture condition: <strong>clean</strong>
+passes through with its text layer intact; a <strong>scan</strong> rasterises at 150 dpi,
+degrades with the record's own seed, and re-wraps with <strong>no text layer</strong> so OCR
+must read pixels. (Handwritten pads are rendered by the invoice pack; see
+<a href="../../invoice/generation/">Invoice generation</a>.)</p>
+<h2 id="golden-shards-manifest-goldenpy-manifestpy">Golden shards &amp; manifest (<code>golden.py</code>, <code>manifest.py</code>)<a class="headerlink" href="#golden-shards-manifest-goldenpy-manifestpy" title="Permanent link">&para;</a></h2>
+<p><code>golden.py</code> encodes a unit's rows to a <strong>gzipped-JSONL shard</strong>, preserving exact
+values (money as strings, not floats). <code>manifest.py</code> writes a <strong>part per unit</strong>
+(<code>&lt;prefix&gt;/manifest/unit-XXXXXX.json</code>, listing that unit's documents and shards
+with a sha256 each) and, at completion, a <strong>root</strong> (<code>&lt;prefix&gt;/manifest.json</code>)
+indexing the parts plus totals. The root refuses to write over a missing part,
+and its presence is the run's done-signal — a partial run has parts but no root.
+A consumer can reconstruct and verify a run from the manifest alone
+(<code>read_run_manifest</code>, <code>is_complete</code>, <code>verify_run</code>, <code>enumerate_document_keys</code>).</p>
+<p>See <a href="../../architecture/concurrency/">Concurrency &amp; coordination</a> for the claim /
+lease / completion contract, and <a href="../../architecture/flows/">Execution flows</a> for
+the end-to-end sequences.</p>
 
 
 
