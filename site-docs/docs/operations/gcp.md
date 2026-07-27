@@ -15,7 +15,7 @@ locally capable**) — but it is the proven production path.
 - **Firestore (Native)** + the **composite index for the claim query** (`state`
   ASC, `unit_index` ASC on `work_units`) — the atomic claim needs it; index build
   takes a couple of minutes.
-- **Service account** (`docloom-run`) + IAM (run.invoker, datastore.user, storage).
+- **Service account** (`docsynth-run`) + IAM (run.invoker, datastore.user, storage).
 
 `build` then builds the container (Playwright/Chromium version-pinned,
 `PYTHONUNBUFFERED=1`) via Cloud Build and pushes it to Artifact Registry.

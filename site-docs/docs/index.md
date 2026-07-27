@@ -1,10 +1,10 @@
-# docloom
+# docsynth
 
 Weave templates and generated data into realistic **synthetic documents** — and
 get a **computed golden dataset** alongside them, exact to the cent.
 
 !!! info "Primary intended use"
-    docloom generates **synthetic documents to test AI/OCR document-extraction
+    docsynth generates **synthetic documents to test AI/OCR document-extraction
     pipelines**. It produces a large, varied corpus whose every field value is
     known in advance (the golden dataset), so an extraction model can be scored
     against ground truth. The documents are synthetic — the project creates **no
@@ -37,7 +37,7 @@ one document type.
 
 - **Architecture → Overview** — the kernel + packs big picture.
 - **Invoice pack → Overview** — the whole generate/catalogue/export flow.
-- **Studio (the CLI)** — `docloom studio`, the interactive/scriptable orchestrator.
+- **Studio (the CLI)** — `docsynth studio`, the interactive/scriptable orchestrator.
 - **Operations** — the deploy tool and running on GCP.
 
 !!! note "Site status"

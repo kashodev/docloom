@@ -12,14 +12,14 @@ from __future__ import annotations
 from collections import Counter
 from decimal import Decimal as D
 
-import docloom.packs  # noqa: F401
-from docloom.core import get_pack
-from docloom.core.money import sum_money
-from docloom.core.pipeline import HtmlRenderer, create_run, decode_shard, work_run
-from docloom.core.pipeline.source import DocumentSource, stable_seed
-from docloom.core.state.sqlite import SqliteStateStore
-from docloom.core.storage.local import LocalBlobStore
-from docloom.packs.invoice import InvoiceSampler, SeedCatalogue
+import docsynth.packs  # noqa: F401
+from docsynth.core import get_pack
+from docsynth.core.money import sum_money
+from docsynth.core.pipeline import HtmlRenderer, create_run, decode_shard, work_run
+from docsynth.core.pipeline.source import DocumentSource, stable_seed
+from docsynth.core.state.sqlite import SqliteStateStore
+from docsynth.core.storage.local import LocalBlobStore
+from docsynth.packs.invoice import InvoiceSampler, SeedCatalogue
 
 
 # ── stable seeding ──────────────────────────────────────────────────────────

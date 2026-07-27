@@ -11,8 +11,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from docloom.cli import app
-from docloom.studio import (
+from docsynth.cli import app
+from docsynth.studio import (
     CatalogueArgs,
     ExportArgs,
     GcpTarget,
@@ -27,8 +27,8 @@ from docloom.studio import (
     get_target,
     wizard,
 )
-from docloom.studio.app import resolve_project, run_step
-from docloom.studio.prompts import (
+from docsynth.studio.app import resolve_project, run_step
+from docsynth.studio.prompts import (
     BACK,
     EXIT,
     Choice,
@@ -175,24 +175,24 @@ def test_run_step_dispatches_by_step(tmp_path: Path) -> None:
 
 # ── the command ─────────────────────────────────────────────────────────────
 def test_studio_pdfs_dry_run_prints_the_plan(tmp_path: Path) -> None:
-    env = {"DOCLOOM_HOME": str(tmp_path / ".docloom")}
+    env = {"DOCSYNTH_HOME": str(tmp_path / ".docsynth")}
     argv = ["studio", "-p", "local", "--project", str(tmp_path / "ws"),
             "--step", "pdfs", "--run-id", "r", "--total", "2", "--dry-run"]
     res = runner.invoke(app, argv, env=env)
     assert res.exit_code == 0, res.output
-    assert "docloom generate" in res.output and "--run-id r" in res.output
+    assert "docsynth generate" in res.output and "--run-id r" in res.output
     assert "dry run" in res.output
 
 
 def test_studio_requires_a_step(tmp_path: Path) -> None:
-    env = {"DOCLOOM_HOME": str(tmp_path / ".docloom")}
+    env = {"DOCSYNTH_HOME": str(tmp_path / ".docsynth")}
     res = runner.invoke(app, ["studio", "-p", "local", "--project", str(tmp_path / "ws")], env=env)
     assert res.exit_code != 0
     assert "step" in res.output
 
 
 def test_studio_export_needs_a_run_id(tmp_path: Path) -> None:
-    env = {"DOCLOOM_HOME": str(tmp_path / ".docloom")}
+    env = {"DOCSYNTH_HOME": str(tmp_path / ".docsynth")}
     res = runner.invoke(app, ["studio", "-p", "local", "--project", str(tmp_path / "ws"),
                               "--step", "export", "--dry-run"], env=env)
     assert res.exit_code != 0
@@ -313,7 +313,7 @@ def test_choose_project_interactive_picks_an_existing(tmp_path: Path) -> None:
 
 # ── spinner ─────────────────────────────────────────────────────────────────
 def test_run_with_spinner_returns_and_propagates() -> None:
-    from docloom.studio.progress import run_with_spinner
+    from docsynth.studio.progress import run_with_spinner
     assert run_with_spinner("x", lambda: 42) == 42        # non-tty in pytest → direct call
     with pytest.raises(ValueError, match="boom"):
         run_with_spinner("x", lambda: (_ for _ in ()).throw(ValueError("boom")))
@@ -327,7 +327,7 @@ def test_run_with_spinner_threaded_path(monkeypatch) -> None:
         def isatty(self) -> bool:
             return True
     monkeypatch.setattr(sys, "stderr", _TTY())
-    from docloom.studio.progress import run_with_spinner
+    from docsynth.studio.progress import run_with_spinner
     assert run_with_spinner("work", lambda: 7) == 7        # exercises the worker thread
 
 
@@ -378,14 +378,14 @@ class _FakeTarget:
 
 
 def test_interactive_loop_runs_a_step_then_returns_and_exits(monkeypatch, tmp_path, capsys) -> None:
-    from docloom import cli
+    from docsynth import cli
     fake = _FakeTarget()
-    monkeypatch.setenv("DOCLOOM_HOME", str(tmp_path / ".docloom"))
-    monkeypatch.setattr("docloom.studio.prompts.is_interactive", lambda: True)
+    monkeypatch.setenv("DOCSYNTH_HOME", str(tmp_path / ".docsynth"))
+    monkeypatch.setattr("docsynth.studio.prompts.is_interactive", lambda: True)
     # step=export, run_id, sink(blank), confirm=yes, then step=exit
     answers = ["export", "run-a", "", True, EXIT]
-    monkeypatch.setattr("docloom.studio.prompts.get_prompter", lambda: ScriptedPrompter(answers))
-    monkeypatch.setattr("docloom.studio.get_target", lambda name: fake)
+    monkeypatch.setattr("docsynth.studio.prompts.get_prompter", lambda: ScriptedPrompter(answers))
+    monkeypatch.setattr("docsynth.studio.get_target", lambda name: fake)
 
     cli._run_studio(provider="local", project=str(tmp_path / "ws"))
     out = capsys.readouterr().out
@@ -403,11 +403,11 @@ def test_generate_links_match_the_real_local_layout(tmp_path: Path) -> None:
 
 
 def _drive(monkeypatch, tmp_path, answers, fake):
-    from docloom import cli
-    monkeypatch.setenv("DOCLOOM_HOME", str(tmp_path / ".docloom"))
-    monkeypatch.setattr("docloom.studio.prompts.is_interactive", lambda: True)
-    monkeypatch.setattr("docloom.studio.prompts.get_prompter", lambda: ScriptedPrompter(answers))
-    monkeypatch.setattr("docloom.studio.get_target", lambda name: fake)
+    from docsynth import cli
+    monkeypatch.setenv("DOCSYNTH_HOME", str(tmp_path / ".docsynth"))
+    monkeypatch.setattr("docsynth.studio.prompts.is_interactive", lambda: True)
+    monkeypatch.setattr("docsynth.studio.prompts.get_prompter", lambda: ScriptedPrompter(answers))
+    monkeypatch.setattr("docsynth.studio.get_target", lambda name: fake)
     cli._run_studio(provider="local", project=str(tmp_path / "ws"))
 
 
@@ -431,14 +431,14 @@ def test_no_provider_flag_shows_target_screen_and_back_returns_to_it(
         monkeypatch, tmp_path, capsys) -> None:
     """With no --provider, the studio opens on the target screen; ← back from the
     project screen returns to it (and exit there leaves)."""
-    from docloom import cli
+    from docsynth import cli
     fake = _FakeTarget()
-    monkeypatch.setenv("DOCLOOM_HOME", str(tmp_path / ".docloom"))
-    monkeypatch.setattr("docloom.studio.prompts.is_interactive", lambda: True)
+    monkeypatch.setenv("DOCSYNTH_HOME", str(tmp_path / ".docsynth"))
+    monkeypatch.setattr("docsynth.studio.prompts.is_interactive", lambda: True)
     # target=local → project menu ← back (→ target screen) → target = exit
-    monkeypatch.setattr("docloom.studio.prompts.get_prompter",
+    monkeypatch.setattr("docsynth.studio.prompts.get_prompter",
                         lambda: ScriptedPrompter(["local", BACK, EXIT]))
-    monkeypatch.setattr("docloom.studio.get_target", lambda name: fake)
+    monkeypatch.setattr("docsynth.studio.get_target", lambda name: fake)
     cli._run_studio()                      # no provider ⇒ the target screen is the entry
     out = capsys.readouterr().out
     assert fake.calls == [] and "bye." in out
@@ -446,17 +446,17 @@ def test_no_provider_flag_shows_target_screen_and_back_returns_to_it(
 
 def test_no_provider_flag_non_interactive_defaults_to_local(tmp_path: Path) -> None:
     """Piped / CI with no --provider falls through to local — no prompt, scripts unchanged."""
-    env = {"DOCLOOM_HOME": str(tmp_path / ".docloom")}
+    env = {"DOCSYNTH_HOME": str(tmp_path / ".docsynth")}
     res = runner.invoke(app, ["studio", "--project", str(tmp_path / "ws"),
                               "--step", "pdfs", "--run-id", "r", "--total", "1", "--dry-run"],
                         env=env)
     assert res.exit_code == 0, res.output
-    assert "docloom generate" in res.output      # resolved to local, printed its plan
+    assert "docsynth generate" in res.output      # resolved to local, printed its plan
 
 
 # ── progress + drain ────────────────────────────────────────────────────────
 def test_pdfs_progress_is_none_for_non_pdfs(tmp_path: Path) -> None:
-    from docloom.cli import _pdfs_progress
+    from docsynth.cli import _pdfs_progress
     proj = LocalTarget().provision(ProjectSpec(target="local", id="ws", root=str(tmp_path / "ws")))
     assert _pdfs_progress(proj, Step.CATALOG, CatalogueArgs()) is None
     poll = _pdfs_progress(proj, Step.PDFS, GenerateArgs(run_id="none", total=1))
@@ -464,12 +464,12 @@ def test_pdfs_progress_is_none_for_non_pdfs(tmp_path: Path) -> None:
 
 
 def test_drain_stdin_is_safe_without_a_tty() -> None:
-    from docloom.studio.progress import drain_stdin
+    from docsynth.studio.progress import drain_stdin
     drain_stdin()                                  # no TTY under pytest → a clean no-op
 
 
 def test_spinner_accepts_a_progress_callback() -> None:
-    from docloom.studio.progress import run_with_spinner
+    from docsynth.studio.progress import run_with_spinner
     assert run_with_spinner("x", lambda: 5, progress=lambda: "1/2") == 5
 
 
@@ -486,9 +486,9 @@ def _cfg_from(command: str) -> dict:
 
 def test_gcp_normalise_defaults_region_and_bucket() -> None:
     p = GcpTarget().normalise(ProjectSpec(target="gcp", id="acme-proj"))
-    assert p.region == "us-central1" and p.bucket == "acme-proj-docloom"
+    assert p.region == "us-central1" and p.bucket == "acme-proj-docsynth"
     assert p.resources["state"].startswith("firestore://acme-proj")
-    assert p.resources["storage"] == "gs://acme-proj-docloom/runs"
+    assert p.resources["storage"] == "gs://acme-proj-docsynth/runs"
 
 
 def test_gcp_catalogue_synthesises_config_and_links() -> None:
@@ -497,8 +497,8 @@ def test_gcp_catalogue_synthesises_config_and_links() -> None:
     assert "catalogue" in r.command and "deploy.sh" in r.command
     cfg = _cfg_from(r.command)
     assert cfg["project"] == "acme" and cfg["catalogue"]["version"] == "v2"
-    assert cfg["catalogue"]["out"] == "gs://acme-docloom/catalogues/invoice/v2"
-    assert any(link.href == "gs://acme-docloom/catalogues/invoice/v2" for link in r.links)
+    assert cfg["catalogue"]["out"] == "gs://acme-docsynth/catalogues/invoice/v2"
+    assert any(link.href == "gs://acme-docsynth/catalogues/invoice/v2" for link in r.links)
     assert any("console.cloud.google.com" in link.href for link in r.links)
 
 
@@ -518,7 +518,7 @@ def test_gcp_generate_is_deploy_then_dispatch_detached_one_slice() -> None:
     assert cfg["documents"][0]["count"] == 5000
     assert cfg["documents"][0]["condition"] == "clean"
     docs = next(link.href for link in r.links if link.label == "documents")
-    assert docs == "gs://acme-docloom/runs/corpus1/documents"
+    assert docs == "gs://acme-docsynth/runs/corpus1/documents"
     assert r.run_id == "corpus1"
 
 
@@ -532,7 +532,7 @@ def test_gcp_export_defaults_to_bigquery() -> None:
 
 
 def test_gcp_studio_dry_run_via_the_command(tmp_path: Path) -> None:
-    env = {"DOCLOOM_HOME": str(tmp_path / ".docloom")}
+    env = {"DOCSYNTH_HOME": str(tmp_path / ".docsynth")}
     argv = ["studio", "-p", "gcp", "--project", "acme", "--step", "catalog",
             "--version", "v2", "--dry-run"]
     res = runner.invoke(app, argv, env=env)
@@ -542,7 +542,7 @@ def test_gcp_studio_dry_run_via_the_command(tmp_path: Path) -> None:
 
 # ── provider mixes (LLM catalogue) ──────────────────────────────────────────
 def test_mixes_procedural_is_keyless_and_llm_mixes_carry_secrets() -> None:
-    from docloom.studio.mixes import get_mix, mix_names
+    from docsynth.studio.mixes import get_mix, mix_names
     assert {"procedural", "cheap-mix", "balanced", "anthropic"} <= set(mix_names())
     assert not get_mix("procedural").is_llm and get_mix("procedural").secrets_map() == {}
     # cheap-mix is the two cheap OpenAI-compatible models only — no Anthropic.
@@ -563,7 +563,7 @@ def test_openai_compatible_reasoning_providers_disable_thinking() -> None:
     """deepseek-v4-flash and qwen3.5-flash are reasoning models — without thinking
     disabled they spend the whole token budget reasoning and return empty content
     (observed live). deepseek and dashscope disable it with different params."""
-    from docloom.studio.mixes import get_mix
+    from docsynth.studio.mixes import get_mix
     for name in ("cheap-mix", "balanced"):
         for p in get_mix(name).providers_block():
             if p["name"] == "deepseek":
@@ -574,7 +574,7 @@ def test_openai_compatible_reasoning_providers_disable_thinking() -> None:
 
 def test_every_llm_mix_weights_and_fallback_total_100() -> None:
     """deploy.sh rejects provider weights or fallback shares that don't total 100."""
-    from docloom.studio.mixes import get_mix, mix_names
+    from docsynth.studio.mixes import get_mix, mix_names
     for name in mix_names():
         m = get_mix(name)
         if not m.is_llm:
@@ -647,39 +647,39 @@ def test_gcp_teardown_sets_bucket_env_only_when_deleting_data() -> None:
 
 
 def test_studio_projects_lists_saved(tmp_path: Path) -> None:
-    home = tmp_path / ".docloom"
+    home = tmp_path / ".docsynth"
     Registry(home / "projects.yaml").add(
-        Project(target="gcp", id="acme", region="us-central1", bucket="acme-docloom",
+        Project(target="gcp", id="acme", region="us-central1", bucket="acme-docsynth",
                 provisioned_at="2026-07-20"), make_default=True)
-    res = runner.invoke(app, ["studio", "projects"], env={"DOCLOOM_HOME": str(home)})
+    res = runner.invoke(app, ["studio", "projects"], env={"DOCSYNTH_HOME": str(home)})
     assert res.exit_code == 0, res.output
     assert "gcp" in res.output and "acme" in res.output and "*" in res.output
 
 
 def test_studio_teardown_dry_run_shows_scope_and_keeps_registry(tmp_path: Path) -> None:
-    home = tmp_path / ".docloom"
-    Registry(home / "projects.yaml").add(Project(target="gcp", id="acme", bucket="acme-docloom"))
+    home = tmp_path / ".docsynth"
+    Registry(home / "projects.yaml").add(Project(target="gcp", id="acme", bucket="acme-docsynth"))
     res = runner.invoke(app, ["studio", "teardown", "--project", "gcp:acme", "--delete-data",
-                              "--dry-run"], env={"DOCLOOM_HOME": str(home)})
+                              "--dry-run"], env={"DOCSYNTH_HOME": str(home)})
     assert res.exit_code == 0, res.output
     assert "bucket" in res.output                                  # scope surfaced
     assert Registry(home / "projects.yaml").get("gcp:acme") is not None   # dry-run kept it
 
 
 def test_studio_teardown_non_interactive_requires_yes(tmp_path: Path) -> None:
-    home = tmp_path / ".docloom"
+    home = tmp_path / ".docsynth"
     Registry(home / "projects.yaml").add(Project(target="local", id="ws", root=str(tmp_path / "w")))
     res = runner.invoke(app, ["studio", "teardown", "--project", "local:ws"],
-                        env={"DOCLOOM_HOME": str(home)})
+                        env={"DOCSYNTH_HOME": str(home)})
     assert res.exit_code != 0 and "pass --yes" in _plain(res.output)
 
 
 def test_studio_teardown_with_yes_removes_from_registry(tmp_path: Path) -> None:
-    home = tmp_path / ".docloom"
+    home = tmp_path / ".docsynth"
     reg = Registry(home / "projects.yaml")
     reg.add(Project(target="local", id="ws", root=str(tmp_path / "w")))
     res = runner.invoke(app, ["studio", "teardown", "--project", "local:ws", "--yes"],
-                        env={"DOCLOOM_HOME": str(home)})
+                        env={"DOCSYNTH_HOME": str(home)})
     assert res.exit_code == 0, res.output
     assert Registry(home / "projects.yaml").get("local:ws") is None   # forgotten
 
@@ -698,7 +698,7 @@ def test_local_catalogue_info_none_then_found(tmp_path: Path) -> None:
 
 
 def test_catalogue_summary_formats_provenance() -> None:
-    from docloom.cli import _catalogue_summary
+    from docsynth.cli import _catalogue_summary
     s = _catalogue_summary({"created_at": "2026-07-20T09:00:00Z",
                             "provenance": {"total_cost": "3.41"}})
     assert "built 2026-07-20" in s and "$3.41" in s
@@ -706,7 +706,7 @@ def test_catalogue_summary_formats_provenance() -> None:
 
 
 def test_studio_catalog_reuses_existing_catalogue_by_default(tmp_path: Path) -> None:
-    home = tmp_path / ".docloom"
+    home = tmp_path / ".docsynth"
     ws = tmp_path / "ws"
     LocalTarget().provision(ProjectSpec(target="local", id="ws", root=str(ws)))
     Registry(home / "projects.yaml").add(
@@ -716,7 +716,7 @@ def test_studio_catalog_reuses_existing_catalogue_by_default(tmp_path: Path) -> 
     mf.write_text('{"catalogue_version": "v1", "created_at": "2026-07-20T00:00:00Z"}')
     res = runner.invoke(app, ["studio", "-p", "local", "--project", str(ws),
                               "--step", "catalog", "--version", "v1"],
-                        env={"DOCLOOM_HOME": str(home)})
+                        env={"DOCSYNTH_HOME": str(home)})
     assert res.exit_code == 0, res.output
     assert "using existing catalogue 'v1'" in res.output          # reused, no rebuild
 
@@ -728,7 +728,7 @@ def test_gcp_scaffold_writes_a_reusable_run_yaml(tmp_path: Path) -> None:
     out = tmp_path / "run.yaml"
     t.scaffold("catalog", p, CatalogueArgs(version="v2", mix="cheap-mix", budget_usd=5), str(out))
     text = out.read_text()
-    assert text.startswith("# docloom run.yaml")                  # commented header
+    assert text.startswith("# docsynth run.yaml")                  # commented header
     cfg = yaml.safe_load(text)
     assert cfg["project"] == "acme" and cfg["catalogue"]["version"] == "v2"
     assert cfg["catalogue"]["providers"]                          # the mix expanded in
@@ -736,14 +736,14 @@ def test_gcp_scaffold_writes_a_reusable_run_yaml(tmp_path: Path) -> None:
 
 def test_studio_scaffold_flag_writes_run_yaml_and_stops(tmp_path: Path) -> None:
     import yaml
-    home = tmp_path / ".docloom"
+    home = tmp_path / ".docsynth"
     Registry(home / "projects.yaml").add(
-        Project(target="gcp", id="acme", region="us-central1", bucket="acme-docloom"),
+        Project(target="gcp", id="acme", region="us-central1", bucket="acme-docsynth"),
         make_default=True)
     out = tmp_path / "run.yaml"
     res = runner.invoke(app, ["studio", "-p", "gcp", "--project", "acme", "--step", "pdfs",
                               "--run-id", "r1", "--total", "500", "--scaffold", str(out)],
-                        env={"DOCLOOM_HOME": str(home)})
+                        env={"DOCSYNTH_HOME": str(home)})
     assert res.exit_code == 0, res.output
     assert "scaffolded pdfs" in res.output and out.is_file()
     cfg = yaml.safe_load(out.read_text())
@@ -806,7 +806,7 @@ def test_build_args_thread_concurrency_tasks_parallelism_and_zero_defaults() -> 
 
 
 def test_capture_catalogue_secrets_saves_names_never_values(tmp_path: Path) -> None:
-    from docloom.cli import _capture_catalogue_secrets
+    from docsynth.cli import _capture_catalogue_secrets
     reg = Registry(tmp_path / "projects.yaml")
     proj = Project(target="gcp", id="acme")
     reg.add(proj)
@@ -819,14 +819,14 @@ def test_capture_catalogue_secrets_saves_names_never_values(tmp_path: Path) -> N
 
 
 def test_studio_catalog_llm_mix_dry_run_prints_secrets_and_plan(tmp_path: Path) -> None:
-    home = tmp_path / ".docloom"
+    home = tmp_path / ".docsynth"
     Registry(home / "projects.yaml").add(
-        Project(target="gcp", id="acme", region="us-central1", bucket="acme-docloom",
+        Project(target="gcp", id="acme", region="us-central1", bucket="acme-docsynth",
                 resources={"state": "firestore://acme/(default)"}), make_default=True)
     res = runner.invoke(app, ["studio", "-p", "gcp", "--project", "acme", "--step", "catalog",
                               "--version", "v2", "--mix", "balanced", "--budget", "25",
                               "--dry-run"],
-                        env={"DOCLOOM_HOME": str(home)})
+                        env={"DOCSYNTH_HOME": str(home)})
     assert res.exit_code == 0, res.output
     assert "Secret Manager secret" in res.output and "anthropic-api-key" in res.output
     assert "balanced" in res.output
@@ -846,7 +846,7 @@ def test_resolve_adopt_saves_a_gcp_project_without_gcloud(tmp_path: Path) -> Non
 
 
 def test_wizard_onboards_an_existing_gcp_project(tmp_path: Path) -> None:
-    from docloom.studio.wizard import _ADOPT
+    from docsynth.studio.wizard import _ADOPT
     reg = Registry(tmp_path / "projects.yaml")
     answers = [_ADOPT, "acme", "us-west1", "acme-bucket"]     # onboard, id, region, bucket
     proj = wizard.choose_project(ScriptedPrompter(answers), "gcp", GcpTarget(), reg, "",
@@ -856,24 +856,24 @@ def test_wizard_onboards_an_existing_gcp_project(tmp_path: Path) -> None:
 
 
 # ── detached dispatch: status / reattach ────────────────────────────────────
-def test_status_of_builds_a_docloom_status_command() -> None:
-    from docloom.studio.app import status_of
+def test_status_of_builds_a_docsynth_status_command() -> None:
+    from docsynth.studio.app import status_of
     proj = GcpTarget().normalise(ProjectSpec(target="gcp", id="acme"))
     r = status_of(proj, "corpus1", wait=True, dry_run=True)
     assert r.argv[:3] == ("status", "--run-id", "corpus1")
     assert r.argv[r.argv.index("--state") + 1].startswith("firestore://acme")
     assert "--wait" in r.argv and r.run_id == "corpus1"
-    assert "docloom status --run-id corpus1" in r.command
+    assert "docsynth status --run-id corpus1" in r.command
 
 
 def test_status_of_without_a_state_store_is_an_error() -> None:
-    from docloom.studio.app import status_of
+    from docsynth.studio.app import status_of
     with pytest.raises(StudioError, match="no recorded state"):
         status_of(Project(target="gcp", id="x"), "r", dry_run=True)    # no resources → no state
 
 
 def test_resolve_saved_project_by_ref_id_default_and_missing(tmp_path: Path) -> None:
-    from docloom.cli import _resolve_saved_project
+    from docsynth.cli import _resolve_saved_project
     reg = Registry(tmp_path / "projects.yaml")
     reg.add(Project(target="gcp", id="acme", resources={"state": "firestore://acme/(default)"}),
             make_default=True)
@@ -889,35 +889,35 @@ def test_resolve_saved_project_by_ref_id_default_and_missing(tmp_path: Path) -> 
 
 
 def test_studio_status_command_dry_run_resolves_and_plans(tmp_path: Path) -> None:
-    home = tmp_path / ".docloom"
+    home = tmp_path / ".docsynth"
     Registry(home / "projects.yaml").add(
-        Project(target="gcp", id="acme", region="us-central1", bucket="acme-docloom",
+        Project(target="gcp", id="acme", region="us-central1", bucket="acme-docsynth",
                 resources={"state": "firestore://acme/(default)"}), make_default=True)
     res = runner.invoke(app, ["studio", "status", "--project", "gcp:acme", "--run", "corpus1",
-                              "--wait", "--dry-run"], env={"DOCLOOM_HOME": str(home)})
+                              "--wait", "--dry-run"], env={"DOCSYNTH_HOME": str(home)})
     assert res.exit_code == 0, res.output
-    assert "docloom status --run-id corpus1" in res.output
+    assert "docsynth status --run-id corpus1" in res.output
     assert "firestore://acme" in res.output and "--wait" in res.output
 
 
 def test_studio_status_unknown_project_is_a_clean_error(tmp_path: Path) -> None:
     res = runner.invoke(app, ["studio", "status", "--project", "gcp:none", "--run", "r"],
-                        env={"DOCLOOM_HOME": str(tmp_path / ".docloom")})
+                        env={"DOCSYNTH_HOME": str(tmp_path / ".docsynth")})
     assert res.exit_code != 0 and "no saved project" in res.output
 
 
 def test_studio_onboard_flag_threads_to_choose_project(monkeypatch, tmp_path: Path) -> None:
     """The --onboard/--region/--bucket flags reach choose_project as adopt + spec."""
-    from docloom import cli
+    from docsynth import cli
     seen = {}
-    monkeypatch.setenv("DOCLOOM_HOME", str(tmp_path / ".docloom"))
+    monkeypatch.setenv("DOCSYNTH_HOME", str(tmp_path / ".docsynth"))
 
     def fake_choose_project(prompter, provider, target, registry, project_flag, **kw):
         seen.update(adopt=kw.get("adopt"), region=kw.get("region"), bucket=kw.get("bucket"))
         return GcpTarget().adopt(ProjectSpec(
             target="gcp", id=project_flag,
             region=kw.get("region", ""), bucket=kw.get("bucket", "")))
-    monkeypatch.setattr("docloom.studio.wizard.choose_project", fake_choose_project)
+    monkeypatch.setattr("docsynth.studio.wizard.choose_project", fake_choose_project)
     cli._run_studio(provider="gcp", project="acme", onboard=True, region="eu", bucket="b",
                     step="export", run_id="r1", dry_run=True)
     assert seen == {"adopt": True, "region": "eu", "bucket": "b"}

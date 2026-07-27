@@ -1,6 +1,6 @@
 # State stores
 
-The state store is docloom's **single coordination point**. It holds runs and
+The state store is docsynth's **single coordination point**. It holds runs and
 their work units, hands out units atomically, tracks leases so a crashed worker's
 unit can be reclaimed, and carries the spend rollup and the provider quarantine
 set. Coordination lives here — not in a broker, not in the compute layer — which

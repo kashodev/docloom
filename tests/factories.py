@@ -10,7 +10,7 @@ from datetime import date
 from decimal import Decimal as D
 from typing import Any
 
-from docloom.core import (
+from docsynth.core import (
     Currency,
     Jurisdiction,
     Locale,
@@ -18,7 +18,7 @@ from docloom.core import (
     pct,
     sum_money,
 )
-from docloom.packs.invoice import (
+from docsynth.packs.invoice import (
     BillingModel,
     BusinessType,
     GoldenInvoice,

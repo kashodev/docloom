@@ -1,6 +1,6 @@
 # Invoice pack — Overview
 
-`invoice` is docloom's first pack (`packs/invoice/`). It implements the
+`invoice` is docsynth's first pack (`packs/invoice/`). It implements the
 [kernel contract](../architecture/contract.md) — `InvoicePack` is a
 `DocumentPack`, `GoldenInvoice` is a `GoldenRecord`, and it declares
 `ContentMode.PROCEDURAL`, so an invoice run is **local-first and key-free**.

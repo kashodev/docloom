@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from docloom.core.storage import LocalBlobStore, open_store
+from docsynth.core.storage import LocalBlobStore, open_store
 
 
 def test_put_get_roundtrip(tmp_path: Path) -> None:
@@ -64,7 +64,7 @@ def test_factory_rejects_unknown_scheme() -> None:
 
 def test_cloud_schemes_give_actionable_error() -> None:
     """A missing extra names the install to run, not a bare ImportError."""
-    with pytest.raises(ImportError, match=r"docloom\[gcp\]"):
+    with pytest.raises(ImportError, match=r"docsynth\[gcp\]"):
         open_store("gs://bucket/prefix")
-    with pytest.raises(ImportError, match=r"docloom\[aws\]"):
+    with pytest.raises(ImportError, match=r"docsynth\[aws\]"):
         open_store("s3://bucket/prefix")

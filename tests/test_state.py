@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from docloom.core.enums import RunState, WorkUnitState
-from docloom.core.pipeline.run import resume_run
-from docloom.core.state import Run, SqliteStateStore, WorkUnit, open_state
+from docsynth.core.enums import RunState, WorkUnitState
+from docsynth.core.pipeline.run import resume_run
+from docsynth.core.state import Run, SqliteStateStore, WorkUnit, open_state
 
 
 def make_run(store: SqliteStateStore, run_id: str = "run_1", units: int = 4) -> Run:
@@ -235,13 +235,13 @@ def test_factory_defaults_to_sqlite(tmp_path: Path) -> None:
 
 
 def test_factory_firestore_needs_gcp_extra() -> None:
-    with pytest.raises(ImportError, match=r"docloom\[gcp\]"):
+    with pytest.raises(ImportError, match=r"docsynth\[gcp\]"):
         open_state("firestore://my-project/(default)")
 
 
 def test_factory_dynamodb_needs_aws_extra() -> None:
-    with pytest.raises(ImportError, match=r"docloom\[aws\]"):
-        open_state("dynamodb://docloom-state")
+    with pytest.raises(ImportError, match=r"docsynth\[aws\]"):
+        open_state("dynamodb://docsynth-state")
 
 
 def test_factory_rejects_an_unknown_scheme() -> None:

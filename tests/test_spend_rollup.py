@@ -14,16 +14,16 @@ from pathlib import Path
 
 import pytest
 
-from docloom.core.providers import CompletionRequest, ProviderMix
-from docloom.core.providers.base import CompletionResult, Usage
-from docloom.core.providers.budget import (
+from docsynth.core.providers import CompletionRequest, ProviderMix
+from docsynth.core.providers.base import CompletionResult, Usage
+from docsynth.core.providers.budget import (
     BudgetExceeded,
     BudgetGuard,
     DistributedBudgetGuard,
 )
-from docloom.core.providers.pricing import pricing_for
-from docloom.core.state import SqliteStateStore
-from docloom.core.state.base import TOTAL_MODEL, from_nano, to_nano
+from docsynth.core.providers.pricing import pricing_for
+from docsynth.core.state import SqliteStateStore
+from docsynth.core.state.base import TOTAL_MODEL, from_nano, to_nano
 
 
 def store(tmp_path: Path) -> SqliteStateStore:

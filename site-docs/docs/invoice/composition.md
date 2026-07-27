@@ -51,7 +51,7 @@ for the *why* behind each.
 
 ## Two surfaces, one parser
 
-Composition is expressed twice — as `docloom generate` flags
+Composition is expressed twice — as `docsynth generate` flags
 (`--locale`/`--company`/`--archetype`/`--business-type`/`--condition`/`--wear`/
 `--goods-receipt`) and as a `--selection-file` YAML block (the same block a
 `deploy.sh` slice uses) — behind one parser, so they cannot drift. The

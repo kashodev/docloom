@@ -15,18 +15,18 @@ import asyncio
 import json
 from decimal import Decimal as D
 
-from docloom.core.providers.base import CompletionRequest, CompletionResult, Usage
-from docloom.core.providers.budget import BudgetGuard
-from docloom.core.providers.mix import ProviderMix
-from docloom.core.providers.pricing import pricing_for
-from docloom.packs.invoice.artifact import load_catalogue, write_catalogue
-from docloom.packs.invoice.llm_build import (
+from docsynth.core.providers.base import CompletionRequest, CompletionResult, Usage
+from docsynth.core.providers.budget import BudgetGuard
+from docsynth.core.providers.mix import ProviderMix
+from docsynth.core.providers.pricing import pricing_for
+from docsynth.packs.invoice.artifact import load_catalogue, write_catalogue
+from docsynth.packs.invoice.llm_build import (
     build_llm_catalogue,
     build_prompt,
     parse_products,
 )
-from docloom.packs.invoice.procedural import generate_catalogue
-from docloom.packs.invoice.sampler import InvoiceSampler
+from docsynth.packs.invoice.procedural import generate_catalogue
+from docsynth.packs.invoice.sampler import InvoiceSampler
 
 
 def run(mix, **kw):
@@ -237,10 +237,10 @@ def test_parse_of_garbage_is_empty_not_an_error() -> None:
 
 
 def test_a_french_company_is_prompted_in_french() -> None:
-    from docloom.core.locale.enums import Currency, Locale
-    from docloom.packs.invoice.artifact import CompanyRow
-    from docloom.packs.invoice.enums import BusinessType
-    from docloom.packs.invoice.jurisdictions import Jurisdiction
+    from docsynth.core.locale.enums import Currency, Locale
+    from docsynth.packs.invoice.artifact import CompanyRow
+    from docsynth.packs.invoice.enums import BusinessType
+    from docsynth.packs.invoice.jurisdictions import Jurisdiction
 
     fr = CompanyRow("fr0", "Voltaire SARL", BusinessType.RETAIL, Jurisdiction.FR,
                     Locale.FR_FR, Currency.EUR, 1.0)
@@ -253,7 +253,7 @@ def test_the_band_is_rounded_to_a_sensible_precision() -> None:
     """A model that emits over-precise, fabricated digits ("$34.5678") should
     store a clean band, at the precision the price will print at: 2 decimals for
     normal money, 4 only for sub-dollar items."""
-    from docloom.packs.invoice.llm_build import _coerce_band
+    from docsynth.packs.invoice.llm_build import _coerce_band
 
     assert _coerce_band(34.5678, 48.2345) == (D("34.57"), D("48.23"))
     assert _coerce_band(145.2999, 289.5) == (D("145.30"), D("289.50"))
@@ -262,7 +262,7 @@ def test_the_band_is_rounded_to_a_sensible_precision() -> None:
 
 
 def test_a_clean_band_survives_unchanged() -> None:
-    from docloom.packs.invoice.llm_build import _coerce_band
+    from docsynth.packs.invoice.llm_build import _coerce_band
     assert _coerce_band(12.50, 40.00) == (D("12.50"), D("40.00"))
 
 
@@ -271,8 +271,8 @@ def test_the_prompt_names_the_fine_niche_not_the_family_or_umbrella() -> None:
     coarse family — with an explicit stay-in-line instruction is the fix for
     catalogues that drifted across every corner of 'retail', and the niche layer
     is what makes different companies genuinely different shops."""
-    from docloom.packs.invoice.llm_build import build_prompt
-    from docloom.packs.invoice.procedural import generate_company
+    from docsynth.packs.invoice.llm_build import build_prompt
+    from docsynth.packs.invoice.procedural import generate_company
 
     row, prods = generate_company(0)                       # a retail company
     req = build_prompt(row, 10, [(p.description, p.price_low, p.price_high) for p in prods[:6]])
@@ -287,11 +287,11 @@ def test_the_prompt_falls_back_to_the_family_then_the_umbrella() -> None:
     still gets a domain (the umbrella), never an empty one."""
     from decimal import Decimal
 
-    from docloom.core.locale.enums import Currency, Locale
-    from docloom.packs.invoice.artifact import CompanyRow
-    from docloom.packs.invoice.enums import BusinessType
-    from docloom.packs.invoice.jurisdictions import Jurisdiction
-    from docloom.packs.invoice.llm_build import build_prompt
+    from docsynth.core.locale.enums import Currency, Locale
+    from docsynth.packs.invoice.artifact import CompanyRow
+    from docsynth.packs.invoice.enums import BusinessType
+    from docsynth.packs.invoice.jurisdictions import Jurisdiction
+    from docsynth.packs.invoice.llm_build import build_prompt
 
     shots = [("Widget", Decimal("1"), Decimal("2"))]
     base = dict(company_id="c0", name="Acme", business_type=BusinessType.RETAIL,
@@ -303,8 +303,8 @@ def test_the_prompt_falls_back_to_the_family_then_the_umbrella() -> None:
 
 
 def test_the_prompt_lists_placed_items_to_avoid_repeats() -> None:
-    from docloom.packs.invoice.llm_build import build_prompt
-    from docloom.packs.invoice.procedural import generate_company
+    from docsynth.packs.invoice.llm_build import build_prompt
+    from docsynth.packs.invoice.procedural import generate_company
 
     row, prods = generate_company(0)
     shots = [(p.description, p.price_low, p.price_high) for p in prods[:6]]
@@ -320,8 +320,8 @@ def test_a_later_round_is_told_what_the_first_round_already_placed() -> None:
     and fall back to procedural."""
     import asyncio
 
-    from docloom.core.providers.mix import ProviderMix
-    from docloom.packs.invoice.llm_build import build_llm_catalogue
+    from docsynth.core.providers.mix import ProviderMix
+    from docsynth.packs.invoice.llm_build import build_llm_catalogue
 
     seen: list[str] = []
 

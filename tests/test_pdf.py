@@ -14,9 +14,9 @@ import io
 
 import pytest
 
-import docloom.packs  # noqa: F401  — registers the invoice pack
-from docloom.core import Currency, Jurisdiction, Locale, get_pack
-from docloom.core.pipeline.pdf import PdfRenderer, fit_scale, spanning_sections
+import docsynth.packs  # noqa: F401  — registers the invoice pack
+from docsynth.core import Currency, Jurisdiction, Locale, get_pack
+from docsynth.core.pipeline.pdf import PdfRenderer, fit_scale, spanning_sections
 from tests.factories import invoice, simple_lines, telecom_lines
 
 
@@ -248,7 +248,7 @@ def test_real_render_paginates_a_long_document() -> None:
 def _contd_markers(r: PdfRenderer, record) -> list[str]:
     """Filled "(cont'd)" markers after the renderer's page-span pass, read back
     from the live DOM — the real end-to-end check that a section was flagged."""
-    from docloom.core.render import render_record
+    from docsynth.core.render import render_record
 
     page = r._prepared_page(render_record(r._pack, record))
     try:
@@ -293,8 +293,8 @@ def test_a_non_clean_render_is_degraded(monkeypatch: pytest.MonkeyPatch) -> None
     """The wiring that made `condition` mean something. `degrade_pdf` existed and
     was fully tested, but nothing in the render path ever called it — so a
     handwritten or scanned slice produced pristine digital PDFs."""
-    from docloom.core.enums import DocumentCondition
-    from docloom.core.pipeline import pdf as pdf_module
+    from docsynth.core.enums import DocumentCondition
+    from docsynth.core.pipeline import pdf as pdf_module
 
     seen: dict = {}
 

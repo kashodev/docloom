@@ -37,7 +37,7 @@ locales, companies (a list or "use N"), archetypes, business types, a condition
 mix, a wear range, goods receipts, an issue-date window. The kernel **carries** it
 but does not interpret it: a pack resolves it against its roster and raises
 `UnsupportedConstraint` for anything it can't honour (a `french` slice that emits
-English is a wasted run nobody notices). It is surfaced twice — as `docloom
+English is a wasted run nobody notices). It is surfaced twice — as `docsynth
 generate` flags and as a `--selection-file` YAML block — behind one parser.
 
 ## Logging (`core/logging.py`)
@@ -49,9 +49,9 @@ everywhere.
 
 ## Registry & enums (`core/registry.py`, `core/enums.py`)
 
-`registry.py` discovers packs through the `docloom.packs` **entry-point group**
+`registry.py` discovers packs through the `docsynth.packs` **entry-point group**
 (`register_pack`, `get_pack`, `available_packs`) — so a third-party pack ships as
-`docloom-yourpack` and is found without a code change. `enums.py` holds the kernel
+`docsynth-yourpack` and is found without a code change. `enums.py` holds the kernel
 vocabularies every pack shares: `Jurisdiction`, `DocumentCondition`, `RunState`,
 `WorkUnitState`.
 

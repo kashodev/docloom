@@ -18,12 +18,12 @@ from decimal import Decimal as D
 
 import pytest
 
-from docloom.core.pipeline.golden import decode_shard
-from docloom.core.providers import CatalogueItem, CatalogueRunner, CompletionRequest, ProviderMix
-from docloom.core.providers.base import CompletionResult, Usage
-from docloom.core.providers.pricing import pricing_for
-from docloom.core.storage.local import LocalBlobStore
-from docloom.core.usage import (
+from docsynth.core.pipeline.golden import decode_shard
+from docsynth.core.providers import CatalogueItem, CatalogueRunner, CompletionRequest, ProviderMix
+from docsynth.core.providers.base import CompletionResult, Usage
+from docsynth.core.providers.pricing import pricing_for
+from docsynth.core.storage.local import LocalBlobStore
+from docsynth.core.usage import (
     DEFAULT_USAGE_URI,
     LlmUsage,
     MemoryUsageSink,
@@ -175,8 +175,8 @@ def test_unknown_scheme_is_rejected() -> None:
 def test_cloud_schemes_dispatch_without_the_sdk_installed() -> None:
     """The adapters are lazy-imported, so the factory resolves them even though
     neither SDK is present in the default environment."""
-    for uri, extra in (("firestore://p/(default)", r"docloom\[gcp\]"),
-                       ("dynamodb://usage", r"docloom\[aws\]")):
+    for uri, extra in (("firestore://p/(default)", r"docsynth\[gcp\]"),
+                       ("dynamodb://usage", r"docsynth\[aws\]")):
         with pytest.raises(ImportError, match=extra):
             open_usage_sink(uri)
 

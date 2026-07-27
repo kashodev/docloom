@@ -1,6 +1,6 @@
 # Core reference — Overview
 
-The kernel (`src/docloom/core/`) is everything that isn't a document type. It
+The kernel (`src/docsynth/core/`) is everything that isn't a document type. It
 divides into a **generation pipeline**, three sets of **pluggable backends**, the
 **LLM providers**, and a layer of **cross-cutting services** the rest lean on.
 Nothing here knows what an invoice is — packs supply that through the

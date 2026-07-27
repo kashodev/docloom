@@ -67,6 +67,6 @@ flowchart TB
 
 ## Driving it
 
-- CLI: `docloom generate --run-id … --total N [--catalogue <uri>] [--format pdf|html] [composition flags]`.
+- CLI: `docsynth generate --run-id … --total N [--catalogue <uri>] [--format pdf|html] [composition flags]`.
 - Studio: the **pdfs** step; a cloud run is [dispatched detached](../studio/dispatch.md).
 - Cloud: `deploy.sh deploy && deploy.sh run` (or `dispatch`).

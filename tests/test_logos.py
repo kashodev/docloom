@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from docloom.packs.invoice.logos import initials, logo_mark, watermark_mark
+from docsynth.packs.invoice.logos import initials, logo_mark, watermark_mark
 
 
 def test_initials_take_leading_letters_per_word() -> None:

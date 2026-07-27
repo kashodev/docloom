@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from docloom.core.storage.base import BlobStore
-from docloom.core.storage.gcs import GcsBlobStore
-from docloom.core.storage.s3 import S3BlobStore
+from docsynth.core.storage.base import BlobStore
+from docsynth.core.storage.gcs import GcsBlobStore
+from docsynth.core.storage.s3 import S3BlobStore
 from tests.fakes import FakeGcsClient, FakeS3Client
 
 
@@ -53,12 +53,12 @@ def test_exists_is_false_for_absent_key(kind: str) -> None:
 @pytest.mark.parametrize("kind", BACKENDS)
 def test_prefix_is_applied_to_object_names_but_hidden_from_keys(kind: str) -> None:
     """A store prefix scopes the bucket; callers still use bare keys."""
-    store = make_store(kind, prefix="docloom/v1")
+    store = make_store(kind, prefix="docsynth/v1")
     store.put("a/b.txt", b"x")
     # The key the caller sees is bare...
     assert list(store.iter_keys()) == ["a/b.txt"]
     # ...but the URI shows the prefix was applied to the object name.
-    assert store.uri_for("a/b.txt").endswith("my-bucket/docloom/v1/a/b.txt")
+    assert store.uri_for("a/b.txt").endswith("my-bucket/docsynth/v1/a/b.txt")
 
 
 @pytest.mark.parametrize("kind", BACKENDS)

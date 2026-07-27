@@ -1,0 +1,202 @@
+"""The ``local`` deployment target — generate on this machine, no cloud, no keys.
+
+Every step becomes a ``python -m docsynth …`` invocation against a workspace
+directory (``file://`` storage, a SQLite state file, a DuckDB sink), so the
+studio reuses the exact CLI a hand-run would. Running through ``python -m`` (not a
+bare ``docsynth``) means it works in a dev checkout and once installed alike.
+``dry_run`` resolves the command and links without executing — the whole surface
+is testable without rendering a single PDF.
+"""
+from __future__ import annotations
+
+import subprocess
+import sys
+from dataclasses import replace
+from pathlib import Path
+
+from docsynth.studio.registry import now_iso
+from docsynth.studio.types import (
+    CatalogueArgs,
+    ExportArgs,
+    GenerateArgs,
+    Link,
+    Project,
+    ProjectSpec,
+    Result,
+)
+
+
+class LocalTarget:
+    name = "local"
+
+    # ── onboarding ──────────────────────────────────────────────────────────
+    def normalise(self, spec: ProjectSpec) -> Project:
+        """A workspace ``Project`` from a spec — resolves the root, no I/O."""
+        root = Path(spec.root or spec.id).expanduser().resolve()
+        return Project(
+            target=self.name,
+            id=spec.id or root.name,
+            root=str(root),
+            resources={"storage": str(root / "blobs"), "state": str(root / "runs.db")},
+        )
+
+    def provision(self, spec: ProjectSpec) -> Project:
+        """'Provisioning' is just a workspace: blobs/ for documents + golden
+        shards, and a SQLite state file alongside. Idempotent — existing dirs are
+        left as they are."""
+        project = self.normalise(spec)
+        (Path(project.root) / "blobs").mkdir(parents=True, exist_ok=True)
+        return replace(project, created_at=now_iso())
+
+    def adopt(self, spec: ProjectSpec) -> Project:
+        """A local workspace has nothing to "already exist" remotely, so onboarding
+        one is the same as provisioning it — ensure its directories."""
+        return self.provision(spec)
+
+    def is_provisioned(self, project: Project) -> bool:
+        return bool(project.root) and (Path(project.root) / "blobs").is_dir()
+
+    # ── steps ───────────────────────────────────────────────────────────────
+    def run_catalogue(self, project: Project, args: CatalogueArgs, *,
+                      dry_run: bool = False, capture: bool = False) -> Result:
+        from docsynth.studio.mixes import get_mix
+        out = str(Path(project.root, "catalogues", args.pack, args.version))
+        argv = [
+            "catalogue", "--out", out, "--version", args.version,
+            "--pack", args.pack, "--companies", str(args.companies),
+            "--products-per-company", str(args.products_per_company),
+            "--seed", str(args.seed),
+        ]
+        # An LLM mix writes a providers file and points --providers at it; the API
+        # keys come from the environment (the factory reads them at build time).
+        # No mix ⇒ the procedural, key-free build, unchanged.
+        mix = get_mix(args.mix)
+        if mix.is_llm:
+            providers_file = self._write_providers(project, mix)
+            # --concurrency tunes the LLM calls in flight. `tasks` is a Cloud Run
+            # (multi-instance) concept with no meaning for this single local process,
+            # so it is intentionally not threaded here.
+            argv += ["--providers", providers_file, "--concurrency", str(args.concurrency)]
+            if args.budget_usd:
+                argv += ["--budget-usd", f"{args.budget_usd:g}"]
+            note = f"{mix.name} (keys from env; ≤ ${args.budget_usd:g})"
+        else:
+            note = "procedural, no keys"
+        return self._invoke(
+            argv, dry_run, capture=capture,
+            summary=f"catalogue {args.version} · {args.companies} companies x "
+                    f"{args.products_per_company} ({note})",
+            links=(Link("catalogue", out),),
+        )
+
+    def run_generate(self, project: Project, args: GenerateArgs, *,
+                     dry_run: bool = False, capture: bool = False) -> Result:
+        argv = [
+            "generate", "--run-id", args.run_id, "--total", str(args.total),
+            "--pack", args.pack, "--format", args.fmt,
+            "--storage", self._storage(project), "--state", self._state(project),
+        ]
+        if args.catalogue:
+            argv += ["--catalogue", args.catalogue]
+        if args.selection_file:
+            argv += ["--selection-file", args.selection_file]
+        if args.condition:
+            argv += ["--condition", args.condition]
+        if args.date_from and args.date_to:
+            argv += ["--issue-date-from", args.date_from, "--issue-date-to", args.date_to]
+        run_dir = Path(project.root, "blobs", args.run_id)
+        docs = run_dir / "documents"
+        ext = "pdf" if args.fmt == "pdf" else "html"
+        return self._invoke(
+            argv, dry_run, capture=capture,
+            summary=f"generate {args.total} {args.pack} ({args.fmt}) → {project.root}",
+            links=(
+                Link("documents", str(docs)),
+                Link("golden", str(run_dir / "golden")),
+                Link("open", f"open {docs}/unit-000000/inv_00000000.{ext}"),
+            ),
+            run_id=args.run_id,
+        )
+
+    def run_export(self, project: Project, args: ExportArgs, *,
+                   dry_run: bool = False, capture: bool = False) -> Result:
+        sink = args.sink or f"duckdb://{Path(project.root, 'corpus.duckdb')}"
+        argv = [
+            "export", "--run-id", args.run_id, "--sink", sink,
+            "--storage", self._storage(project),
+        ]
+        return self._invoke(
+            argv, dry_run, capture=capture,
+            summary=f"export {args.run_id} → {sink}",
+            links=(Link("sink", sink),),
+            run_id=args.run_id,
+        )
+
+    def teardown(self, project: Project, *, keep_data: bool = True,
+                 dry_run: bool = False, capture: bool = False) -> Result:
+        """A local workspace has no cloud resources — 'teardown' just forgets it,
+        and with ``keep_data=False`` deletes its directory (documents + golden)."""
+        root = Path(project.root)
+        scope = "forget only (workspace kept)" if keep_data else f"delete {root}"
+        if dry_run or keep_data:
+            return Result(ok=True, summary=f"teardown {project.ref} — {scope}",
+                          command="" if keep_data else f"rm -rf {root}")
+        import shutil
+        shutil.rmtree(root, ignore_errors=True)
+        return Result(ok=True, summary=f"teardown {project.ref} — removed {root}")
+
+    # ── catalogue re-use ──────────────────────────────────────────────────────
+    def catalogue_location(self, project: Project, pack: str, version: str) -> str:
+        return str(Path(project.root, "catalogues", pack, version))
+
+    def catalogue_info(self, project: Project, pack: str, version: str) -> dict | None:
+        """The catalogue's manifest if one is already built for this version, else
+        None — so the studio can offer to reuse it rather than rebuild (spend)."""
+        import json
+        mf = Path(self.catalogue_location(project, pack, version), "manifest.json")
+        if not mf.is_file():
+            return None
+        try:
+            return json.loads(mf.read_text())
+        except (OSError, ValueError):
+            return None
+
+    # ── internals ───────────────────────────────────────────────────────────
+    def _write_providers(self, project: Project, mix) -> str:
+        """Write the mix's provider block to a file for ``--providers``. Lives in
+        the workspace (not a temp dir) so the plan is inspectable and re-runnable."""
+        import yaml
+        path = Path(project.root, "providers.yaml")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(yaml.safe_dump(
+            {"providers": mix.providers_block(), "fallback": mix.fallback_block()},
+            sort_keys=False))
+        return str(path)
+
+    def _storage(self, project: Project) -> str:
+        return str(Path(project.root, "blobs"))
+
+    def _state(self, project: Project) -> str:
+        return str(Path(project.root, "runs.db"))
+
+    def _invoke(self, argv: list[str], dry_run: bool, *, summary: str,
+                links: tuple[Link, ...] = (), run_id: str = "", capture: bool = False) -> Result:
+        command = "docsynth " + " ".join(argv)
+        if dry_run:
+            return Result(ok=True, summary=summary, argv=tuple(argv), command=command,
+                          links=links, run_id=run_id)
+        # Capture only when a spinner is covering the run (interactive), so the
+        # animation stays clean; otherwise inherit the terminal and stream logs.
+        proc = subprocess.run([sys.executable, "-m", "docsynth", *argv],
+                              check=False, capture_output=capture, text=capture)
+        ok = proc.returncode == 0
+        detail = ""
+        if not ok and capture:
+            tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-8:]
+            detail = "\n".join(tail)
+        return Result(
+            ok=ok,
+            summary=summary if ok else f"failed (exit {proc.returncode}): {summary}",
+            argv=tuple(argv), command=command, links=links if ok else (),
+            run_id=run_id, detail=detail,
+        )

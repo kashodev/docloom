@@ -36,8 +36,8 @@ DuckDB on `local`).
 
 ## Running them
 
-- Interactive: `docloom studio` → pick the target, project, and step; confirm.
-- Flagged: `docloom studio -p gcp --project <ref> --step catalog --version v2 --mix cheap-mix --budget 5 --yes`.
+- Interactive: `docsynth studio` → pick the target, project, and step; confirm.
+- Flagged: `docsynth studio -p gcp --project <ref> --step catalog --version v2 --mix cheap-mix --budget 5 --yes`.
 - Preview: add `--dry-run` to print the resolved `deploy.sh` command without running,
   or [`--scaffold <path>`](tuning.md) to write a reusable `run.yaml`.
 

@@ -20,13 +20,13 @@ from pathlib import Path
 
 import pytest
 
-import docloom.packs  # noqa: F401 - registers the invoice pack
-from docloom.core import get_pack
-from docloom.core.logging import bound, configure, get_logger
-from docloom.core.pipeline import HtmlRenderer, create_run, work_run
-from docloom.core.pipeline.renderer import RenderedDocument
-from docloom.core.state.sqlite import SqliteStateStore
-from docloom.core.storage.local import LocalBlobStore
+import docsynth.packs  # noqa: F401 - registers the invoice pack
+from docsynth.core import get_pack
+from docsynth.core.logging import bound, configure, get_logger
+from docsynth.core.pipeline import HtmlRenderer, create_run, work_run
+from docsynth.core.pipeline.renderer import RenderedDocument
+from docsynth.core.state.sqlite import SqliteStateStore
+from docsynth.core.storage.local import LocalBlobStore
 
 
 @pytest.fixture
@@ -151,10 +151,10 @@ def test_an_empty_completion_is_logged(json_logs) -> None:
     import asyncio
     from decimal import Decimal as D
 
-    from docloom.core.providers.base import CompletionRequest, CompletionResult, Usage
-    from docloom.core.providers.catalogue_runner import CatalogueItem, CatalogueRunner
-    from docloom.core.providers.mix import ProviderMix
-    from docloom.core.providers.pricing import pricing_for
+    from docsynth.core.providers.base import CompletionRequest, CompletionResult, Usage
+    from docsynth.core.providers.catalogue_runner import CatalogueItem, CatalogueRunner
+    from docsynth.core.providers.mix import ProviderMix
+    from docsynth.core.providers.pricing import pricing_for
 
     class Empty:
         name = "deepseek"
@@ -231,7 +231,7 @@ def test_a_re_run_says_already_planned_not_another_worker(json_logs, tmp_path) -
     """create_run on an already-planned run (a re-run, or a retried single task)
     must not log 'another worker is planning' — there may be no other worker at
     all. It should say the run is already planned and resume it."""
-    from docloom.core.state import SqliteStateStore
+    from docsynth.core.state import SqliteStateStore
 
     state = SqliteStateStore(tmp_path / "s.db")
     kw = dict(run_id="r", pack="invoice", config_id="c", total=6, unit_size=3)

@@ -21,9 +21,9 @@ from decimal import Decimal as D
 
 import pytest
 
-from docloom.core.enums import RunState, WorkUnitState
-from docloom.core.state.base import TOTAL_MODEL, Run, WorkUnit
-from docloom.core.state.firestore import (
+from docsynth.core.enums import RunState, WorkUnitState
+from docsynth.core.state.base import TOTAL_MODEL, Run, WorkUnit
+from docsynth.core.state.firestore import (
     _BATCH_LIMIT,
     _chunks,
     _doc_id,
@@ -128,9 +128,9 @@ requires_emulator = pytest.mark.skipif(
 
 
 def _emu_store(lease_seconds: float = 900):
-    from docloom.core.state.firestore import FirestoreStateStore
+    from docsynth.core.state.firestore import FirestoreStateStore
 
-    return FirestoreStateStore(project="docloom-test", lease_seconds=lease_seconds)
+    return FirestoreStateStore(project="docsynth-test", lease_seconds=lease_seconds)
 
 
 def _emu_run(store, units: int, *, lease_seconds: float = 900) -> str:
@@ -360,7 +360,7 @@ class _FakeClient:
 
 
 def _fake_store():
-    from docloom.core.state.firestore import FirestoreStateStore
+    from docsynth.core.state.firestore import FirestoreStateStore
 
     client = _FakeClient()
     return FirestoreStateStore(project="p", client=client), client

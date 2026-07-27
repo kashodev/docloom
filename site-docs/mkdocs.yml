@@ -1,12 +1,12 @@
-site_name: docloom
+site_name: docsynth
 site_description: >-
   Synthetic documents with a computed golden dataset — for testing AI/OCR
   document-extraction pipelines against a known ground truth.
-site_url: https://kashodev.github.io/docloom/
-repo_url: https://github.com/kashodev/docloom
-repo_name: kashodev/docloom
+site_url: https://kashodev.github.io/docsynth/
+repo_url: https://github.com/kashodev/docsynth
+repo_name: kashodev/docsynth
 edit_uri: edit/main/site-docs/docs/
-copyright: docloom
+copyright: docsynth
 
 theme:
   name: material

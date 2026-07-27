@@ -16,7 +16,7 @@ from typing import ClassVar
 import httpx
 import pytest
 
-from docloom.core.providers import (
+from docsynth.core.providers import (
     BudgetExceeded,
     BudgetGuard,
     CompletionRequest,
@@ -27,8 +27,8 @@ from docloom.core.providers import (
     build_provider,
     pricing_for,
 )
-from docloom.core.providers.anthropic_provider import AnthropicProvider
-from docloom.core.providers.base import CompletionResult, TextProvider, Usage
+from docsynth.core.providers.anthropic_provider import AnthropicProvider
+from docsynth.core.providers.base import CompletionResult, TextProvider, Usage
 
 
 def run(coro):
@@ -206,7 +206,7 @@ def test_anthropic_provider_without_sdk_gives_actionable_error() -> None:
     # constructing without an injected client must name the extra rather than
     # raising a bare ModuleNotFoundError. Skipped once anthropic is installed —
     # e.g. after an LLM catalogue build or smoke run in the same venv.
-    with pytest.raises(ImportError, match=r"docloom\[anthropic\]"):
+    with pytest.raises(ImportError, match=r"docsynth\[anthropic\]"):
         AnthropicProvider(model="claude-haiku-4-5")
 
 
@@ -266,7 +266,7 @@ def test_route_returns_the_chosen_provider_when_none_are_quarantined() -> None:
 
 
 def test_a_quarantined_share_goes_to_procedural_with_no_fallback_pool() -> None:
-    from docloom.core.providers.mix import PROCEDURAL
+    from docsynth.core.providers.mix import PROCEDURAL
     mix = a_mix()                                           # no fallback configured
     # Every item whose chosen provider is quarantined must degrade to procedural.
     q = frozenset({"deepseek", "dashscope", "anthropic"})
@@ -274,7 +274,7 @@ def test_a_quarantined_share_goes_to_procedural_with_no_fallback_pool() -> None:
 
 
 def test_route_distributes_a_dead_share_across_the_fallback_pool() -> None:
-    from docloom.core.providers.mix import PROCEDURAL
+    from docsynth.core.providers.mix import PROCEDURAL
     mix = a_mix(fallback=[("anthropic", 60.0), ("procedural", 40.0)])
     dead = frozenset({"deepseek"})
     # Look only at the items deepseek WOULD have served; their share splits 60/40.
@@ -290,7 +290,7 @@ def test_route_distributes_a_dead_share_across_the_fallback_pool() -> None:
 
 
 def test_route_cascades_past_a_quarantined_fallback_member() -> None:
-    from docloom.core.providers.mix import PROCEDURAL
+    from docsynth.core.providers.mix import PROCEDURAL
     # Fallback pool is entirely dashscope; if dashscope is ALSO dead the share
     # cascades to procedural rather than to a quarantined model.
     mix = a_mix(fallback=[("dashscope", 100.0)])
@@ -382,7 +382,7 @@ def test_build_mix_from_config() -> None:
 
 
 def test_build_mix_parses_a_fallback_pool() -> None:
-    from docloom.core.providers.mix import PROCEDURAL
+    from docsynth.core.providers.mix import PROCEDURAL
     config = {
         "text": [
             {"name": "deepseek", "model": "deepseek-v4-flash", "weight": 0.5},
@@ -408,7 +408,7 @@ def test_build_provider_rejects_unknown_name() -> None:
 def test_provider_timeout_defaults_low_and_is_configurable() -> None:
     """120s was a trap — a hung call ties up a slot until it. Default is short,
     and an operator can tune it per provider from config."""
-    from docloom.core.providers.openai_compatible import OpenAICompatibleProvider
+    from docsynth.core.providers.openai_compatible import OpenAICompatibleProvider
     assert OpenAICompatibleProvider(name="x", model="m", base_url="http://h")._timeout_s == 45.0
     tuned = build_provider({"name": "deepseek", "model": "m", "timeout_s": 20})
     assert tuned._timeout_s == 20.0

@@ -16,13 +16,13 @@ from datetime import timedelta
 import pytest
 from pydantic import ValidationError
 
-import docloom.packs  # noqa: F401 - registers the invoice pack
-from docloom.core import get_pack
-from docloom.core.enums import DocumentCondition
-from docloom.core.render import render_record
-from docloom.packs.invoice import InvoiceSampler
-from docloom.packs.invoice.enums import GOODS_BUSINESS_TYPES, GOODS_KINDS, LineItemKind
-from docloom.packs.invoice.handwriting import handwriting_for
+import docsynth.packs  # noqa: F401 - registers the invoice pack
+from docsynth.core import get_pack
+from docsynth.core.enums import DocumentCondition
+from docsynth.core.render import render_record
+from docsynth.packs.invoice import InvoiceSampler
+from docsynth.packs.invoice.enums import GOODS_BUSINESS_TYPES, GOODS_KINDS, LineItemKind
+from docsynth.packs.invoice.handwriting import handwriting_for
 from tests.factories import invoice, simple_lines
 
 PACK = get_pack("invoice")

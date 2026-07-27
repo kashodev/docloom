@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
-from docloom.core.sinks.bigquery import BigQuerySink
-from docloom.core.storage.gcs import GcsBlobStore
-from docloom.core.storage.local import LocalBlobStore
+from docsynth.core.sinks.bigquery import BigQuerySink
+from docsynth.core.storage.gcs import GcsBlobStore
+from docsynth.core.storage.local import LocalBlobStore
 from tests.factories import invoice, simple_lines, tiered_line
 from tests.fakes import FakeBigQueryClient, FakeGcsClient
 
@@ -22,7 +22,7 @@ from tests.fakes import FakeBigQueryClient, FakeGcsClient
 def make_sink(tmp_path: Path) -> tuple[BigQuerySink, LocalBlobStore, FakeBigQueryClient]:
     staging = LocalBlobStore(tmp_path / "staging")
     client = FakeBigQueryClient()
-    sink = BigQuerySink("proj", "docloom_golden", staging=staging, client=client)
+    sink = BigQuerySink("proj", "docsynth_golden", staging=staging, client=client)
     return sink, staging, client
 
 
@@ -57,7 +57,7 @@ def test_register_emits_external_table_ddl(tmp_path: Path) -> None:
     assert len(client.executed) == 2
     joined = "\n".join(client.executed)
     assert "CREATE OR REPLACE EXTERNAL TABLE" in joined
-    assert "`proj`.`docloom_golden`.`invoices`" in joined
+    assert "`proj`.`docsynth_golden`.`invoices`" in joined
     assert "format = 'PARQUET'" in joined
 
 
@@ -65,11 +65,11 @@ def test_ddl_points_at_the_staging_glob() -> None:
     """The production pairing: GCS staging keeps the ``*`` glob literal, which
     BigQuery requires. (A local store would percent-encode it — see the note in
     the sink; local is for the write/read tests, GCS for the DDL.)"""
-    staging = GcsBlobStore("my-bucket", "docloom/v1", client=FakeGcsClient())
-    sink = BigQuerySink("proj", "docloom_golden", staging=staging,
+    staging = GcsBlobStore("my-bucket", "docsynth/v1", client=FakeGcsClient())
+    sink = BigQuerySink("proj", "docsynth_golden", staging=staging,
                         client=FakeBigQueryClient())
     ddl = sink.external_table_ddl("invoices")
-    assert "uris = ['gs://my-bucket/docloom/v1/invoices/*.parquet']" in ddl
+    assert "uris = ['gs://my-bucket/docsynth/v1/invoices/*.parquet']" in ddl
 
 
 def test_empty_write_is_a_noop(tmp_path: Path) -> None:

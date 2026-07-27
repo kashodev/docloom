@@ -19,10 +19,10 @@ from pathlib import Path
 
 import pytest
 
-from docloom.core.enums import RunState, WorkUnitState
-from docloom.core.pipeline.run import create_run as plan_and_record
-from docloom.core.state import SqliteStateStore
-from docloom.core.state.base import Run, WorkUnit
+from docsynth.core.enums import RunState, WorkUnitState
+from docsynth.core.pipeline.run import create_run as plan_and_record
+from docsynth.core.state import SqliteStateStore
+from docsynth.core.state.base import Run, WorkUnit
 
 
 def store(tmp_path: Path, name: str = "s.db") -> SqliteStateStore:

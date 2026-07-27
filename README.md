@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docloom-logo-page-slate.svg" alt="docloom" width="420">
+  <img src="docsynth-logo-page-slate.svg" alt="docsynth" width="420">
 </p>
 
 Weave templates and generated data into realistic **synthetic documents** — and
@@ -52,7 +52,7 @@ The sections below are these principles made concrete.
 ## Running it
 
 ```bash
-pip install docloom
+pip install docsynth
 playwright install chromium      # one-time, for PDF rendering
 ```
 
@@ -67,7 +67,7 @@ change when you scale:
 | Golden export | `parquet://` · `duckdb://` | `bigquery://` |
 
 Point a config at cloud URIs and install the matching extra
-(`pip install 'docloom[gcp]'`) when you want to scale.
+(`pip install 'docsynth[gcp]'`) when you want to scale.
 
 ### Local-first is a property of the *pack*, not a platform promise
 
@@ -124,8 +124,8 @@ Extensibility runs at three levels:
 - **Within a pack** — a new business type, billing model, locale, sub-category,
   or template is a table entry or a small file in the pack; no kernel change.
 - **A new document type** — a new pack implementing `DocumentPack` +
-  `GoldenRecord`. Register it in-tree or ship it as `docloom-yourpack` via the
-  `docloom.packs` entry-point group.
+  `GoldenRecord`. Register it in-tree or ship it as `docsynth-yourpack` via the
+  `docsynth.packs` entry-point group.
 - **Variants of a document type** — e.g. a `statement` pack producing bank,
   credit-card, and brokerage statements: one base document with per-variant field
   overlays, not three packs. Model these as an internal variant axis of a single

@@ -1,6 +1,6 @@
 # Design decisions
 
-The non-obvious, **current** decisions that shape docloom — the "why" behind the
+The non-obvious, **current** decisions that shape docsynth — the "why" behind the
 built system. Each names the [principle](index.md#core-principles) it serves and
 links to where it lives. Superseded designs are deliberately absent.
 

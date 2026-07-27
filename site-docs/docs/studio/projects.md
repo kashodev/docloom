@@ -6,7 +6,7 @@ so you name a project once and reuse it.
 
 ## The registry
 
-One human-readable file, `~/.docloom/projects.yaml` (or `$DOCLOOM_HOME`). It is a
+One human-readable file, `~/.docsynth/projects.yaml` (or `$DOCSYNTH_HOME`). It is a
 **cache** over what each target already knows, so a lost or hand-edited file is
 never fatal — provisioning is idempotent and re-discovers. Two hard rules:
 
@@ -34,14 +34,14 @@ created, the secret names present, and the last run.
 
 `studio` is a command group; alongside [`status`](dispatch.md):
 
-- **`docloom studio projects`** — list saved projects.
+- **`docsynth studio projects`** — list saved projects.
   ```
-  gcp    crawler-rag-data-2026   us-central1 · gs://…-docloom  provisioned 2026-07-20 · last run adhoc-5k *
+  gcp    crawler-rag-data-2026   us-central1 · gs://…-docsynth  provisioned 2026-07-20 · last run adhoc-5k *
   local  corpus-v2               ./corpus-v2  created 2026-07-24
   ```
-- **`docloom studio provision --project <ref>`** — (re)provision the selected
+- **`docsynth studio provision --project <ref>`** — (re)provision the selected
   project; idempotent, safe to re-run.
-- **`docloom studio teardown --project <ref> [--delete-data] [--yes]`** — delete a
+- **`docsynth studio teardown --project <ref> [--delete-data] [--yes]`** — delete a
   project's resources and forget it. **Keeps data unless `--delete-data`** (then the
   bucket / local workspace goes too). Destructive → requires confirmation
   (interactive prompt or `--yes`); cloud teardown deletes the Cloud Run job(s),

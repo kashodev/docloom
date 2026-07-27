@@ -14,20 +14,20 @@ from pathlib import Path
 
 import pytest
 
-import docloom.packs  # noqa: F401 - registers the invoice pack
-from docloom.core import get_pack
-from docloom.core.enums import RunState
-from docloom.core.pipeline import HtmlRenderer, create_run, resume_run, work_run
-from docloom.core.pipeline.manifest import (
+import docsynth.packs  # noqa: F401 - registers the invoice pack
+from docsynth.core import get_pack
+from docsynth.core.enums import RunState
+from docsynth.core.pipeline import HtmlRenderer, create_run, resume_run, work_run
+from docsynth.core.pipeline.manifest import (
     enumerate_document_keys,
     is_complete,
     read_run_manifest,
     root_key,
     verify_run,
 )
-from docloom.core.pipeline.renderer import RenderedDocument
-from docloom.core.state.sqlite import SqliteStateStore
-from docloom.core.storage.local import LocalBlobStore
+from docsynth.core.pipeline.renderer import RenderedDocument
+from docsynth.core.state.sqlite import SqliteStateStore
+from docsynth.core.storage.local import LocalBlobStore
 
 
 def _run(tmp_path: Path, *, total: int = 12, unit_size: int = 4, run_id: str = "r",
@@ -166,7 +166,7 @@ def test_writing_the_manifest_twice_is_byte_identical(tmp_path: Path) -> None:
 def test_the_root_refuses_to_claim_completeness_over_a_gap(tmp_path: Path) -> None:
     """A root manifest is trusted precisely so a consumer need not check for
     gaps, so writing one over a missing unit part must fail loudly."""
-    from docloom.core.pipeline.manifest import write_run_manifest
+    from docsynth.core.pipeline.manifest import write_run_manifest
 
     blob, _, _ = _run(tmp_path, total=8, unit_size=4)
     part = next(k for k in blob.iter_keys("r/manifest/"))
@@ -182,8 +182,8 @@ def test_the_root_refuses_to_claim_completeness_over_a_gap(tmp_path: Path) -> No
 def test_manifest_keys_do_not_leak_into_the_golden_export(tmp_path: Path) -> None:
     """Export walks {run}/golden/; the manifest lives elsewhere and must not be
     mistaken for a shard."""
-    from docloom.core.pipeline import export_run
-    from docloom.core.sinks import open_sink
+    from docsynth.core.pipeline import export_run
+    from docsynth.core.sinks import open_sink
 
     blob, _, _ = _run(tmp_path, total=8, unit_size=4)
     sink = open_sink(f"duckdb:///{tmp_path}/g.db")
@@ -215,8 +215,8 @@ def test_a_nested_run_manifest_reads_back_with_the_prefix(tmp_path: Path) -> Non
 
 
 def test_export_reads_from_the_nested_prefix(tmp_path: Path) -> None:
-    from docloom.core.pipeline import export_run
-    from docloom.core.sinks import ParquetSink
+    from docsynth.core.pipeline import export_run
+    from docsynth.core.sinks import ParquetSink
     blob, _, _ = _run(tmp_path, total=8, unit_size=4, storage_prefix="corpus/anchor")
     stats = export_run("r", blob, ParquetSink(tmp_path / "export"), storage_prefix="corpus/anchor")
     assert stats.total_rows > 0 and "invoices" in stats.tables

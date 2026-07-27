@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
-import docloom.packs  # noqa: F401  — registers the invoice pack
-from docloom.core import Currency, Jurisdiction, Locale, RunState, WorkUnitState, get_pack
-from docloom.core.pipeline import (
+import docsynth.packs  # noqa: F401  — registers the invoice pack
+from docsynth.core import Currency, Jurisdiction, Locale, RunState, WorkUnitState, get_pack
+from docsynth.core.pipeline import (
     HtmlRenderer,
     create_run,
     decode_shard,
@@ -27,8 +27,8 @@ from docloom.core.pipeline import (
     resume_run,
     work_run,
 )
-from docloom.core.state.sqlite import SqliteStateStore
-from docloom.core.storage.local import LocalBlobStore
+from docsynth.core.state.sqlite import SqliteStateStore
+from docsynth.core.storage.local import LocalBlobStore
 from tests.factories import invoice, simple_lines
 
 _VARIANTS = [
@@ -229,7 +229,7 @@ def test_two_workers_split_the_units_without_overlap(tmp_path: Path) -> None:
     state, blob, renderer = harness(tmp_path)
     create_run(state, run_id="r", pack="invoice", config_id="cfg", total=10, unit_size=2)
 
-    from docloom.core.pipeline.worker import GenerationWorker
+    from docsynth.core.pipeline.worker import GenerationWorker
 
     src, r = InvoiceSource(), renderer
     w1 = GenerationWorker(run_id="r", source=src, renderer=r, blob=blob, state=state)
@@ -244,7 +244,7 @@ def test_two_workers_split_the_units_without_overlap(tmp_path: Path) -> None:
 def test_a_source_that_cannot_prepare_stops_the_run_before_any_unit(tmp_path) -> None:
     """An impossible run-scoped configuration must fail once, up front — not
     once per unit while the job reports success."""
-    from docloom.core.pipeline.source import prepare_source
+    from docsynth.core.pipeline.source import prepare_source
 
     class Refuses:
         def __init__(self) -> None:
@@ -265,7 +265,7 @@ def test_a_source_that_cannot_prepare_stops_the_run_before_any_unit(tmp_path) ->
 
 def test_a_source_without_prepare_is_fine() -> None:
     """Optional by design: most sources need nothing resolved up front."""
-    from docloom.core.pipeline.source import prepare_source
+    from docsynth.core.pipeline.source import prepare_source
 
     class Plain:
         def generate(self, run_id: str, index: int):

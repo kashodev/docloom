@@ -45,7 +45,7 @@ provider-agnostic**):
 
 ## Driving it
 
-- CLI: `docloom export --run-id … --sink <uri> [--storage <uri>] [--storage-prefix …]`.
+- CLI: `docsynth export --run-id … --sink <uri> [--storage <uri>] [--storage-prefix …]`.
 - Studio: the **export** step (default sink `bigquery://<project>/golden` on gcp,
   a local DuckDB on `local`).
 - Cloud: `deploy.sh export`.

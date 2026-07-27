@@ -11,14 +11,14 @@ from __future__ import annotations
 from decimal import Decimal as D
 from pathlib import Path
 
-import docloom.packs  # noqa: F401
-from docloom.core import get_pack
-from docloom.core.pipeline import HtmlRenderer, create_run, export_run, work_run
-from docloom.core.sinks.duckdb_sink import DuckDBSink
-from docloom.core.sinks.parquet import ParquetSink
-from docloom.core.state.sqlite import SqliteStateStore
-from docloom.core.storage.local import LocalBlobStore
-from docloom.packs.invoice import InvoiceSampler
+import docsynth.packs  # noqa: F401
+from docsynth.core import get_pack
+from docsynth.core.pipeline import HtmlRenderer, create_run, export_run, work_run
+from docsynth.core.sinks.duckdb_sink import DuckDBSink
+from docsynth.core.sinks.parquet import ParquetSink
+from docsynth.core.state.sqlite import SqliteStateStore
+from docsynth.core.storage.local import LocalBlobStore
+from docsynth.packs.invoice import InvoiceSampler
 
 
 def _generate(tmp_path: Path, *, total: int = 30, unit_size: int = 10):

@@ -17,8 +17,8 @@ from random import Random
 
 import pytest
 
-from docloom.packs.invoice.artifact import load_catalogue, write_catalogue
-from docloom.packs.invoice.procedural import (
+from docsynth.packs.invoice.artifact import load_catalogue, write_catalogue
+from docsynth.packs.invoice.procedural import (
     _SUBCATEGORIES,
     combination_space,
     company_name_space,
@@ -26,7 +26,7 @@ from docloom.packs.invoice.procedural import (
     generate_products,
     untranslated_slots,
 )
-from docloom.packs.invoice.sampler import InvoiceSampler
+from docsynth.packs.invoice.sampler import InvoiceSampler
 
 #: Every (business_type, sub-category) pair — a company draws one sub-category,
 #: and its billing shape follows the business type.
@@ -188,7 +188,7 @@ def test_a_companys_catalogue_is_one_coherent_family() -> None:
     """The realism fix: a company sells ONE narrow product line, so its whole
     catalogue draws from that sub-category's forms — no invoice can mix
     compression shorts and a motherboard, because no company stocks both."""
-    from docloom.packs.invoice.procedural import _SLOTS, generate_company
+    from docsynth.packs.invoice.procedural import _SLOTS, generate_company
     seen_categories = set()
     for i in range(60):
         row, prods = generate_company(i, products_per_company=50)
@@ -201,8 +201,8 @@ def test_a_companys_catalogue_is_one_coherent_family() -> None:
 
 
 def test_retail_companies_span_several_shop_types() -> None:
-    from docloom.packs.invoice.enums import BusinessType
-    from docloom.packs.invoice.procedural import generate_company
+    from docsynth.packs.invoice.enums import BusinessType
+    from docsynth.packs.invoice.procedural import generate_company
     retail = {generate_company(i)[0].product_category
               for i in range(60)
               if generate_company(i)[0].business_type is BusinessType.RETAIL}
@@ -213,7 +213,7 @@ def test_every_family_fans_out_into_about_ten_llm_niches() -> None:
     """The LLM catalogue's variety comes from a niche layer ~10x the coarse family
     set — each family fans into a specific kind of shop, so companies differ far
     more without authoring a procedural slot table for each niche."""
-    from docloom.packs.invoice.procedural import _NICHES, niche_space
+    from docsynth.packs.invoice.procedural import _NICHES, niche_space
     families = set(_CATEGORIES)
     assert set(_NICHES) == families                    # every family has niches
     assert all(len(v) >= 8 for v in _NICHES.values())  # a real fan-out, not one or two
@@ -223,7 +223,7 @@ def test_every_family_fans_out_into_about_ten_llm_niches() -> None:
 def test_a_company_niche_is_deterministic_and_lies_in_its_family() -> None:
     """A niche is a fixed sub-slice of the company's coarse family, so the
     procedural skeleton stays a valid anchor and fallback for it."""
-    from docloom.packs.invoice.procedural import _NICHES, generate_company
+    from docsynth.packs.invoice.procedural import _NICHES, generate_company
     for i in range(80):
         row, _ = generate_company(i)
         assert row.llm_niche and generate_company(i)[0].llm_niche == row.llm_niche
@@ -234,7 +234,7 @@ def test_a_company_niche_is_deterministic_and_lies_in_its_family() -> None:
 def test_a_french_company_gets_a_french_niche() -> None:
     """The stored niche is already localised, so a French company is prompted with
     a French label rather than an English one dropped into a French sentence."""
-    from docloom.packs.invoice.procedural import _NICHES, generate_company
+    from docsynth.packs.invoice.procedural import _NICHES, generate_company
     french_labels = {fr for pairs in _NICHES.values() for _, fr in pairs}
     seen_fr = 0
     for i in range(120):

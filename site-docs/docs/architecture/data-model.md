@@ -1,6 +1,6 @@
 # Data model & the golden set
 
-docloom's output is two things that must agree: the **documents** (what an
+docsynth's output is two things that must agree: the **documents** (what an
 extractor reads) and the **golden set** (the ground truth to score it against).
 The golden set is not extracted from the documents — it is the **computed input**
 the documents are rendered from, which is what makes it exact.

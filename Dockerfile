@@ -1,7 +1,7 @@
-# docloom container.
+# docsynth container.
 #
-# NOT required to try docloom. The local-first path — filesystem storage,
-# SQLite state, Parquet + DuckDB golden — runs from a plain `pip install docloom`
+# NOT required to try docsynth. The local-first path — filesystem storage,
+# SQLite state, Parquet + DuckDB golden — runs from a plain `pip install docsynth`
 # with no container and no cloud account.
 #
 # This image exists for the two things that genuinely benefit from one:
@@ -14,8 +14,8 @@
 #   2. The Cloud Run deploy artifact (GCP path). The same image runs as the
 #      generation Service and the export Job — one build, two entry commands.
 #
-# Build:  docker build -t docloom .
-# Local:  docker run --rm -v "$PWD/out:/data" docloom generate --config ...
+# Build:  docker build -t docsynth .
+# Local:  docker run --rm -v "$PWD/out:/data" docsynth generate --config ...
 # Cloud:  pushed to Artifact Registry, deployed to Cloud Run (see deploy.sh).
 
 # The base image bundles a Chromium build matched to ONE Playwright version, and
@@ -60,8 +60,8 @@ COPY templates/manifest.yaml ./templates/manifest.yaml
 # Build's daemon has no BuildKit heredoc support, and a `RUN … <<'PY'` block gets
 # parsed as Dockerfile instructions (a Python `from x import y` reads as a second
 # `FROM`).
-RUN python -c "import docloom.packs; print('packs:', docloom.available_packs())"
-RUN python -c "import docloom.packs; from docloom.core import get_pack; from docloom.core.pipeline.pdf import PdfRenderer; pack=get_pack('invoice'); rec=pack.default_source().generate('docker-build-check', 0); pdf=PdfRenderer(pack).render(rec).data; assert pdf[:5]==b'%PDF-', 'renderer did not return a PDF'; assert len(pdf) > 1000, f'suspiciously small PDF ({len(pdf)} bytes)'; print(f'render check: {len(pdf)} byte PDF OK')"
+RUN python -c "import docsynth.packs; print('packs:', docsynth.available_packs())"
+RUN python -c "import docsynth.packs; from docsynth.core import get_pack; from docsynth.core.pipeline.pdf import PdfRenderer; pack=get_pack('invoice'); rec=pack.default_source().generate('docker-build-check', 0); pdf=PdfRenderer(pack).render(rec).data; assert pdf[:5]==b'%PDF-', 'renderer did not return a PDF'; assert len(pdf) > 1000, f'suspiciously small PDF ({len(pdf)} bytes)'; print(f'render check: {len(pdf)} byte PDF OK')"
 
-ENTRYPOINT ["docloom"]
+ENTRYPOINT ["docsynth"]
 CMD ["--help"]

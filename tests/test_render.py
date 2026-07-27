@@ -17,7 +17,7 @@ from decimal import Decimal as D
 import pytest
 from jinja2 import UndefinedError
 
-from docloom.core import (
+from docsynth.core import (
     Currency,
     Jurisdiction,
     Locale,
@@ -25,7 +25,7 @@ from docloom.core import (
     render_record,
     render_template,
 )
-from docloom.packs.invoice import (
+from docsynth.packs.invoice import (
     LineItem,
     TaxRegistration,
     body_classes,

@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from docloom.core.locale.enums import Currency, Locale
-from docloom.packs.invoice.artifact import (
+from docsynth.core.locale.enums import Currency, Locale
+from docsynth.packs.invoice.artifact import (
     COMPANIES_KEY,
     MANIFEST_KEY,
     PRODUCTS_KEY,
@@ -29,10 +29,10 @@ from docloom.packs.invoice.artifact import (
     load_catalogue,
     write_catalogue,
 )
-from docloom.packs.invoice.catalog import Catalogue, ProductTemplate, SeedCatalogue
-from docloom.packs.invoice.enums import BillingModel, BusinessType, CodeSystem, LineItemKind
-from docloom.packs.invoice.jurisdictions import Jurisdiction
-from docloom.packs.invoice.sampler import InvoiceSampler
+from docsynth.packs.invoice.catalog import Catalogue, ProductTemplate, SeedCatalogue
+from docsynth.packs.invoice.enums import BillingModel, BusinessType, CodeSystem, LineItemKind
+from docsynth.packs.invoice.jurisdictions import Jurisdiction
+from docsynth.packs.invoice.sampler import InvoiceSampler
 
 
 def a_company(cid: str, **kw) -> CompanyRow:
@@ -172,12 +172,12 @@ def test_a_missing_manifest_is_a_clear_error(tmp_path: Path) -> None:
 
 
 def test_a_future_schema_version_is_refused(tmp_path: Path) -> None:
-    """Better to say 'upgrade docloom' than to mis-read columns."""
+    """Better to say 'upgrade docsynth' than to mis-read columns."""
     write_small(tmp_path)
     manifest = json.loads((tmp_path / MANIFEST_KEY).read_text())
     manifest["schema_version"] = SCHEMA_VERSION + 5
     (tmp_path / MANIFEST_KEY).write_text(json.dumps(manifest))
-    with pytest.raises(ValueError, match="upgrade docloom"):
+    with pytest.raises(ValueError, match="upgrade docsynth"):
         load_catalogue(str(tmp_path))
 
 

@@ -9,13 +9,13 @@ realistic artefact whose labels drifted would be worse than no artefact at all.
 
 from __future__ import annotations
 
-import docloom.packs  # noqa: F401 - registers the invoice pack
-from docloom.core import get_pack
-from docloom.core.enums import DocumentCondition
-from docloom.core.fonts import HANDWRITING_KEYS
-from docloom.core.render import render_record
-from docloom.packs.invoice import HANDWRITTEN_ARCHETYPE
-from docloom.packs.invoice.handwriting import handwriting_for
+import docsynth.packs  # noqa: F401 - registers the invoice pack
+from docsynth.core import get_pack
+from docsynth.core.enums import DocumentCondition
+from docsynth.core.fonts import HANDWRITING_KEYS
+from docsynth.core.render import render_record
+from docsynth.packs.invoice import HANDWRITTEN_ARCHETYPE
+from docsynth.packs.invoice.handwriting import handwriting_for
 from tests.factories import invoice, simple_lines
 
 PACK = get_pack("invoice")

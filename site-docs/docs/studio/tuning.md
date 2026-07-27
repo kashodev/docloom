@@ -29,7 +29,7 @@ An existing catalogue for a version is reused by default rather than rebuilt —
 ## `--scaffold` — write a run.yaml
 
 ```bash
-docloom studio -p gcp --project <ref> --step pdfs --run-id r1 --total 5000 --scaffold run.yaml
+docsynth studio -p gcp --project <ref> --step pdfs --run-id r1 --total 5000 --scaffold run.yaml
 ```
 
 Writes the step's config to a **named, commented `run.yaml`** (instead of a

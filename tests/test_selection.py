@@ -17,11 +17,11 @@ from datetime import date
 
 import pytest
 
-from docloom.core.enums import DocumentCondition
-from docloom.core.selection import CRISP_WEAR, Selection, UnsupportedConstraint
-from docloom.packs.invoice import InvoicePack
-from docloom.packs.invoice.catalog import ALL_ARCHETYPES, GENERAL_ARCHETYPES
-from docloom.packs.invoice.sampler import InvoiceSampler
+from docsynth.core.enums import DocumentCondition
+from docsynth.core.selection import CRISP_WEAR, Selection, UnsupportedConstraint
+from docsynth.packs.invoice import InvoicePack
+from docsynth.packs.invoice.catalog import ALL_ARCHETYPES, GENERAL_ARCHETYPES
+from docsynth.packs.invoice.sampler import InvoiceSampler
 
 
 def docs(selection: Selection, n: int = 12, run_id: str = "sel", **kw):

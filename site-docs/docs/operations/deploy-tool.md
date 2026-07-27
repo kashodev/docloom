@@ -1,6 +1,6 @@
 # The deploy tool
 
-`deploy/gcp/deploy.sh` runs docloom on GCP as **Cloud Run Jobs**. It is
+`deploy/gcp/deploy.sh` runs docsynth on GCP as **Cloud Run Jobs**. It is
 config-file driven — one `run.yaml` describes a whole run, and the same script and
 config shape run a 1,000-document smoke test and a multi-million-document
 production run; only the numbers differ. Every step is **idempotent** (re-running
@@ -57,4 +57,4 @@ The reference config is `deploy/gcp/run.example.yaml`. For the GCP resources and
 secrets see [Deploying on GCP](gcp.md); for driving a run see
 [Running / resuming / status / export](running.md). The [studio](../studio/overview.md)
 synthesizes this same config, so a run is identical whether launched by hand or by
-`docloom studio`.
+`docsynth studio`.

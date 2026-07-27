@@ -1,4 +1,4 @@
-# docloom run configuration.
+# docsynth run configuration.
 #
 # Copy this, edit it, and pass it to the deploy script:
 #
@@ -15,7 +15,7 @@
 # ── Infrastructure ──────────────────────────────────────────────────────────
 project: crawler-rag-data-2026
 region: us-central1
-bucket: crawler-rag-data-2026-docloom
+bucket: crawler-rag-data-2026-docsynth
 
 firestore:
   # The free tier applies to the (default) database only; a named second
@@ -24,7 +24,7 @@ firestore:
   location: nam5
 
 artifact_registry:
-  repo: docloom
+  repo: docsynth
   image_tag: v1
 
 # ── The run ─────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ run:
   # built-in seed catalogue (local-first, no artifact). Point it at a published
   # `catalogue` build to use those descriptions — it is read-only, so every task
   # and slice shares the one artifact.
-  # catalogue: gs://crawler-rag-data-2026-docloom/catalogues/invoice/v1
+  # catalogue: gs://crawler-rag-data-2026-docsynth/catalogues/invoice/v1
 
   # LLM cost telemetry. On by default; `off` disables. A procedural pack makes
   # no LLM calls and so writes nothing either way.
@@ -157,17 +157,17 @@ documents:
 #
 # Build a catalogue from this block, once, then point generation at it:
 #
-#   docloom catalogue --providers run.yaml --out gs://…/catalogues/invoice/v1 \
+#   docsynth catalogue --providers run.yaml --out gs://…/catalogues/invoice/v1 \
 #                     --version v1 --companies 1000 --products-per-company 300
-#   docloom generate  --catalogue gs://…/catalogues/invoice/v1 …
+#   docsynth generate  --catalogue gs://…/catalogues/invoice/v1 …
 #
 # The deploy script does not run the catalogue build for you (it needs the
 # provider keys from Secret Manager and is a one-off, not a per-run step); run
-# `docloom catalogue` yourself against this file. Omit the block to build the
+# `docsynth catalogue` yourself against this file. Omit the block to build the
 # catalogue procedurally with no keys, or to generate from the built-in seed pool.
 catalogue:
   # The published artifact this build writes, and the run that draws from it.
-  out: gs://crawler-rag-data-2026-docloom/catalogues/invoice/v1
+  out: gs://crawler-rag-data-2026-docsynth/catalogues/invoice/v1
   version: v1
   companies: 1000
   products_per_company: 300
@@ -219,8 +219,8 @@ catalogue:
 
 # ── Cloud Run job shape ─────────────────────────────────────────────────────
 job:
-  name: docloom-generate
-  service_account: docloom-run
+  name: docsynth-generate
+  service_account: docsynth-run
 
   tasks: 4                 # how many containers
   parallelism: 4           # how many at once (<= tasks)
@@ -236,4 +236,4 @@ export:
   # external table, so decimal128 lands as NUMERIC and the cent-exact join
   # survives the round trip.
   sink: ""
-  # sink: "bigquery://crawler-rag-data-2026/docloom_golden?staging=gs://crawler-rag-data-2026-docloom/staging"
+  # sink: "bigquery://crawler-rag-data-2026/docsynth_golden?staging=gs://crawler-rag-data-2026-docsynth/staging"
