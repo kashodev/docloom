@@ -24,7 +24,9 @@ to serve them, and new features are designed against them.
    **synthetic**: they look real, so a corpus is worth testing against, but they
    never carry personally identifiable information. Identifying details (addresses,
    phones, tax IDs) are *derived* deterministically at generation and never stored,
-   and catalogue content is screened — so there is no PII-shaped field to leak. The
+   and LLM-generated descriptions are screened for PII and quality (regex gates — a
+   flagged description falls back to procedural text) — so there is no PII-shaped
+   field to leak. The
    project creates **no identity documents for fraudulent purposes, and no documents
    intended to enable fraudulent activity** — its purpose is producing test data
    with a known ground truth, not passing anything off as genuine.
