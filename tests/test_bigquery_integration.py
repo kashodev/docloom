@@ -37,7 +37,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _staging_store():  # noqa: ANN202 - real cloud only
+def _staging_store():
     from docloom.core.storage.gcs import GcsBlobStore
 
     parsed = urlparse(_STAGING)  # gs://bucket/prefix

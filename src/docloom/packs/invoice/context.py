@@ -16,9 +16,9 @@ from docloom.core.enums import DocumentCondition
 from docloom.core.fonts import font_face_css, font_stack
 from docloom.core.money import money
 from docloom.packs.invoice.handwriting import handwriting_for
-from docloom.packs.invoice.logos import logo_mark, watermark_mark
 from docloom.packs.invoice.jurisdictions import profile_for
 from docloom.packs.invoice.labels import LABEL_REGISTRY
+from docloom.packs.invoice.logos import logo_mark, watermark_mark
 from docloom.packs.invoice.record import GoldenInvoice, LineItem
 
 

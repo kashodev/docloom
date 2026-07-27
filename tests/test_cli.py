@@ -254,7 +254,7 @@ def test_a_worker_retrying_into_an_all_failed_run_still_exits_nonzero(
     over a run that produced zero documents. It must read the run's state."""
     from docloom.core.pipeline import HtmlRenderer
 
-    def boom(self, record):  # noqa: ANN001, ANN202
+    def boom(self, record):
         raise RuntimeError("render exploded")
 
     monkeypatch.setattr(HtmlRenderer, "render", boom)
@@ -377,7 +377,7 @@ def test_a_catalogue_for_an_unknown_pack_is_rejected(tmp_path: Path) -> None:
 
 
 # ── docloom catalogue --providers (LLM build) ───────────────────────────────
-def _mock_openai_transport():  # noqa: ANN202
+def _mock_openai_transport():
     """A MockTransport that answers the catalogue prompt with valid JSON products,
     standing in for a real OpenAI-compatible endpoint."""
     import json
@@ -410,7 +410,7 @@ def test_catalogue_llm_build_end_to_end(tmp_path: Path) -> None:
     client = httpx.AsyncClient(transport=_mock_openai_transport())
     real = factory.build_provider
 
-    def with_mock(spec, client=None):  # noqa: ANN001
+    def with_mock(spec, client=None):
         return real(spec, client=globals().get("_mock_client"))
 
     globals()["_mock_client"] = client
@@ -459,7 +459,7 @@ def test_catalogue_llm_build_from_inline_env_var(tmp_path: Path, monkeypatch) ->
 
     real_is_file = Path.is_file
 
-    def stat_explodes(self):  # noqa: ANN001, ANN202
+    def stat_explodes(self):
         if str(self).startswith('{"providers"'):
             raise OSError(36, "File name too long")   # what Linux does
         return real_is_file(self)
@@ -469,7 +469,7 @@ def test_catalogue_llm_build_from_inline_env_var(tmp_path: Path, monkeypatch) ->
     client = httpx.AsyncClient(transport=_mock_openai_transport())
     real = factory.build_provider
 
-    def with_mock(spec, client=None):  # noqa: ANN001
+    def with_mock(spec, client=None):
         return real(spec, client=globals().get("_mock_client"))
 
     globals()["_mock_client"] = client

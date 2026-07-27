@@ -175,7 +175,7 @@ def test_a_procedural_corpus_is_far_more_varied_than_the_seed_pool(tmp_path: Pat
     artifact = InvoiceSampler(load_catalogue(str(tmp_path)), max_line_items=8)
     seed_pool = InvoiceSampler(max_line_items=8)
 
-    def distinct(sampler) -> int:  # noqa: ANN001
+    def distinct(sampler) -> int:
         return len({li.description
                     for i in range(120)
                     for li in sampler.generate("cmp", i).line_items})

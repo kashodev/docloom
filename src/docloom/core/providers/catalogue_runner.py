@@ -151,7 +151,7 @@ class CatalogueRunner:
                 return
         try:
             results = await provider.complete_batch([it.request for it in group])
-        except Exception as exc:  # noqa: BLE001 - one batch failing must not abort the rest
+        except Exception as exc:
             _log.warning("batch failed", provider=provider.name,
                          items=len(group), error=repr(exc))
             for it in group:
@@ -174,7 +174,7 @@ class CatalogueRunner:
                     if self._budget is not None:
                         self._budget.check(provider.estimate_cost(item.request))
                     return await provider.complete(item.request)
-                except Exception as exc:  # noqa: BLE001 - collected per item
+                except Exception as exc:
                     return exc
 
         # Results are consumed **as they complete**, not after a `gather` over the

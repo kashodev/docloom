@@ -28,7 +28,7 @@ from tests.factories import invoice, simple_lines
 PACK = get_pack("invoice")
 
 
-def goods_invoice(**kw):  # noqa: ANN003, ANN201
+def goods_invoice(**kw):
     lines = tuple(li.model_copy(update={"kind": LineItemKind.PRODUCT})
                   for li in simple_lines())
     base = invoice(lines)

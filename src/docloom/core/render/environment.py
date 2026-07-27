@@ -27,8 +27,6 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, pass_context
 from jinja2.runtime import Context
 
-from docloom.core.pack import DocumentPack
-from docloom.core.record import GoldenRecord
 from docloom.core.locale.formatting import (
     format_amount,
     format_date,
@@ -36,6 +34,8 @@ from docloom.core.locale.formatting import (
     format_quantity,
     format_rate,
 )
+from docloom.core.pack import DocumentPack
+from docloom.core.record import GoldenRecord
 
 
 @pass_context
@@ -104,10 +104,12 @@ def render_template(template_root: Path, archetype: str, context: dict[str, Any]
     return env.get_template(f"archetypes/{archetype}.html.j2").render(**context)
 
 
-def render_record(pack: "DocumentPack", record: "GoldenRecord") -> str:
+def render_record(pack: DocumentPack, record: GoldenRecord) -> str:
     """Render one record using its pack.
 
     The normal entry point: the pack chooses the archetype and builds the
     context, the kernel does the weaving. Callers never touch template paths.
     """
-    return render_template(pack.template_root, pack.archetype_for(record), pack.build_context(record))
+    return render_template(
+        pack.template_root, pack.archetype_for(record), pack.build_context(record)
+    )

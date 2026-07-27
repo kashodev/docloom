@@ -45,7 +45,6 @@ from typing import Any
 
 from docloom.core.locale.enums import Currency, Locale
 from docloom.core.storage import open_store
-from docloom.core.storage.base import BlobStore
 from docloom.packs.invoice.catalog import (
     BusinessSpec,
     Company,
@@ -171,7 +170,7 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _pa():  # noqa: ANN202
+def _pa():
     try:
         import pyarrow as pa
     except ImportError as exc:  # pragma: no cover - pyarrow is a core dependency
@@ -179,7 +178,7 @@ def _pa():  # noqa: ANN202
     return pa
 
 
-def companies_schema():  # noqa: ANN201
+def companies_schema():
     pa = _pa()
     return pa.schema([
         ("company_id", pa.string()),
@@ -194,7 +193,7 @@ def companies_schema():  # noqa: ANN201
     ])
 
 
-def products_schema():  # noqa: ANN201
+def products_schema():
     pa = _pa()
     money = pa.decimal128(_MONEY_PRECISION, _MONEY_SCALE)
     return pa.schema([
@@ -212,7 +211,7 @@ def products_schema():  # noqa: ANN201
     ])
 
 
-def _table_bytes(table) -> bytes:  # noqa: ANN001
+def _table_bytes(table) -> bytes:
     import io
 
     import pyarrow.parquet as pq
@@ -280,7 +279,7 @@ def _reject_empty_companies(
         )
 
 
-def _companies_table(companies: Sequence[CompanyRow]):  # noqa: ANN202
+def _companies_table(companies: Sequence[CompanyRow]):
     pa = _pa()
     return pa.Table.from_pydict(
         {
@@ -300,7 +299,7 @@ def _companies_table(companies: Sequence[CompanyRow]):  # noqa: ANN202
 
 def _products_table(
     companies: Sequence[CompanyRow], products: Mapping[str, Sequence[ProductTemplate]]
-):  # noqa: ANN202
+):
     pa = _pa()
     rows: list[tuple[str, ProductTemplate, int]] = [
         (c.company_id, p, i)
@@ -475,7 +474,7 @@ def _to_company(row: CompanyRow) -> Company:
     )
 
 
-def _parse_companies(table) -> list[CompanyRow]:  # noqa: ANN001
+def _parse_companies(table) -> list[CompanyRow]:
     return [
         CompanyRow(
             company_id=r["company_id"], name=r["name"],
@@ -490,7 +489,7 @@ def _parse_companies(table) -> list[CompanyRow]:  # noqa: ANN001
     ]
 
 
-def _parse_products_into(table, products: dict[str, list[ProductTemplate]]) -> None:  # noqa: ANN001
+def _parse_products_into(table, products: dict[str, list[ProductTemplate]]) -> None:
     for r in table.to_pylist():
         products.setdefault(r["company_id"], []).append(
             ProductTemplate(

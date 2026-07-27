@@ -33,8 +33,8 @@ from docloom.core.usage.base import (
 from docloom.core.usage.shard import ShardUsageSink
 
 __all__ = [
-    "TABLE",
     "DEFAULT_USAGE_URI",
+    "TABLE",
     "LlmUsage",
     "MemoryUsageSink",
     "NullUsageSink",

@@ -11,12 +11,20 @@ from __future__ import annotations
 
 import pytest
 
-from docloom.core import DocumentPack, GoldenRecord, available_packs, get_pack, render_record
+from docloom.core import (
+    Currency,
+    DocumentPack,
+    GoldenRecord,
+    Jurisdiction,
+    Locale,
+    available_packs,
+    get_pack,
+    render_record,
+)
 from docloom.core.pack import RunningHeader
 from docloom.core.registry import register_pack
 from docloom.packs.invoice import GoldenInvoice, InvoicePack
 from tests.factories import invoice, simple_lines, tiered_line
-from docloom.core import Currency, Jurisdiction, Locale
 
 PACK = get_pack("invoice")
 
@@ -72,7 +80,7 @@ def test_the_entry_point_path_does_not_collide_with_the_builtin(
     class FakeEntryPoint:
         name = "invoice"
 
-        def load(self):  # noqa: ANN202
+        def load(self):
             return InvoicePack
 
     monkeypatch.setattr(registry, "_ENTRY_POINTS_LOADED", False)

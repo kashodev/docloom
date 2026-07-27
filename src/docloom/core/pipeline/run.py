@@ -17,9 +17,9 @@ import time
 
 from docloom.core.enums import RunState, WorkUnitState
 from docloom.core.logging import bind, get_logger
+from docloom.core.pipeline.manifest import write_run_manifest
 from docloom.core.pipeline.planner import plan_units
 from docloom.core.pipeline.renderer import DocumentRenderer
-from docloom.core.pipeline.manifest import write_run_manifest
 from docloom.core.pipeline.source import DocumentSource, prepare_source
 from docloom.core.pipeline.worker import GenerationWorker, WorkerStats
 from docloom.core.state.base import Run, StateStore

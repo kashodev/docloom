@@ -35,10 +35,9 @@ from docloom.packs.invoice.enums import (
     BusinessType,
     DiscountScheme,
     DiscountTiming,
-    LineItemKind,
-    UsageUnit,
 )
 from docloom.packs.invoice.jurisdictions import profile_for
+from docloom.packs.invoice.labels import LABEL_REGISTRY
 from docloom.packs.invoice.record import (
     GoldenInvoice,
     InvoiceTotals,
@@ -47,7 +46,6 @@ from docloom.packs.invoice.record import (
     PricingTier,
     TaxBucket,
 )
-from docloom.packs.invoice.labels import LABEL_REGISTRY
 
 # Default issue-date window when a slice does not pin one. Kept as the range the
 # sampler used before issue dates were configurable (2026-01-01 plus up to 330
@@ -158,7 +156,7 @@ def _build_line(rng: Random, line_no: int, product: ProductTemplate, language: o
                     extended_amount=money(qty * unit_price))
 
 
-def _graduated_line(rng: Random, common: dict, product: ProductTemplate) -> LineItem:  # noqa: ARG001
+def _graduated_line(rng: Random, common: dict, product: ProductTemplate) -> LineItem:
     """Three graduated bands, each charged at its own (decreasing) rate.
 
     The band amounts sum to ``extended_amount`` — the tier validator enforces it.
@@ -239,7 +237,7 @@ def _discount(rng: Random, subtotal: Decimal) -> tuple[DiscountScheme, DiscountT
     return DiscountScheme.SUMMARY_AMOUNT, timing, flat
 
 
-def _tax_buckets(jurisdiction, taxable_base: Decimal, locale) -> tuple[TaxBucket, ...]:  # noqa: ANN001
+def _tax_buckets(jurisdiction, taxable_base: Decimal, locale) -> tuple[TaxBucket, ...]:
     """Default-rate buckets for the jurisdiction, each rounded independently."""
     profile = profile_for(jurisdiction)
     language = locale.language
@@ -256,9 +254,9 @@ def _tax_buckets(jurisdiction, taxable_base: Decimal, locale) -> tuple[TaxBucket
     return tuple(buckets)
 
 
-def _rate_text(rate: Decimal, language) -> str:  # noqa: ANN001
-    from docloom.core.locale.formatting import format_rate
+def _rate_text(rate: Decimal, language) -> str:
     from docloom.core.locale.enums import Locale
+    from docloom.core.locale.formatting import format_rate
     # A representative locale per language for the printed rate in the bucket label.
     loc = {"en": Locale.EN_US, "fr-CA": Locale.FR_CA, "fr-FR": Locale.FR_FR}[str(language)]
     return format_rate(rate, loc)
@@ -354,7 +352,11 @@ class InvoiceSampler:
 
         scheme, timing, discount = _discount(rng, subtotal)
         shipping = money(Decimal(str(rng.uniform(8, 60)))) if rng.random() < 0.25 else ZERO
-        deposit = money(subtotal * Decimal(str(rng.uniform(0.1, 0.3)))) if rng.random() < 0.15 else ZERO
+        deposit = (
+            money(subtotal * Decimal(str(rng.uniform(0.1, 0.3))))
+            if rng.random() < 0.15
+            else ZERO
+        )
 
         if timing is DiscountTiming.PRE_TAX:
             taxable_base = money(subtotal - discount + shipping)

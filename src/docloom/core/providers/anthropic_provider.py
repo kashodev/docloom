@@ -74,7 +74,11 @@ class AnthropicProvider:
                 raise ImportError(
                     "the anthropic provider needs its extra — pip install 'docloom[anthropic]'"
                 ) from exc
-            client = anthropic.AsyncAnthropic(api_key=api_key) if api_key else anthropic.AsyncAnthropic()
+            client = (
+                anthropic.AsyncAnthropic(api_key=api_key)
+                if api_key
+                else anthropic.AsyncAnthropic()
+            )
         self._client = client
 
     async def complete(self, request: CompletionRequest) -> CompletionResult:

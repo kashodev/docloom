@@ -46,7 +46,7 @@ class InvoiceSource:
     whole pipeline.
     """
 
-    def generate(self, run_id: str, index: int):  # noqa: ANN201
+    def generate(self, run_id: str, index: int):
         locale, juris, currency = _VARIANTS[index % len(_VARIANTS)]
         inv = invoice(simple_lines(), locale=locale, jurisdiction=juris, currency=currency)
         return inv.model_copy(update={
@@ -60,13 +60,13 @@ class FlakySource(InvoiceSource):
     def __init__(self, fail_on: set[int]) -> None:
         self._fail_on = fail_on
 
-    def generate(self, run_id: str, index: int):  # noqa: ANN201
+    def generate(self, run_id: str, index: int):
         if index in self._fail_on:
             raise ValueError(f"boom at index {index}")
         return super().generate(run_id, index)
 
 
-def harness(tmp_path: Path):  # noqa: ANN201
+def harness(tmp_path: Path):
     state = SqliteStateStore(tmp_path / "runs.db")
     blob = LocalBlobStore(tmp_path / "blobs")
     renderer = HtmlRenderer(get_pack("invoice"))
@@ -241,7 +241,7 @@ def test_two_workers_split_the_units_without_overlap(tmp_path: Path) -> None:
     assert len(list(blob.iter_keys("r/documents/"))) == 10   # each index exactly once
 
 
-def test_a_source_that_cannot_prepare_stops_the_run_before_any_unit(tmp_path) -> None:  # noqa: ANN001
+def test_a_source_that_cannot_prepare_stops_the_run_before_any_unit(tmp_path) -> None:
     """An impossible run-scoped configuration must fail once, up front — not
     once per unit while the job reports success."""
     from docloom.core.pipeline.source import prepare_source
@@ -253,7 +253,7 @@ def test_a_source_that_cannot_prepare_stops_the_run_before_any_unit(tmp_path) ->
         def prepare(self, run_id: str) -> None:
             raise ValueError("no company issues in de-DE")
 
-        def generate(self, run_id: str, index: int):  # noqa: ANN202
+        def generate(self, run_id: str, index: int):
             self.generated += 1
             raise AssertionError("must not be reached")
 
@@ -268,7 +268,7 @@ def test_a_source_without_prepare_is_fine() -> None:
     from docloom.core.pipeline.source import prepare_source
 
     class Plain:
-        def generate(self, run_id: str, index: int):  # noqa: ANN202
+        def generate(self, run_id: str, index: int):
             raise AssertionError
 
     prepare_source(Plain(), "r")   # must not raise

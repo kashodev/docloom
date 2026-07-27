@@ -19,8 +19,7 @@ from docloom.core.pipeline import HtmlRenderer, create_run, decode_shard, work_r
 from docloom.core.pipeline.source import DocumentSource, stable_seed
 from docloom.core.state.sqlite import SqliteStateStore
 from docloom.core.storage.local import LocalBlobStore
-from docloom.packs.invoice import BusinessType, InvoiceSampler, SeedCatalogue
-from docloom.packs.invoice.enums import BillingModel
+from docloom.packs.invoice import InvoiceSampler, SeedCatalogue
 
 
 # ── stable seeding ──────────────────────────────────────────────────────────
@@ -147,7 +146,7 @@ def test_quebec_invoices_carry_two_tax_buckets() -> None:
 
 
 # ── end to end through the real pipeline ────────────────────────────────────
-def test_sampler_drives_a_full_run(tmp_path) -> None:  # noqa: ANN001
+def test_sampler_drives_a_full_run(tmp_path) -> None:
     """The sampler is a drop-in DocumentSource: a real run over it produces
     documents and exact golden shards, no keys, no cloud."""
     state = SqliteStateStore(tmp_path / "runs.db")

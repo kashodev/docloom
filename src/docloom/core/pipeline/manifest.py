@@ -38,7 +38,6 @@ import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
 
 from docloom.core.storage.base import BlobStore
 

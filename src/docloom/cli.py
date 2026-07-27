@@ -60,7 +60,9 @@ def _init(ctx: typer.Context) -> None:
     else:
         typer.echo(ctx.get_help())
 
-_STORAGE = typer.Option("./out/blobs", envvar="DOCLOOM_STORAGE", help="Blob store URI for documents + shards")
+_STORAGE = typer.Option(
+    "./out/blobs", envvar="DOCLOOM_STORAGE", help="Blob store URI for documents + shards"
+)
 _STATE = typer.Option("./out/runs.db", envvar="DOCLOOM_STATE", help="Run-state store URI")
 # On by default: a run records what its LLM calls cost unless told not to. A
 # procedural pack makes no calls, so this is free for invoices; `--llm-usage off`
@@ -86,8 +88,12 @@ _ARCHETYPE_COUNT = typer.Option(0, "--archetype-count", help="Use N templates")
 _BUSINESS_TYPE = typer.Option([], "--business-type", help="Restrict issuers to this business type")
 _CONDITION = typer.Option([], "--condition", help="Capture condition to draw from (repeatable)")
 _WEAR = typer.Option("", "--wear", help="crisp | varied | worn | 0.4 | 0.2:0.8")
-_GOODS_RECEIPT = typer.Option(False, "--goods-receipt", help="Delivery notes with a receiver's signature")
-_SELECTION_FILE = typer.Option("", "--selection-file", help="YAML file holding one slice's composition")
+_GOODS_RECEIPT = typer.Option(
+    False, "--goods-receipt", help="Delivery notes with a receiver's signature"
+)
+_SELECTION_FILE = typer.Option(
+    "", "--selection-file", help="YAML file holding one slice's composition"
+)
 _ISSUE_DATE_FROM = typer.Option("", "--issue-date-from",
                                 help="Earliest issue date YYYY-MM-DD (with --issue-date-to)")
 _ISSUE_DATE_TO = typer.Option("", "--issue-date-to",
@@ -127,7 +133,9 @@ def _selection_from(selection_file: str, **flags: object) -> Selection:
             raise typer.BadParameter(f"no such selection file: {selection_file}")
         base = yaml.safe_load(path.read_text()) or {}
         if not isinstance(base, dict):
-            raise typer.BadParameter(f"{selection_file} must hold a mapping, not {type(base).__name__}")
+            raise typer.BadParameter(
+                f"{selection_file} must hold a mapping, not {type(base).__name__}"
+            )
 
     overrides: dict[str, object] = {}
     if flags["locale"]:
@@ -196,7 +204,9 @@ def generate(
 ) -> None:
     """Generate documents and golden shards for a run."""
     if pack not in available_packs():
-        raise typer.BadParameter(f"unknown pack {pack!r}; available: {', '.join(available_packs())}")
+        raise typer.BadParameter(
+            f"unknown pack {pack!r}; available: {', '.join(available_packs())}"
+        )
 
     selection = _selection_from(
         selection_file, locale=locale, company=company, company_count=company_count,
@@ -277,7 +287,9 @@ def plan(
     (`docloom status`) before committing compute to it.
     """
     if pack not in available_packs():
-        raise typer.BadParameter(f"unknown pack {pack!r}; available: {', '.join(available_packs())}")
+        raise typer.BadParameter(
+            f"unknown pack {pack!r}; available: {', '.join(available_packs())}"
+        )
     store = open_state(state)
     existing = store.get_run(run_id)
     if existing is not None and existing.planned:
@@ -421,7 +433,9 @@ def _resolve_mix(providers: str):
 @app.command()
 def catalogue(
     out: str = typer.Option(..., "--out", help="Where to write the artifact (file:// | gs:// | s3://)"),
-    version: str = typer.Option(..., "--version", help="Catalogue version, recorded on every golden row"),
+    version: str = typer.Option(
+        ..., "--version", help="Catalogue version, recorded on every golden row"
+    ),
     companies: int = typer.Option(1000, help="How many issuers"),
     products_per_company: int = typer.Option(300, help="SKUs each issuer sells"),
     seed: int = typer.Option(0, help="Build seed; the same seed rebuilds the same catalogue"),

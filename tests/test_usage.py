@@ -34,11 +34,11 @@ from docloom.core.usage import (
 )
 
 
-def run(coro):  # noqa: ANN001, ANN201
+def run(coro):
     return asyncio.run(coro)
 
 
-def a_usage(**kw) -> LlmUsage:  # noqa: ANN003
+def a_usage(**kw) -> LlmUsage:
     base = dict(run_id="r1", provider="anthropic", model="claude-haiku-4-5",
                 input_tokens=500, output_tokens=90, cost_usd=D("0.00095"))
     base.update(kw)
@@ -98,7 +98,7 @@ def test_null_sink_records_nothing() -> None:
 
 
 # ── The sharded sink (the default) ──────────────────────────────────────────
-def test_shard_sink_writes_beside_the_golden_data(tmp_path) -> None:  # noqa: ANN001
+def test_shard_sink_writes_beside_the_golden_data(tmp_path) -> None:
     blob = LocalBlobStore(tmp_path)
     sink = ShardUsageSink(blob, "r1")
     sink.record(a_usage(unit_index=7))
@@ -249,7 +249,7 @@ def test_batch_calls_are_flagged_because_they_are_half_price() -> None:
         def estimate_batch_cost(self, request: CompletionRequest) -> D:
             return self._cost
 
-        async def complete_batch(self, requests):  # noqa: ANN001, ANN202
+        async def complete_batch(self, requests):
             return [CompletionResult("t", Usage(10, 5, 0), self.model, self.name, self._cost)
                     for _ in requests]
 

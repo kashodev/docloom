@@ -35,8 +35,8 @@ import math
 from typing import Any
 
 from docloom.core.enums import DocumentCondition
-from docloom.core.pack import DocumentPack
 from docloom.core.logging import get_logger
+from docloom.core.pack import DocumentPack
 from docloom.core.pipeline.degrade import degrade_pdf
 from docloom.core.pipeline.renderer import RenderedDocument
 from docloom.core.record import GoldenRecord
@@ -217,7 +217,7 @@ class PdfRenderer:
         """
         page = self._ensure_browser().new_page()
         w, h = self._printable_size()
-        page.set_viewport_size({"width": max(int(round(w)), 1), "height": max(int(round(h)), 1)})
+        page.set_viewport_size({"width": max(round(w), 1), "height": max(round(h), 1)})
         # print media so the archetypes' @print rules (table-header-group,
         # break-inside) take effect, and backgrounds so accent/zebra show.
         page.emulate_media(media="print")

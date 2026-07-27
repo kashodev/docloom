@@ -22,14 +22,14 @@ from docloom.core.providers.pricing import pricing_for
 from docloom.packs.invoice.artifact import load_catalogue, write_catalogue
 from docloom.packs.invoice.llm_build import (
     build_llm_catalogue,
-    parse_products,
     build_prompt,
+    parse_products,
 )
 from docloom.packs.invoice.procedural import generate_catalogue
 from docloom.packs.invoice.sampler import InvoiceSampler
 
 
-def run(mix, **kw):  # noqa: ANN001, ANN201
+def run(mix, **kw):
     return asyncio.run(build_llm_catalogue(mix, **kw))
 
 
@@ -43,7 +43,7 @@ class Fake:
 
     pricing = pricing_for("__local__")
 
-    def __init__(self, responder, name="fake", cost=D("0.001")) -> None:  # noqa: ANN001
+    def __init__(self, responder, name="fake", cost=D("0.001")) -> None:
         self.name = name
         self.model = f"{name}-1"
         self._responder = responder
@@ -91,7 +91,7 @@ def test_the_price_band_from_the_model_is_used() -> None:
 def test_structural_fields_stay_procedural() -> None:
     """The LLM writes text and a band; billing model, kind, code system and usage
     unit are inherited from the procedural skeleton and never touched."""
-    ref_rows, ref_products = generate_catalogue(companies=4, products_per_company=10, seed=2)
+    _, ref_products = generate_catalogue(companies=4, products_per_company=10, seed=2)
     mix = ProviderMix([Fake(good_json)], [1.0])
     _, products, _ = run(mix, companies=4, products_per_company=10, seed=2)
     for cid, items in products.items():
@@ -134,7 +134,7 @@ def test_a_short_batch_fills_what_it_can_and_falls_back_for_the_rest() -> None:
                            for i in range(half_n)])
 
     mix = ProviderMix([Fake(half)], [1.0])
-    _, products, report = run(mix, companies=2, products_per_company=10, seed=5, max_rounds=1)
+    _, _, report = run(mix, companies=2, products_per_company=10, seed=5, max_rounds=1)
     assert 0 < report.llm_filled < report.products
     assert report.llm_filled + report.procedural_fallback == report.products
 
@@ -185,7 +185,7 @@ def test_a_bad_band_is_dropped_and_the_procedural_band_kept() -> None:
     assert report.bad_price_bands == 4
 
 
-def test_generated_invoices_from_an_llm_catalogue_reconcile(tmp_path) -> None:  # noqa: ANN001
+def test_generated_invoices_from_an_llm_catalogue_reconcile(tmp_path) -> None:
     """End to end: an LLM-built catalogue produces valid, reconciling invoices —
     the golden invariant is untouched by where the description came from."""
     mix = ProviderMix([Fake(good_json)], [1.0])
@@ -325,7 +325,7 @@ def test_a_later_round_is_told_what_the_first_round_already_placed() -> None:
 
     seen: list[str] = []
 
-    def responder(request):  # noqa: ANN001, ANN202
+    def responder(request):
         seen.append(request.prompt)
         return '[{"description": "Alpha gadget, blue"}]'   # one usable item; rest short → pending
 

@@ -34,7 +34,6 @@ from docloom.packs.invoice.catalog import (
     ALL_ARCHETYPES,
     GENERAL_ARCHETYPES,
     HANDWRITTEN_ARCHETYPE,
-    TELECOM_ARCHETYPE,
     Catalogue,
     CompanyRoster,
 )

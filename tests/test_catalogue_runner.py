@@ -30,7 +30,7 @@ from docloom.core.providers.anthropic_provider import (
 from docloom.core.providers.base import CompletionResult, Usage
 
 
-def run(coro):  # noqa: ANN001, ANN201
+def run(coro):
     return asyncio.run(coro)
 
 
@@ -95,7 +95,7 @@ class ErroringStub(SyncStub):
         raise RuntimeError("401 Unauthorized")
 
 
-def mix_of(*providers, weights=None, fallback=None):  # noqa: ANN002, ANN003, ANN201
+def mix_of(*providers, weights=None, fallback=None):
     weights = weights or [1.0] * len(providers)
     return ProviderMix(list(providers), weights, fallback=fallback)
 
@@ -393,14 +393,14 @@ class _FakeBatches:
     def __init__(self) -> None:
         self._reqs = None
 
-    async def create(self, requests):  # noqa: ANN001, ANN201
+    async def create(self, requests):
         self._reqs = requests
         return _Batch()
 
-    async def retrieve(self, batch_id):  # noqa: ANN001, ANN201
+    async def retrieve(self, batch_id):
         return _Batch()
 
-    def results(self, batch_id):  # noqa: ANN001, ANN201 - out-of-order on purpose
+    def results(self, batch_id):
         return [
             _Entry("item-2", "third"),
             _Entry("item-0", "first"),
@@ -423,7 +423,7 @@ def test_complete_batch_restores_input_order_and_batch_cost() -> None:
 
 
 # ── Empty completions are failures, not results ─────────────────────────────
-class EmptyStub(SyncStub):
+class PaidEmptyStub(SyncStub):
     """A reasoning model that spent its whole budget thinking: HTTP 200, real
     usage, real cost, and no text. Observed from deepseek-v4-flash."""
 
@@ -443,7 +443,7 @@ class BlankStub(SyncStub):
 def test_an_empty_completion_is_a_failure_not_a_result() -> None:
     """The bug that would have baked blank descriptions into a shipped catalogue
     while reporting the build clean."""
-    mix = ProviderMix([EmptyStub("deepseek", D("0.001"))], [1.0])
+    mix = ProviderMix([PaidEmptyStub("deepseek", D("0.001"))], [1.0])
     report = run(CatalogueRunner(mix).run(items(4)))
     assert report.results == {}
     assert len(report.failures) == 4
@@ -461,7 +461,7 @@ def test_an_empty_completion_still_costs_money() -> None:
     """You were billed for the tokens whether or not you got an answer, so the
     budget and the cost total must see it — only success differs."""
     budget = BudgetGuard(D("1.00"))
-    mix = ProviderMix([EmptyStub("deepseek", D("0.01"))], [1.0])
+    mix = ProviderMix([PaidEmptyStub("deepseek", D("0.01"))], [1.0])
     report = run(CatalogueRunner(mix, budget=budget).run(items(5)))
     assert report.total_cost == D("0.05")
     assert budget.spent == D("0.05")
@@ -470,7 +470,7 @@ def test_an_empty_completion_still_costs_money() -> None:
 
 def test_good_and_empty_completions_are_separated() -> None:
     """A mixed run must keep the usable results and reject only the blanks."""
-    good, empty = SyncStub("good", D("0.001")), EmptyStub("empty", D("0.001"))
+    good, empty = SyncStub("good", D("0.001")), PaidEmptyStub("empty", D("0.001"))
     mix = ProviderMix([good, empty], [0.5, 0.5])
     report = run(CatalogueRunner(mix).run(items(20)))
     assert report.results and report.failures

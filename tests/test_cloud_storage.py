@@ -16,7 +16,7 @@ from docloom.core.storage.s3 import S3BlobStore
 from tests.fakes import FakeGcsClient, FakeS3Client
 
 
-def make_store(kind: str, prefix: str = ""):  # noqa: ANN201
+def make_store(kind: str, prefix: str = ""):
     if kind == "gcs":
         return GcsBlobStore("my-bucket", prefix, client=FakeGcsClient())
     return S3BlobStore("my-bucket", prefix, client=FakeS3Client())

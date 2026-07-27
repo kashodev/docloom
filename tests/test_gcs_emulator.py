@@ -27,7 +27,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture
-def bucket_store():  # noqa: ANN201 - emulator only
+def bucket_store():
     from google.auth.credentials import AnonymousCredentials
     from google.cloud import storage
 
@@ -39,13 +39,13 @@ def bucket_store():  # noqa: ANN201 - emulator only
     return GcsBlobStore(name, prefix="runs", client=client)
 
 
-def test_put_get_roundtrip(bucket_store) -> None:  # noqa: ANN001
+def test_put_get_roundtrip(bucket_store) -> None:
     uri = bucket_store.put("r/pdf/inv_1.pdf", b"%PDF-1.7 body", "application/pdf")
     assert uri.startswith("gs://") and uri.endswith("runs/r/pdf/inv_1.pdf")
     assert bucket_store.get("r/pdf/inv_1.pdf") == b"%PDF-1.7 body"
 
 
-def test_exists_and_missing_key_raises(bucket_store) -> None:  # noqa: ANN001
+def test_exists_and_missing_key_raises(bucket_store) -> None:
     assert bucket_store.exists("r/a.bin") is False
     bucket_store.put("r/a.bin", b"x")
     assert bucket_store.exists("r/a.bin") is True
@@ -53,7 +53,7 @@ def test_exists_and_missing_key_raises(bucket_store) -> None:  # noqa: ANN001
         bucket_store.get("r/does-not-exist.bin")
 
 
-def test_iter_keys_is_sorted_and_prefix_stripped(bucket_store) -> None:  # noqa: ANN001
+def test_iter_keys_is_sorted_and_prefix_stripped(bucket_store) -> None:
     for key in ("r/golden/0002.gz", "r/golden/0000.gz", "r/golden/0001.gz", "r/pdf/x.pdf"):
         bucket_store.put(key, b"z")
     # Keys come back store-prefix-stripped, lexicographically ordered, filtered.
@@ -62,7 +62,7 @@ def test_iter_keys_is_sorted_and_prefix_stripped(bucket_store) -> None:  # noqa:
     ]
 
 
-def test_overwrite_on_retry_is_idempotent(bucket_store) -> None:  # noqa: ANN001
+def test_overwrite_on_retry_is_idempotent(bucket_store) -> None:
     bucket_store.put("r/pdf/inv.pdf", b"first")
     bucket_store.put("r/pdf/inv.pdf", b"second")   # a retry re-writes the same key
     assert bucket_store.get("r/pdf/inv.pdf") == b"second"

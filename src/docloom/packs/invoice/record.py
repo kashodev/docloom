@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from docloom.core.enums import DocumentCondition, Jurisdiction
 from docloom.core.locale.enums import Currency, Language, Locale
+from docloom.core.money import ZERO, money, sum_money
 from docloom.core.record import TableRows
 from docloom.packs.invoice.enums import (
     GOODS_KINDS,
@@ -35,7 +36,6 @@ from docloom.packs.invoice.enums import (
     LineItemKind,
     UsageUnit,
 )
-from docloom.core.money import ZERO, money, sum_money
 
 #: At or below this ``wear`` a document counts as *crisp* — well preserved, not
 #: an old or heavily copied artefact. Recorded on the golden row so an evaluation

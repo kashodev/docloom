@@ -51,7 +51,7 @@ def _names(value: Any, field_name: str) -> tuple[str, ...]:
     """A constraint written as a list, a bare scalar, or ``all``."""
     if value is None or value == "all":
         return ()
-    if isinstance(value, bool) or isinstance(value, int):
+    if isinstance(value, bool | int):
         raise ValueError(f"`{field_name}` takes names or `all`, not {value!r}")
     if isinstance(value, str):
         return (value,)
@@ -82,7 +82,7 @@ def _wear(value: Any) -> tuple[float, float] | None:
     low, high = (float(v) for v in value)
     if low > high:
         raise ValueError(f"wear range is [low, high]; got [{low}, {high}]")
-    if not (0.0 <= low and high <= 1.0):
+    if not (low >= 0.0 and high <= 1.0):
         raise ValueError(f"wear must lie in [0, 1]; got [{low}, {high}]")
     return (low, high)
 

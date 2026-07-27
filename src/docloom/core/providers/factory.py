@@ -50,7 +50,9 @@ PRESETS: dict[str, _Preset] = {
 }
 
 
-def build_provider(spec: dict[str, Any], *, client: httpx.AsyncClient | None = None) -> TextProvider:
+def build_provider(
+    spec: dict[str, Any], *, client: httpx.AsyncClient | None = None
+) -> TextProvider:
     """Construct one provider from a spec dict."""
     name = spec["name"]
     model = spec["model"]
@@ -64,7 +66,9 @@ def build_provider(spec: dict[str, Any], *, client: httpx.AsyncClient | None = N
 
     preset = PRESETS.get(name)
     if preset is None:
-        raise ValueError(f"unknown provider {name!r} (known: {', '.join(sorted(PRESETS))}, anthropic)")
+        raise ValueError(
+            f"unknown provider {name!r} (known: {', '.join(sorted(PRESETS))}, anthropic)"
+        )
 
     base_url = spec.get("base_url") or (
         os.environ.get(preset.base_url_env, preset.default_base_url)

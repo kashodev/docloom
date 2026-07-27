@@ -213,7 +213,7 @@ class DynamoDbStateStore:
             self._table.put_item(
                 Item=marker, ConditionExpression="attribute_not_exists(pk)"
             )
-        except Exception as exc:  # noqa: BLE001 - botocore's typed error needs the client
+        except Exception as exc:
             if type(exc).__name__ != "ConditionalCheckFailedException":
                 raise
             if not self._should_take_over(run.run_id):
@@ -293,7 +293,7 @@ class DynamoDbStateStore:
                 },
                 ReturnValues="ALL_NEW",
             )
-        except Exception as exc:  # noqa: BLE001 - botocore's typed error needs the client
+        except Exception as exc:
             if type(exc).__name__ == "ConditionalCheckFailedException":
                 return None
             raise
@@ -357,7 +357,7 @@ class DynamoDbStateStore:
                     ":null": None,
                 },
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if type(exc).__name__ == "ConditionalCheckFailedException":
                 return False
             raise

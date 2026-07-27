@@ -36,7 +36,9 @@ class Pricing:
         uncached = max(input_tokens - cached_input_tokens, 0)
         total = uncached * self.input_per_mtok + output_tokens * self.output_per_mtok
         if cached_input_tokens:
-            total += cached_input_tokens * (cached_rate if cached_rate is not None else self.input_per_mtok)
+            total += cached_input_tokens * (
+                cached_rate if cached_rate is not None else self.input_per_mtok
+            )
         return total / _MILLION
 
 
