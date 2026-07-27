@@ -9,6 +9,8 @@ extraction model over it, and score the results against the golden set with a
 single SQL join. The first document type is invoices; the architecture is
 document-agnostic.
 
+📖 **[Documentation](https://kashodev.github.io/docsynth/)** · [Quickstart](https://kashodev.github.io/docsynth/quickstart/)
+
 ## What you get
 
 - **Cent-exact golden dataset** — ground truth for every document; evaluation is
