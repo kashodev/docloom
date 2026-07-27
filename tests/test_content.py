@@ -32,7 +32,7 @@ from docloom.core.providers.base import CompletionResult, Usage
 from docloom.core.providers.pricing import pricing_for
 
 
-def run(coro):  # noqa: ANN001, ANN201
+def run(coro):
     return asyncio.run(coro)
 
 

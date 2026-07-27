@@ -16,7 +16,7 @@ import pytest
 from docloom.packs.invoice.stamps import INKS, SHAPES, stamp_svg
 
 
-def a_stamp(**kw):  # noqa: ANN003, ANN201
+def a_stamp(**kw):
     base = dict(company="Copperline Halcyon LLC", town="Denver, CO",
                 registration="EIN 54-4368743")
     base.update(kw)

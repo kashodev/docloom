@@ -21,7 +21,7 @@ from docloom.core.usage.dynamodb import usage_sort_key, usage_to_item
 from docloom.core.usage.firestore import usage_doc_id, usage_to_doc
 
 
-def a_usage(**kw) -> LlmUsage:  # noqa: ANN003
+def a_usage(**kw) -> LlmUsage:
     base = dict(run_id="r1", provider="anthropic", model="claude-haiku-4-5",
                 input_tokens=500, output_tokens=90, cost_usd=D("0.00095"))
     base.update(kw)
@@ -112,7 +112,7 @@ requires_dynamodb = pytest.mark.skipif(
 
 
 @pytest.fixture
-def dynamo_sink():  # noqa: ANN201 - integration only
+def dynamo_sink():
     import boto3
 
     from docloom.core.state.dynamodb import DynamoDbStateStore
@@ -140,7 +140,7 @@ def dynamo_sink():  # noqa: ANN201 - integration only
 
 
 @requires_dynamodb
-def test_dynamodb_writes_rows_and_survives_the_batch_limit(dynamo_sink) -> None:  # noqa: ANN001
+def test_dynamodb_writes_rows_and_survives_the_batch_limit(dynamo_sink) -> None:
     """batch_writer chunks past DynamoDB's 25-item limit; prove it with 60."""
     sink, table = dynamo_sink
     for i in range(60):
@@ -150,7 +150,7 @@ def test_dynamodb_writes_rows_and_survives_the_batch_limit(dynamo_sink) -> None:
 
 
 @requires_dynamodb
-def test_dynamodb_replay_overwrites_rather_than_double_counting(dynamo_sink) -> None:  # noqa: ANN001
+def test_dynamodb_replay_overwrites_rather_than_double_counting(dynamo_sink) -> None:
     sink, table = dynamo_sink
     for i in range(5):
         sink.record(a_usage(unit_index=2, call_index=i))
@@ -166,7 +166,7 @@ def test_dynamodb_replay_overwrites_rather_than_double_counting(dynamo_sink) -> 
 
 
 @requires_dynamodb
-def test_dynamodb_round_trips_the_exact_cost(dynamo_sink) -> None:  # noqa: ANN001
+def test_dynamodb_round_trips_the_exact_cost(dynamo_sink) -> None:
     sink, table = dynamo_sink
     sink.record(a_usage(unit_index=1, cost_usd=D("0.0000004")))
     sink.flush()
@@ -175,7 +175,7 @@ def test_dynamodb_round_trips_the_exact_cost(dynamo_sink) -> None:  # noqa: ANN0
 
 
 @requires_dynamodb
-def test_dynamodb_flush_is_empty_when_nothing_was_recorded(dynamo_sink) -> None:  # noqa: ANN001
+def test_dynamodb_flush_is_empty_when_nothing_was_recorded(dynamo_sink) -> None:
     sink, table = dynamo_sink
     assert sink.flush() == 0
     assert table.scan()["Count"] == 0

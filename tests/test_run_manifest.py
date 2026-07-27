@@ -10,14 +10,13 @@ retry, because generation does.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
 import docloom.packs  # noqa: F401 - registers the invoice pack
 from docloom.core import get_pack
-from docloom.core.enums import RunState, WorkUnitState
+from docloom.core.enums import RunState
 from docloom.core.pipeline import HtmlRenderer, create_run, resume_run, work_run
 from docloom.core.pipeline.manifest import (
     enumerate_document_keys,
@@ -27,13 +26,12 @@ from docloom.core.pipeline.manifest import (
     verify_run,
 )
 from docloom.core.pipeline.renderer import RenderedDocument
-from docloom.core.pipeline.source import DocumentSource
 from docloom.core.state.sqlite import SqliteStateStore
 from docloom.core.storage.local import LocalBlobStore
 
 
 def _run(tmp_path: Path, *, total: int = 12, unit_size: int = 4, run_id: str = "r",
-         storage_prefix: str = ""):  # noqa: ANN202
+         storage_prefix: str = ""):
     blob = LocalBlobStore(str(tmp_path / "blobs"))
     state = SqliteStateStore(tmp_path / "runs.db")
     source = get_pack("invoice").default_source(max_line_items=4)
@@ -111,7 +109,7 @@ def test_a_tampered_part_is_caught_shallowly(tmp_path: Path) -> None:
 class _FlakyRenderer(HtmlRenderer):
     """Fails one unit's documents so the run cannot complete."""
 
-    def render(self, record) -> RenderedDocument:  # noqa: ANN001
+    def render(self, record) -> RenderedDocument:
         if record.invoice_index >= 8:
             raise RuntimeError("boom")
         return super().render(record)

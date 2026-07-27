@@ -15,7 +15,7 @@ from urllib.parse import parse_qsl, urlparse
 from docloom.core.state.base import Run, StateStore, WorkUnit
 from docloom.core.state.sqlite import SqliteStateStore
 
-__all__ = ["Run", "StateStore", "SqliteStateStore", "WorkUnit", "open_state"]
+__all__ = ["Run", "SqliteStateStore", "StateStore", "WorkUnit", "open_state"]
 
 
 def open_state(uri: str) -> StateStore:

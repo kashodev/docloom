@@ -5,18 +5,18 @@ record (data). The kernel owns the loom; a :class:`~docloom.core.pack.DocumentPa
 supplies the pattern.
 """
 
-from docloom.core.enums import (
-    DocumentCondition,
-    Jurisdiction,
-    RunState,
-    WorkUnitState,
-)
 from docloom.core.content import (
     ContentCapability,
     ContentMode,
     LlmContentBuilder,
     build_catalogue,
     capability_of,
+)
+from docloom.core.enums import (
+    DocumentCondition,
+    Jurisdiction,
+    RunState,
+    WorkUnitState,
 )
 from docloom.core.locale import Currency, LabelRegistry, Language, Locale
 from docloom.core.money import ZERO, money, pct, sum_money

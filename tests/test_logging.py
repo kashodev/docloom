@@ -48,7 +48,7 @@ def json_logs() -> Callable[[], list[dict]]:
 
 
 # ── Rendering: console vs Cloud Logging JSON ────────────────────────────────
-def test_json_mode_emits_cloud_logging_fields(json_logs) -> None:  # noqa: ANN001
+def test_json_mode_emits_cloud_logging_fields(json_logs) -> None:
     get_logger("t").warning("unit failed", unit=4, error="boom")
     record = json_logs()[-1]
     # Cloud Logging keys off `severity` and `message`, not structlog's defaults.
@@ -84,7 +84,7 @@ def test_level_filtering_hides_below_threshold() -> None:
 
 
 # ── Context binding correlates a worker's lines ─────────────────────────────
-def test_bound_context_rides_every_line(json_logs) -> None:  # noqa: ANN001
+def test_bound_context_rides_every_line(json_logs) -> None:
     with bound(run_id="r1", task=2):
         get_logger("a").info("one")
         get_logger("b").warning("two")
@@ -93,7 +93,7 @@ def test_bound_context_rides_every_line(json_logs) -> None:  # noqa: ANN001
     assert {e["message"] for e in events} == {"one", "two"}
 
 
-def test_bound_context_is_scoped(json_logs) -> None:  # noqa: ANN001
+def test_bound_context_is_scoped(json_logs) -> None:
     with bound(unit=3):
         get_logger("a").info("inside")
     get_logger("a").info("outside")
@@ -103,7 +103,7 @@ def test_bound_context_is_scoped(json_logs) -> None:  # noqa: ANN001
 
 
 # ── The events that matter get logged ───────────────────────────────────────
-def test_a_completed_unit_is_logged_with_its_context(tmp_path: Path, json_logs) -> None:  # noqa: ANN001
+def test_a_completed_unit_is_logged_with_its_context(tmp_path: Path, json_logs) -> None:
     blob = LocalBlobStore(str(tmp_path / "b"))
     state = SqliteStateStore(tmp_path / "s.db")
     source = get_pack("invoice").default_source(max_line_items=4)
@@ -121,11 +121,11 @@ def test_a_completed_unit_is_logged_with_its_context(tmp_path: Path, json_logs) 
 
 
 class _Boom(HtmlRenderer):
-    def render(self, record) -> RenderedDocument:  # noqa: ANN001
+    def render(self, record) -> RenderedDocument:
         raise RuntimeError("render exploded")
 
 
-def test_a_swallowed_unit_failure_is_still_logged(tmp_path: Path, json_logs) -> None:  # noqa: ANN001
+def test_a_swallowed_unit_failure_is_still_logged(tmp_path: Path, json_logs) -> None:
     """The discipline that matters most here: a failure that is caught and
     handled (unit marked failed, worker continues) must not be silent — that is
     the exact shape of several bugs this project has hit."""
@@ -145,7 +145,7 @@ def test_a_swallowed_unit_failure_is_still_logged(tmp_path: Path, json_logs) -> 
     assert any(e["message"] == "run has failed units — a re-run is needed" for e in events)
 
 
-def test_an_empty_completion_is_logged(json_logs) -> None:  # noqa: ANN001
+def test_an_empty_completion_is_logged(json_logs) -> None:
     """The DeepSeek case — logged at WARNING as it happens, not only surfaced in
     the final report."""
     import asyncio
@@ -157,10 +157,12 @@ def test_an_empty_completion_is_logged(json_logs) -> None:  # noqa: ANN001
     from docloom.core.providers.pricing import pricing_for
 
     class Empty:
-        name = "deepseek"; model = "deepseek-v4-flash"; pricing = pricing_for("__local__")
-        async def complete(self, request):  # noqa: ANN001
+        name = "deepseek"
+        model = "deepseek-v4-flash"
+        pricing = pricing_for("__local__")
+        async def complete(self, request):
             return CompletionResult("", Usage(37, 48), self.model, self.name, D("0.001"))
-        def estimate_cost(self, request):  # noqa: ANN001
+        def estimate_cost(self, request):
             return D("0.001")
 
     mix = ProviderMix([Empty()], [1.0])
@@ -225,7 +227,7 @@ def test_a_traceback_carries_no_frame_locals() -> None:
     assert len(line) < 4000, f"failure record is {len(line)} bytes; locals leaked back in"
 
 
-def test_a_re_run_says_already_planned_not_another_worker(json_logs, tmp_path) -> None:  # noqa: ANN001
+def test_a_re_run_says_already_planned_not_another_worker(json_logs, tmp_path) -> None:
     """create_run on an already-planned run (a re-run, or a retried single task)
     must not log 'another worker is planning' — there may be no other worker at
     all. It should say the run is already planned and resume it."""

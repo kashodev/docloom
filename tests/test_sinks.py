@@ -20,7 +20,6 @@ from docloom.core.sinks.arrow import rows_to_table
 from docloom.core.sinks.duckdb_sink import DuckDBSink
 from tests.factories import invoice, simple_lines, tiered_line
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Arrow conversion — the exactness guarantees
 # ─────────────────────────────────────────────────────────────────────────────

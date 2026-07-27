@@ -35,7 +35,7 @@ from docloom.packs.invoice.jurisdictions import Jurisdiction
 from docloom.packs.invoice.sampler import InvoiceSampler
 
 
-def a_company(cid: str, **kw) -> CompanyRow:  # noqa: ANN003
+def a_company(cid: str, **kw) -> CompanyRow:
     base = dict(company_id=cid, name=f"{cid.title()} Trading Ltd",
                 business_type=BusinessType.RETAIL, jurisdiction=Jurisdiction.US,
                 locale=Locale.EN_US, currency=Currency.USD, weight=1.0)
@@ -56,7 +56,7 @@ def some_products(n: int, prefix: str = "widget") -> list[ProductTemplate]:
     ]
 
 
-def write_small(tmp_path: Path, *, companies=2, products=6, version="v1"):  # noqa: ANN001, ANN201
+def write_small(tmp_path: Path, *, companies=2, products=6, version="v1"):
     rows = [a_company(f"co{i}") for i in range(companies)]
     catalogue = {r.company_id: some_products(products, f"co{i}-item")
                  for i, r in enumerate(rows)}
@@ -68,7 +68,7 @@ def write_small(tmp_path: Path, *, companies=2, products=6, version="v1"):  # no
 
 # ── Round trip ──────────────────────────────────────────────────────────────
 def test_write_then_load_round_trips(tmp_path: Path) -> None:
-    _, rows, products = write_small(tmp_path, companies=3, products=4)
+    _, _, products = write_small(tmp_path, companies=3, products=4)
     loaded = load_catalogue(str(tmp_path))
 
     assert loaded.version == "v1"
@@ -104,7 +104,7 @@ def test_the_artifact_satisfies_the_catalogue_protocol(tmp_path: Path) -> None:
 
 def test_products_are_per_company_not_pooled(tmp_path: Path) -> None:
     """The whole point of per-company catalogues: a vendor sells its own SKUs."""
-    _, _, products = write_small(tmp_path, companies=3, products=5)
+    _, _, _ = write_small(tmp_path, companies=3, products=5)
     loaded = load_catalogue(str(tmp_path))
     seen = {c.company_id: {p.description for p in loaded.spec_for(c).products}
             for c in loaded.roster().companies}

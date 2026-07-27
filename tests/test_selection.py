@@ -24,7 +24,7 @@ from docloom.packs.invoice.catalog import ALL_ARCHETYPES, GENERAL_ARCHETYPES
 from docloom.packs.invoice.sampler import InvoiceSampler
 
 
-def docs(selection: Selection, n: int = 12, run_id: str = "sel", **kw):  # noqa: ANN201
+def docs(selection: Selection, n: int = 12, run_id: str = "sel", **kw):
     sampler = InvoiceSampler(max_line_items=6, selection=selection, **kw)
     return [sampler.generate(run_id, i) for i in range(n)]
 

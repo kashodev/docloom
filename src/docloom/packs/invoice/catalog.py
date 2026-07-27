@@ -21,7 +21,7 @@ identity and look, and the product pools are all reproducible.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from decimal import Decimal
 from random import Random
 from typing import Protocol, runtime_checkable

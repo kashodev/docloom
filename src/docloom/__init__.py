@@ -13,4 +13,4 @@ from docloom.core import DocumentPack, GoldenRecord, available_packs, get_pack
 
 __version__ = "0.1.0"
 
-__all__ = ["DocumentPack", "GoldenRecord", "available_packs", "get_pack", "__version__"]
+__all__ = ["DocumentPack", "GoldenRecord", "__version__", "available_packs", "get_pack"]

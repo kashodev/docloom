@@ -47,7 +47,10 @@ def _text(ini: str, size: int = 19) -> str:
 
 
 def _circle(ini: str) -> str:
-    return f'<circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="3"/>{_text(ini)}'
+    return (
+        f'<circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" '
+        f'stroke-width="3"/>{_text(ini)}'
+    )
 
 
 def _diamond(ini: str) -> str:

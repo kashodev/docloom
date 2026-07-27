@@ -37,7 +37,7 @@ Open Font License 1.1 (see ``core/fonts/OFL.txt`` and
 from __future__ import annotations
 
 import base64
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 _GENERIC_FALLBACK = "sans-serif"
@@ -59,7 +59,8 @@ FONT_STACKS: dict[str, str] = {
     "sans-geometric":
         "'Century Gothic', 'Avenir Next', Futura, 'URW Gothic', 'Noto Sans', sans-serif",
     "sans-grotesque":
-        "'Arial Narrow', 'Liberation Sans Narrow', 'Archivo Narrow', 'Roboto Condensed', sans-serif",
+        "'Arial Narrow', 'Liberation Sans Narrow', 'Archivo Narrow', "
+        "'Roboto Condensed', sans-serif",
     "slab":
         "Rockwell, 'Roboto Slab', 'Rockwell Nova', 'DejaVu Serif', serif",
     "mono-invoice":
@@ -143,7 +144,7 @@ def font_stack(key: str) -> str:
     return f"'{family}', {fallback}" if family else fallback
 
 
-@lru_cache(maxsize=None)
+@cache
 def _data_uri(key: str, weight: int) -> str:
     """base64 ``data:`` URI for one bundled weight. Cached — the same handful of
     fonts is embedded across an entire run, so read+encode each at most once."""
@@ -156,7 +157,7 @@ def weights_for(key: str) -> tuple[int, ...]:
     return (400,) if key in _SINGLE_WEIGHT else _BUNDLED_WEIGHTS
 
 
-@lru_cache(maxsize=None)
+@cache
 def font_faces_css(keys: tuple[str, ...]) -> str:
     """``@font-face`` rules for several keys at once.
 
@@ -167,7 +168,7 @@ def font_faces_css(keys: tuple[str, ...]) -> str:
     return "\n".join(css for key in keys if (css := font_face_css(key)))
 
 
-@lru_cache(maxsize=None)
+@cache
 def font_face_css(key: str) -> str:
     """``@font-face`` rules that embed the bundled OFL font for this key.
 

@@ -24,13 +24,12 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal as D
 
 import pytest
 
 from docloom.core.enums import RunState, WorkUnitState
 from docloom.core.state.base import Run, WorkUnit
-from decimal import Decimal as D
-
 from docloom.core.state.dynamodb import (
     item_to_run,
     item_to_spend,
@@ -112,7 +111,7 @@ requires_dynamodb = pytest.mark.skipif(
 
 
 @pytest.fixture
-def store():  # noqa: ANN201 - integration only
+def store():
     import boto3
 
     from docloom.core.state.dynamodb import DynamoDbStateStore
@@ -137,7 +136,7 @@ def store():  # noqa: ANN201 - integration only
             mock.stop()
 
 
-def seed(store, units: int = 4, run_id: str = "run_1", **kw):  # noqa: ANN001, ANN201
+def seed(store, units: int = 4, run_id: str = "run_1", **kw):
     store.create_run(
         Run(run_id=run_id, pack="invoice", config_id="cfg", total_units=units,
             state=RunState.RUNNING),
@@ -148,7 +147,7 @@ def seed(store, units: int = 4, run_id: str = "run_1", **kw):  # noqa: ANN001, A
 
 
 @requires_dynamodb
-def test_create_and_read_back_a_run(store) -> None:  # noqa: ANN001
+def test_create_and_read_back_a_run(store) -> None:
     seed(store, units=3)
     run = store.get_run("run_1")
     assert run is not None and run.pack == "invoice" and run.total_units == 3
@@ -156,7 +155,7 @@ def test_create_and_read_back_a_run(store) -> None:  # noqa: ANN001
 
 
 @requires_dynamodb
-def test_claim_walks_units_in_order_then_returns_none(store) -> None:  # noqa: ANN001
+def test_claim_walks_units_in_order_then_returns_none(store) -> None:
     seed(store, units=3)
     claimed = [store.claim_next_unit("run_1") for _ in range(4)]
     assert [u.unit_index for u in claimed[:3]] == [0, 1, 2]  # type: ignore[union-attr]
@@ -165,7 +164,7 @@ def test_claim_walks_units_in_order_then_returns_none(store) -> None:  # noqa: A
 
 
 @requires_dynamodb
-def test_a_unit_is_never_claimed_twice(store) -> None:  # noqa: ANN001
+def test_a_unit_is_never_claimed_twice(store) -> None:
     """The conditional write is the whole concurrency guarantee."""
     seed(store, units=6)
     seen = []
@@ -176,7 +175,7 @@ def test_a_unit_is_never_claimed_twice(store) -> None:  # noqa: ANN001
 
 
 @requires_dynamodb
-def test_a_lost_race_advances_to_the_next_unit(store) -> None:  # noqa: ANN001
+def test_a_lost_race_advances_to_the_next_unit(store) -> None:
     """Simulate the race directly: steal unit 0 out from under the claim by
     marking it running first; the claim must return unit 1, not fail."""
     seed(store, units=2)
@@ -188,7 +187,7 @@ def test_a_lost_race_advances_to_the_next_unit(store) -> None:  # noqa: ANN001
 
 
 @requires_dynamodb
-def test_complete_and_fail_update_progress_and_clear_the_lease(store) -> None:  # noqa: ANN001
+def test_complete_and_fail_update_progress_and_clear_the_lease(store) -> None:
     seed(store, units=3)
     for _ in range(3):
         store.claim_next_unit("run_1")
@@ -205,7 +204,7 @@ def test_complete_and_fail_update_progress_and_clear_the_lease(store) -> None:  
 
 
 @requires_dynamodb
-def test_failed_units_rejoin_only_on_reset(store) -> None:  # noqa: ANN001
+def test_failed_units_rejoin_only_on_reset(store) -> None:
     seed(store, units=2)
     store.claim_next_unit("run_1")
     store.fail_unit("run_1", 0, "blip")
@@ -220,7 +219,7 @@ def test_failed_units_rejoin_only_on_reset(store) -> None:  # noqa: ANN001
 
 
 @requires_dynamodb
-def test_reclaim_recovers_a_crashed_unit(store) -> None:  # noqa: ANN001
+def test_reclaim_recovers_a_crashed_unit(store) -> None:
     seed(store, units=2)
     crashed = store.claim_next_unit("run_1")             # never completed
     assert crashed is not None
@@ -233,7 +232,7 @@ def test_reclaim_recovers_a_crashed_unit(store) -> None:  # noqa: ANN001
 
 
 @requires_dynamodb
-def test_paused_and_cancelled_runs_yield_no_claims(store) -> None:  # noqa: ANN001
+def test_paused_and_cancelled_runs_yield_no_claims(store) -> None:
     seed(store, units=2)
     store.set_run_state("run_1", RunState.PAUSED)
     assert store.claim_next_unit("run_1") is None
@@ -244,7 +243,7 @@ def test_paused_and_cancelled_runs_yield_no_claims(store) -> None:  # noqa: ANN0
 
 
 @requires_dynamodb
-def test_paging_past_a_hundred_units(store) -> None:  # noqa: ANN001
+def test_paging_past_a_hundred_units(store) -> None:
     """create_run batches, and the unit query pages — prove both past one batch."""
     seed(store, units=120)
     assert len(list(store.units("run_1"))) == 120
@@ -265,7 +264,7 @@ def test_spend_item_mapping_round_trips_the_cost() -> None:
 
 
 @requires_dynamodb
-def test_add_spend_is_atomic_and_exact(store) -> None:  # noqa: ANN001
+def test_add_spend_is_atomic_and_exact(store) -> None:
     """ADD is a server-side increment on DynamoDB's decimal number type, so the
     counter neither races nor loses precision."""
     seed(store, units=1)
@@ -279,14 +278,14 @@ def test_add_spend_is_atomic_and_exact(store) -> None:  # noqa: ANN001
 
 
 @requires_dynamodb
-def test_add_spend_returns_the_running_total(store) -> None:  # noqa: ANN001
+def test_add_spend_returns_the_running_total(store) -> None:
     seed(store, units=1)
     assert store.add_spend("run_1", "m", cost=D("0.01")) == D("0.01")
     assert store.add_spend("run_1", "m", cost=D("0.02")) == D("0.03")
 
 
 @requires_dynamodb
-def test_rollup_rows_do_not_disturb_the_unit_claim(store) -> None:  # noqa: ANN001
+def test_rollup_rows_do_not_disturb_the_unit_claim(store) -> None:
     """Both live in one partition, so prove the claim still walks units only."""
     seed(store, units=3)
     store.add_spend("run_1", "m", cost=D("0.01"))
@@ -311,7 +310,7 @@ def test_an_item_written_before_the_flag_reads_as_planned() -> None:
 
 
 @requires_dynamodb
-def test_the_first_planner_wins_and_the_second_is_told_it_lost(store) -> None:  # noqa: ANN001
+def test_the_first_planner_wins_and_the_second_is_told_it_lost(store) -> None:
     """Every worker in an array job starts by trying to plan. The conditional put
     is what makes that safe — the same primitive the unit claim uses."""
     run = Run(run_id="run_1", pack="invoice", config_id="cfg", total_units=2,
@@ -323,7 +322,7 @@ def test_the_first_planner_wins_and_the_second_is_told_it_lost(store) -> None:  
 
 
 @requires_dynamodb
-def test_a_late_planner_cannot_reset_a_claimed_unit(store) -> None:  # noqa: ANN001
+def test_a_late_planner_cannot_reset_a_claimed_unit(store) -> None:
     """The damage the race caused: worker B replans, unit 0 returns to pending,
     and two workers generate the same documents."""
     seed(store, units=3)
@@ -342,14 +341,14 @@ def test_a_late_planner_cannot_reset_a_claimed_unit(store) -> None:  # noqa: ANN
 
 
 @requires_dynamodb
-def test_a_finished_plan_is_marked_planned(store) -> None:  # noqa: ANN001
+def test_a_finished_plan_is_marked_planned(store) -> None:
     seed(store, units=2)
     run = store.get_run("run_1")
     assert run is not None and run.planned is True
 
 
 @requires_dynamodb
-def test_a_half_written_plan_yields_no_claims(store) -> None:  # noqa: ANN001
+def test_a_half_written_plan_yields_no_claims(store) -> None:
     """The window between the marker and the last unit: the run exists but has
     nothing to claim *yet*. A worker that claimed then would report a finished
     run that generated nothing."""
@@ -370,7 +369,7 @@ def test_a_half_written_plan_yields_no_claims(store) -> None:  # noqa: ANN001
 
 
 @requires_dynamodb
-def test_an_abandoned_marker_is_taken_over(store) -> None:  # noqa: ANN001
+def test_an_abandoned_marker_is_taken_over(store) -> None:
     """A planner that dies mid-plan must not wedge the run forever: once its
     marker is older than the takeover window, the next worker replans it."""
     from docloom.core.state.base import PLANNING_TAKEOVER_SECONDS
@@ -390,7 +389,7 @@ def test_an_abandoned_marker_is_taken_over(store) -> None:  # noqa: ANN001
 
 
 @requires_dynamodb
-def test_a_live_marker_is_left_alone(store) -> None:  # noqa: ANN001
+def test_a_live_marker_is_left_alone(store) -> None:
     """The mirror of the takeover: a planner still working must not be trampled."""
     run = Run(run_id="run_1", pack="invoice", config_id="cfg", total_units=2,
               state=RunState.RUNNING)

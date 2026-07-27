@@ -42,13 +42,12 @@ from dataclasses import dataclass, field, replace
 from decimal import Decimal, InvalidOperation
 
 from docloom.core.locale.enums import Locale
+from docloom.core.providers.base import CompletionRequest
 from docloom.core.providers.budget import BudgetGuard
 from docloom.core.providers.catalogue_runner import CatalogueItem, CatalogueRunner
-from docloom.core.providers.base import CompletionRequest
 from docloom.core.providers.mix import ProviderMix
 from docloom.packs.invoice.artifact import CompanyRow
 from docloom.packs.invoice.catalog import ProductTemplate
-from docloom.packs.invoice.procedural import generate_catalogue
 from docloom.packs.invoice.validation import check_text
 
 #: Products asked for in one call. The batch amortises the input tokens (the
@@ -317,11 +316,11 @@ async def build_llm_catalogue(
     # off it; a fuller sample of the (now sub-category-coherent) skeleton holds
     # the model inside the line. In the company's printed language, with price
     # bands so the format is shown too.
-    _N_SHOTS = 6
+    _n_shots = 6
     examples: dict[str, list[tuple[str, Decimal, Decimal]]] = {
         cid: [
             (_printed_text(p, _is_french(by_id[cid].locale)), p.price_low, p.price_high)
-            for p in items[:_N_SHOTS]
+            for p in items[:_n_shots]
         ]
         for cid, items in fallback.items()
     }

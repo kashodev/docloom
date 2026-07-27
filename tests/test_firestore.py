@@ -17,20 +17,19 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal as D
 
 import pytest
 
 from docloom.core.enums import RunState, WorkUnitState
 from docloom.core.state.base import TOTAL_MODEL, Run, WorkUnit
-from decimal import Decimal as D
-
 from docloom.core.state.firestore import (
     _BATCH_LIMIT,
     _chunks,
     _doc_id,
     doc_lease_is_expired,
-    doc_to_spend,
     doc_to_run,
+    doc_to_spend,
     doc_to_unit,
     run_is_claimable,
     run_to_doc,
@@ -128,13 +127,13 @@ requires_emulator = pytest.mark.skipif(
 )
 
 
-def _emu_store(lease_seconds: float = 900):  # noqa: ANN202 - emulator only
+def _emu_store(lease_seconds: float = 900):
     from docloom.core.state.firestore import FirestoreStateStore
 
     return FirestoreStateStore(project="docloom-test", lease_seconds=lease_seconds)
 
 
-def _emu_run(store, units: int, *, lease_seconds: float = 900) -> str:  # noqa: ANN001
+def _emu_run(store, units: int, *, lease_seconds: float = 900) -> str:
     import uuid
     run_id = f"emu_{uuid.uuid4().hex[:10]}"
     store.create_run(a_run(run_id=run_id, total_units=units), [
@@ -314,10 +313,10 @@ class _FakeBatch:
     """A WriteBatch that rejects an oversized commit the way Firestore does:
     'Transaction or batch is too large. Maximum 500 writes allowed per request'."""
 
-    def __init__(self, client: "_FakeClient") -> None:
+    def __init__(self, client: _FakeClient) -> None:
         self._client, self._ops = client, []
 
-    def set(self, ref: "_FakeDoc", doc: dict) -> None:
+    def set(self, ref: _FakeDoc, doc: dict) -> None:
         self._ops.append((ref.path, doc))
 
     update = set
@@ -336,7 +335,7 @@ class _FakeDoc:
     def __init__(self, path: str) -> None:
         self.path = path
 
-    def collection(self, name: str) -> "_FakeCol":
+    def collection(self, name: str) -> _FakeCol:
         return _FakeCol(f"{self.path}/{name}")
 
 
@@ -360,7 +359,7 @@ class _FakeClient:
         return _FakeBatch(self)
 
 
-def _fake_store():  # noqa: ANN202
+def _fake_store():
     from docloom.core.state.firestore import FirestoreStateStore
 
     client = _FakeClient()

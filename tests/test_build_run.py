@@ -16,11 +16,11 @@ from pathlib import Path
 import pytest
 
 from docloom.core.enums import RunState
+from docloom.core.state.sqlite import SqliteStateStore
 from docloom.packs.invoice.artifact import load_catalogue, write_catalogue
 from docloom.packs.invoice.build_run import build_catalogue_run
 from docloom.packs.invoice.procedural import generate_catalogue
 from docloom.packs.invoice.sampler import InvoiceSampler
-from docloom.core.state.sqlite import SqliteStateStore
 
 
 def _state(tmp_path: Path, name: str = "b.db") -> SqliteStateStore:
@@ -90,13 +90,13 @@ def test_many_workers_split_the_units_without_collision(tmp_path: Path) -> None:
 
 
 # ── A partial build is not mistaken for complete ────────────────────────────
-def test_a_failed_unit_leaves_no_root_manifest(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+def test_a_failed_unit_leaves_no_root_manifest(tmp_path: Path, monkeypatch) -> None:
     """No root ⇒ do not consume it — the same completion contract as a run."""
     from docloom.packs.invoice import build_run
 
     real = build_run.generate_company_range
 
-    def explode_on_one_range(start, end, **kw):  # noqa: ANN001, ANN003
+    def explode_on_one_range(start, end, **kw):
         if start == 20:
             raise RuntimeError("boom")
         return real(start, end, **kw)
@@ -111,7 +111,7 @@ def test_a_failed_unit_leaves_no_root_manifest(tmp_path: Path, monkeypatch) -> N
         load_catalogue(out)                     # no root manifest for a partial build
 
 
-def test_an_incomplete_build_never_reports_itself_complete(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+def test_an_incomplete_build_never_reports_itself_complete(tmp_path: Path, monkeypatch) -> None:
     """The false-green that made a 1-of-10 build read as four successful tasks.
 
     A worker that claims nothing is not a success: the first attempt fails its
@@ -123,7 +123,7 @@ def test_an_incomplete_build_never_reports_itself_complete(tmp_path: Path, monke
 
     real = build_run.generate_company_range
 
-    def explode(start, end, **kw):  # noqa: ANN001, ANN003
+    def explode(start, end, **kw):
         if start >= 40:
             raise RuntimeError("provider is out of credit")
         return real(start, end, **kw)
@@ -167,7 +167,7 @@ def test_a_worker_that_claims_nothing_reports_the_builds_state(tmp_path: Path) -
     assert stats.build_has_failures is False
 
 
-def test_a_build_reclaims_a_unit_a_crashed_worker_abandoned(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+def test_a_build_reclaims_a_unit_a_crashed_worker_abandoned(tmp_path: Path, monkeypatch) -> None:
     """A unit left RUNNING with a lapsed lease by a killed/timed-out worker must be
     reclaimed at start. The Firestore claim does not scan for expired leases, so
     without an explicit reclaim such a unit is invisible to a re-run forever — the
@@ -231,14 +231,14 @@ def test_a_worker_finishing_before_its_peers_is_not_a_failure(tmp_path: Path) ->
     assert stats.build_has_failures is False          # …but no holes → NOT a failure
 
 
-def test_a_resume_completes_the_build(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+def test_a_resume_completes_the_build(tmp_path: Path, monkeypatch) -> None:
     from docloom.core.pipeline import resume_run
     from docloom.packs.invoice import build_run
 
     real = build_run.generate_company_range
     fail = {"on": True}
 
-    def flaky(start, end, **kw):  # noqa: ANN001, ANN003
+    def flaky(start, end, **kw):
         if start == 20 and fail["on"]:
             raise RuntimeError("boom")
         return real(start, end, **kw)
@@ -283,10 +283,12 @@ def test_the_llm_build_shards_and_falls_back(tmp_path: Path) -> None:
     from docloom.core.providers.pricing import pricing_for
 
     class Empty:
-        name = "f"; model = "f-1"; pricing = pricing_for("__local__")
-        async def complete(self, request):  # noqa: ANN001
+        name = "f"
+        model = "f-1"
+        pricing = pricing_for("__local__")
+        async def complete(self, request):
             return CompletionResult("", Usage(10, 5), self.model, self.name, D("0.001"))
-        def estimate_cost(self, request):  # noqa: ANN001
+        def estimate_cost(self, request):
             return D("0.001")
 
     out = str(tmp_path / "cat")
@@ -314,12 +316,14 @@ def test_quarantine_persists_across_units_and_lands_in_the_manifest(tmp_path: Pa
     from docloom.core.providers.pricing import pricing_for
 
     class Empty:
-        name = "deepseek"; model = "deepseek-v4-flash"; pricing = pricing_for("__local__")
+        name = "deepseek"
+        model = "deepseek-v4-flash"
+        pricing = pricing_for("__local__")
         calls = 0
-        async def complete(self, request):  # noqa: ANN001
+        async def complete(self, request):
             type(self).calls += 1
             return CompletionResult("", Usage(10, 2000), self.model, self.name, D("0.001"))
-        def estimate_cost(self, request):  # noqa: ANN001
+        def estimate_cost(self, request):
             return D("0.001")
 
     out = str(tmp_path / "cat")
@@ -362,12 +366,14 @@ def test_a_budget_too_small_completes_procedurally_it_does_not_fail(tmp_path: Pa
     from docloom.core.providers.pricing import pricing_for
 
     class Priced:
-        name = "p"; model = "p-1"; pricing = pricing_for("__local__")
-        async def complete(self, request):  # noqa: ANN001
+        name = "p"
+        model = "p-1"
+        pricing = pricing_for("__local__")
+        async def complete(self, request):
             # A usable one-line description so filled slots are real, each $0.01.
             return CompletionResult('[{"description": "Widget, blue, each"}]',
                                     Usage(50, 20), self.model, self.name, D("0.01"))
-        def estimate_cost(self, request):  # noqa: ANN001
+        def estimate_cost(self, request):
             return D("0.01")
 
     out = str(tmp_path / "cat")

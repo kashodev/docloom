@@ -43,11 +43,10 @@ from tests.factories import (
     tiered_line,
 )
 
-
 PACK = get_pack("invoice")
 
 
-def html_for(inv) -> str:  # noqa: ANN001
+def html_for(inv) -> str:
     return render_record(PACK, inv)
 
 

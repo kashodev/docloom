@@ -346,7 +346,7 @@ class SqliteStateStore:
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
             metadata=json.loads(row["metadata"]),
-            planned=bool(row["planned"]) if "planned" in row.keys() else True,
+            planned=bool(row["planned"]) if "planned" in row.keys() else True,  # noqa: SIM118 — sqlite3.Row, not a dict
         )
 
     @staticmethod

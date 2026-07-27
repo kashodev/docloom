@@ -21,7 +21,7 @@ from docloom.core.storage.local import LocalBlobStore
 from docloom.packs.invoice import InvoiceSampler
 
 
-def _generate(tmp_path: Path, *, total: int = 30, unit_size: int = 10):  # noqa: ANN202
+def _generate(tmp_path: Path, *, total: int = 30, unit_size: int = 10):
     state = SqliteStateStore(tmp_path / "runs.db")
     blob = LocalBlobStore(tmp_path / "blobs")
     create_run(state, run_id="r", pack="invoice", config_id="cfg",

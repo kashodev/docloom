@@ -8,7 +8,6 @@ test, so it needs no renderer either.
 
 from __future__ import annotations
 
-import io
 from random import Random
 
 import numpy as np

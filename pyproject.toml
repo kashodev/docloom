@@ -91,6 +91,22 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+ignore = [
+    "N817",    # camelCase-imported-as-acronym — deliberate (e.g. ElementTree as ET)
+    "N818",    # Error suffix on exceptions — renaming public exceptions is invasive
+    "RUF001",  # ambiguous unicode in strings — intentional – / → glyphs
+    "RUF002",  # ambiguous unicode in docstrings — intentional – / → glyphs
+    "RUF003",  # ambiguous unicode in comments — intentional – / → glyphs
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Bilingual product-catalogue data rows — wrapping hurts readability.
+"src/docloom/packs/invoice/catalog.py" = ["E501"]
+# Inline SVG markup in triple-quoted templates — can't wrap the opening tag.
+"src/docloom/packs/invoice/stamps.py" = ["E501"]
+# Dev smoke scripts and tests: long literals/assertions are fine.
+"scripts/*" = ["E501"]
+"tests/*" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"

@@ -12,8 +12,8 @@ from __future__ import annotations
 import docloom.packs  # noqa: F401 - registers the invoice pack
 from docloom.core import get_pack
 from docloom.core.enums import DocumentCondition
-from docloom.core.render import render_record
 from docloom.core.fonts import HANDWRITING_KEYS
+from docloom.core.render import render_record
 from docloom.packs.invoice import HANDWRITTEN_ARCHETYPE
 from docloom.packs.invoice.handwriting import handwriting_for
 from tests.factories import invoice, simple_lines
@@ -21,7 +21,7 @@ from tests.factories import invoice, simple_lines
 PACK = get_pack("invoice")
 
 
-def handwritten(**kw):  # noqa: ANN003, ANN201
+def handwritten(**kw):
     inv = invoice(simple_lines(), **kw)
     return inv.model_copy(update={"condition": DocumentCondition.HANDWRITTEN})
 

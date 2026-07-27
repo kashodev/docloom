@@ -60,7 +60,7 @@ def _part_key(unit_index: int) -> str:
     return f"{_PARTS_DIR}/unit-{unit_index:06d}.json"
 
 
-def _shard_fallback(report: "BuildReport | None") -> dict | None:
+def _shard_fallback(report: BuildReport | None) -> dict | None:
     """Per-shard fallback record for the manifest (R3): which providers this
     shard found dead, and how its fill split. ``None`` for a procedural build,
     or an LLM build where nothing was quarantined — so a clean shard adds no
@@ -214,7 +214,7 @@ def _work_unit(
             # part. Same ordering guarantee as the run manifest.
             artifact.put(_part_key(unit.unit_index),
                          json.dumps(descriptor).encode(), "application/json")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             state.fail_unit(build_id, unit.unit_index, repr(exc))
             stats.units_failed += 1
             _log.warning("catalogue unit failed", error=repr(exc), exc_info=exc)

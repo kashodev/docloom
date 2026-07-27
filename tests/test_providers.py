@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from decimal import Decimal as D
+from typing import ClassVar
 
 import httpx
 import pytest
@@ -30,7 +31,7 @@ from docloom.core.providers.anthropic_provider import AnthropicProvider
 from docloom.core.providers.base import CompletionResult, TextProvider, Usage
 
 
-def run(coro):  # noqa: ANN001, ANN201
+def run(coro):
     """Drive a coroutine without pytest-asyncio."""
     return asyncio.run(coro)
 
@@ -68,7 +69,7 @@ def test_unknown_model_is_free() -> None:
 # OpenAI-compatible provider — via mock transport
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _mock_client(handler) -> httpx.AsyncClient:  # noqa: ANN001
+def _mock_client(handler) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
@@ -167,12 +168,12 @@ class _FakeBlock:
 
 
 class _FakeMessage:
-    content = [_FakeBlock()]
+    content: ClassVar = [_FakeBlock()]
     usage = _FakeAnthropicUsage()
 
 
 class _FakeMessages:
-    async def create(self, **kwargs):  # noqa: ANN003, ANN201
+    async def create(self, **kwargs):
         self.kwargs = kwargs
         return _FakeMessage()
 
@@ -229,7 +230,7 @@ class StubProvider:
         return D(0)
 
 
-def a_mix(**kw) -> ProviderMix:  # noqa: ANN003
+def a_mix(**kw) -> ProviderMix:
     return ProviderMix(
         [StubProvider("deepseek"), StubProvider("dashscope"), StubProvider("anthropic")],
         [0.4, 0.4, 0.2],
@@ -414,7 +415,7 @@ def test_provider_timeout_defaults_low_and_is_configurable() -> None:
 
 
 # ── Reasoning models (regressions from a real smoke run) ────────────────────
-def _reasoning_response(*, content, completion_tokens, capture=None):  # noqa: ANN001, ANN202
+def _reasoning_response(*, content, completion_tokens, capture=None):
     """A DeepSeek/Qwen-shaped reply where the model spent its budget thinking."""
     def handler(request: httpx.Request) -> httpx.Response:
         if capture is not None:

@@ -85,7 +85,7 @@ class FakePage:
     def set_content(self, html: str, wait_until: str = "load") -> None:
         self._log["html"] = html
 
-    def pdf(self, **kwargs) -> bytes:  # noqa: ANN003
+    def pdf(self, **kwargs) -> bytes:
         self._log["pdf_kwargs"] = kwargs
         return b"%PDF-1.7\nfake"
 
@@ -205,7 +205,7 @@ def test_fit_pass_reclaims_a_near_empty_trailing_page() -> None:
     near-empty trailing page it pulls the content back onto fewer pages."""
     import pikepdf
 
-    def page_count(renderer: PdfRenderer, record) -> int:  # noqa: ANN001
+    def page_count(renderer: PdfRenderer, record) -> int:
         return len(pikepdf.open(io.BytesIO(renderer.render(record).data)).pages)
 
     pack = get_pack("invoice")
@@ -233,7 +233,6 @@ def test_real_render_paginates_a_long_document() -> None:
     the repeating-header pagination actually works in Chromium, not just in CSS."""
     import pikepdf
 
-    from docloom.packs.invoice import RenderProfile
 
     long_bill = invoice(telecom_lines() * 40)
     long_bill = long_bill.model_copy(update={
@@ -246,7 +245,7 @@ def test_real_render_paginates_a_long_document() -> None:
     assert len(pikepdf.open(io.BytesIO(doc.data)).pages) > 1
 
 
-def _contd_markers(r: PdfRenderer, record) -> list[str]:  # noqa: ANN001
+def _contd_markers(r: PdfRenderer, record) -> list[str]:
     """Filled "(cont'd)" markers after the renderer's page-span pass, read back
     from the live DOM — the real end-to-end check that a section was flagged."""
     from docloom.core.render import render_record
@@ -299,7 +298,7 @@ def test_a_non_clean_render_is_degraded(monkeypatch: pytest.MonkeyPatch) -> None
 
     seen: dict = {}
 
-    def fake_degrade(data: bytes, condition, *, seed: int, dpi: int, wear: float) -> bytes:  # noqa: ANN001
+    def fake_degrade(data: bytes, condition, *, seed: int, dpi: int, wear: float) -> bytes:
         seen.update(condition=condition, seed=seed, dpi=dpi, wear=wear)
         return b"%PDF-degraded"
 

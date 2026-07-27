@@ -132,7 +132,7 @@ async def dump_raw() -> None:
                     print(f"    reasoning head:  {reasoning[:80]!r}")
                 print(f"  finish_reason:     {data['choices'][0].get('finish_reason')}")
                 print(f"  usage:             {json.dumps(usage)}")
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 print(f"  request failed: {exc!r}")
 
 
