@@ -1,0 +1,3 @@
+# Docs site toolchain (independent of the docloom package).
+# mkdocs-material pulls in mkdocs + pymdown-extensions.
+mkdocs-material>=9.5

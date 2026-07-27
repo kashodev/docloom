@@ -1,0 +1,94 @@
+site_name: docloom
+site_description: >-
+  Synthetic documents with a computed golden dataset — for testing AI/OCR
+  document-extraction pipelines against a known ground truth.
+site_url: https://kashodev.github.io/docloom/
+repo_url: https://github.com/kashodev/docloom
+repo_name: kashodev/docloom
+edit_uri: edit/main/site-docs/docs/
+copyright: docloom
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: slate
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: slate
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - tables
+  - attr_list
+  - pymdownx.details
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Kernel ↔ pack contract: architecture/contract.md
+      - Execution flows: architecture/flows.md
+      - Concurrency & coordination: architecture/concurrency.md
+      - Data model & the golden set: architecture/data-model.md
+  - Core reference:
+      - Overview: core/overview.md
+      - Pipeline: core/pipeline.md
+      - State stores: core/state.md
+      - Storage / Sinks / Usage: core/storage.md
+      - Providers & LLM catalogue: core/providers.md
+      - Locale / render / fonts / money / logging: core/misc.md
+  - Invoice pack:
+      - Overview: invoice/overview.md
+      - Catalogue building: invoice/catalogue.md
+      - Invoice generation: invoice/generation.md
+      - Export: invoice/export.md
+      - Content: invoice/content.md
+      - Rendering: invoice/rendering.md
+      - Composition & selection: invoice/composition.md
+      - Reference: invoice/reference.md
+  - Studio (the CLI):
+      - Overview: studio/overview.md
+      - Projects & provisioning: studio/projects.md
+      - Steps — catalog / pdfs / export: studio/steps.md
+      - Dispatch & status: studio/dispatch.md
+      - LLM catalogue & secrets: studio/catalogue.md
+      - Tuning & scaffolding: studio/tuning.md
+  - Operations:
+      - The deploy tool: operations/deploy-tool.md
+      - Deploying on GCP: operations/gcp.md
+      - Running / resuming / status / export: operations/running.md
+      - Deploying this docs site: operations/docs-site.md
+  - Design decisions: design-decisions.md
