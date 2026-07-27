@@ -1403,6 +1403,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design decisions
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -1419,6 +1437,91 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#content-catalogue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Content &amp; catalogue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#providers-budget-resilience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Providers, budget, resilience
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pipeline-coordination" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pipeline &amp; coordination
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rendering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rendering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#selection-realism-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selection (realism constraints)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1444,6 +1547,80 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#content-catalogue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Content &amp; catalogue
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#providers-budget-resilience" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Providers, budget, resilience
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pipeline-coordination" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pipeline &amp; coordination
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rendering" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rendering
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#selection-realism-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selection (realism constraints)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Observability
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1463,12 +1640,100 @@
 
 
 <h1 id="design-decisions">Design decisions<a class="headerlink" href="#design-decisions" title="Permanent link">&para;</a></h1>
-<p>The rationale index — the 'why' behind the built system.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>The non-obvious, <strong>current</strong> decisions that shape docloom — the "why" behind the
+built system. Each names the <a href="../#core-principles">principle</a> it serves and
+links to where it lives. Superseded designs are deliberately absent.</p>
+<h2 id="content-catalogue">Content &amp; catalogue<a class="headerlink" href="#content-catalogue" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Content built once, offline, into a versioned artifact; generation then draws
+  from it locally with no key.</strong> <em>(③ ⑤)</em> The whole shape of the system — see
+  <a href="../architecture/overview/">Architecture → Overview</a>.</li>
+<li><strong>Cent-exact golden data.</strong> <code>Decimal</code> <code>ROUND_HALF_UP</code> end to end, decimal128 in
+  Parquet — money is never a float, and a record that doesn't reconcile refuses to
+  render. <em>(①)</em> <a href="../core/misc/">money</a>.</li>
+<li><strong>The procedural catalogue is both skeleton and fallback.</strong> The LLM overlay
+  writes descriptions + a price band and falls back to the procedural product per
+  item, so a build is <em>always complete</em> and a provider outage degrades rather than
+  fails. <em>(③ ①)</em> <a href="../invoice/catalogue/">Catalogue building</a>.</li>
+<li><strong>Per-index seeding (<code>stable_seed</code>)</strong> makes a company/range independent and
+  reproducible, so a sharded build equals a single-file build. <em>(④)</em>
+  <a href="../core/pipeline/">Pipeline</a>.</li>
+<li><strong>A catalogue build <em>is a run</em></strong> over company ranges — it reuses the claim /
+  lease / manifest / budget machinery; the root manifest is the completion signal
+  and refuses a gap. <em>(④)</em> <a href="../invoice/catalogue/">Catalogue building</a>.</li>
+<li><strong>Identity is never stored</strong> — derived from <code>company_id</code> via <code>derive_identity</code>
+  at generation. <em>(①)</em> <a href="../architecture/data-model/">Data model</a>.</li>
+</ul>
+<h2 id="providers-budget-resilience">Providers, budget, resilience<a class="headerlink" href="#providers-budget-resilience" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Deterministic per-item provider routing</strong> by a stable hash → a weighted mix;
+  reproducible. <em>(②)</em> <a href="../core/providers/">Providers</a>.</li>
+<li><strong>Circuit breaker.</strong> A provider returning a streak of empty completions <em>or</em>
+  errors is quarantined; in-flight calls are <strong>cancelled mid-round</strong> (<code>as_completed</code>,
+  not <code>gather</code>) so a <em>hanging</em> provider can't burn the task's wall clock; budget
+  declines are excluded from the streak. <em>(④)</em> <a href="../core/providers/">Providers</a>.</li>
+<li><strong>Fallback pool.</strong> A quarantined provider's share is redistributed by a configured
+  <code>(target, share)</code> list; <strong>procedural is a first-class free sink</strong>; quarantine
+  <strong>persists across a build's units</strong> (an atomic set-union in the run state) and is
+  recorded per shard for audit. <em>(④)</em> <a href="../core/providers/">Providers</a>.</li>
+<li><strong>Fleet-wide budget.</strong> <code>DistributedBudgetGuard</code> counts against the store's spend
+  rollup; a budget hit <strong>degrades to procedural</strong>, it doesn't fail the unit. <em>(④)</em>
+  <a href="../core/state/">State stores</a>.</li>
+<li><strong>Reasoning models are disabled per vendor.</strong> deepseek uses
+  <code>extra_body: {thinking: {type: disabled}}</code>; qwen/dashscope uses
+  <code>enable_thinking: false</code> — otherwise they spend the token budget reasoning and
+  return an empty (but billed) completion, which is treated as a failure → fallback.
+  <em>(②)</em> <a href="../core/providers/">Providers</a>.</li>
+</ul>
+<h2 id="pipeline-coordination">Pipeline &amp; coordination<a class="headerlink" href="#pipeline-coordination" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Atomic claim + lease + reclaim</strong>, backend-neutral. The Firestore claim does
+  <strong>not</strong> scan for expired leases (explicit reclaim on resume / build start — a
+  per-claim scan is too costly). <em>(④ ②)</em> <a href="../architecture/concurrency/">Concurrency</a>.</li>
+<li><strong>Planning race via <code>Run.planned</code></strong> — an already-planned re-run resumes quietly;
+  cold-starting N tasks yields exactly one planner. <em>(④)</em>
+  <a href="../architecture/concurrency/">Concurrency</a>.</li>
+<li><strong>Completion via the root manifest + gap-refusal</strong>; a worker's exit code keys on
+  <strong>real holes only</strong>, not on peers still finishing. <em>(④)</em>
+  <a href="../core/pipeline/">Pipeline</a>.</li>
+<li><strong>The golden set is two flat tables</strong> (<code>invoices</code> + <code>line_items</code>), one row per
+  printed row, sha256 per shard. <em>(①)</em> <a href="../architecture/data-model/">Data model</a>.</li>
+</ul>
+<h2 id="rendering">Rendering<a class="headerlink" href="#rendering" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Jinja → HTML → Chromium PDF</strong>, with <code>fit_scale</code> to avoid a near-empty trailing
+  page and the running header from the pack. <em>(①)</em> <a href="../invoice/generation/">Invoice generation</a>.</li>
+<li><strong>The degrade pipeline</strong> turns a clean PDF into a scan (rasterise + noise /
+  speckle / JPEG, no text layer); <strong><code>wear</code></strong> drives ink roughening and scan
+  degradation <em>together</em>, so crisp and worn are one dial. <em>(①)</em> <a href="../core/pipeline/">Pipeline</a>.</li>
+<li><strong>Handwritten</strong> = bundled OFL handwriting faces + per-field jitter + a procedural
+  stamp and signature; <code>condition: handwritten</code> is inherently degraded. <em>(①)</em>
+  <a href="../invoice/generation/">Invoice generation</a>.</li>
+</ul>
+<h2 id="selection-realism-constraints">Selection (realism constraints)<a class="headerlink" href="#selection-realism-constraints" title="Permanent link">&para;</a></h2>
+<p>A slice's <a href="../core/misc/"><code>Selection</code></a> is resolved and validated <strong>up front</strong>
+(<code>UnsupportedConstraint</code>) so a nonsensical corpus fails at config time, not 40
+minutes into a run.</p>
+<ul>
+<li><strong>Handwritten always renders as the handwritten pad</strong> (no typeset archetype), and
+  <strong>handwritten ≠ telecom</strong> (a 50-page hand-filled invoice is nonsense). <em>(①)</em></li>
+<li><strong>Born-digital issuers are CLEAN-only.</strong> A software / AI business (<code>b2b_saas</code>,
+  <code>ai_platform</code>) is dropped from any non-clean condition — it is too new to have a
+  hand-filled or aged-paper original. Pinning such a type <em>and</em> a scan/handwritten
+  condition is a hard <code>UnsupportedConstraint</code>. <em>(①)</em></li>
+<li><strong>Era floor — a soft, opt-out default.</strong> An issue date is floored up to the
+  issuer type's era (e.g. <code>ai_platform</code> → 2025), but this <strong>never blocks a run</strong>:
+  it caps within the window and <code>--no-date-era-floor</code> / <code>enforce_date_era: false</code>
+  turns it off, so a run can deliberately produce anachronistic dates. Date-era
+  realism is an omittable input, not a hard rule — the operator decides. <em>(①)</em></li>
+</ul>
+<h2 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>structlog</strong>: console at a TTY, <strong>JSON with Cloud Logging <code>severity</code>/<code>message</code>
+  first</strong> in a pipe / Cloud Run; tracebacks carry no frame locals (a failure record
+  stays legible); contextvars bind <code>run_id</code> / <code>unit</code> / <code>task</code>. <em>(④ ②)</em>
+  <a href="../core/misc/">logging</a>.</li>
+</ul>
 
 
 
