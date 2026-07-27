@@ -380,6 +380,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Kernel ↔ pack contract
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -396,6 +414,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#documentpack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DocumentPack
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goldenrecord" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GoldenRecord
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contentcapability-does-this-pack-need-a-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ContentCapability — does this pack need a key?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-kernel-calls-the-pack-during-a-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the kernel calls the pack during a run
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1529,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#documentpack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DocumentPack
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#goldenrecord" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GoldenRecord
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#contentcapability-does-this-pack-need-a-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ContentCapability — does this pack need a key?
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-the-kernel-calls-the-pack-during-a-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How the kernel calls the pack during a run
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1600,156 @@
 
 
 <h1 id="kernel-pack-contract">Kernel ↔ pack contract<a class="headerlink" href="#kernel-pack-contract" title="Permanent link">&para;</a></h1>
-<p>DocumentPack, GoldenRecord, ContentMode; the connection diagram.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
+<p>The contract between the kernel and a pack is small on purpose. A pack interface
+designed against a single document type will be wrong somewhere, so the kernel
+keeps <strong>narrow expectations</strong> and gives packs <strong>wide latitude</strong>: when a second
+pack needs something, it is hoisted then — not before. Three pieces make up the
+whole extension surface: <code>DocumentPack</code>, <code>GoldenRecord</code>, and <code>ContentCapability</code>.</p>
+<div class="admonition abstract">
+<p class="admonition-title">Principles</p>
+<p><strong>⑤ Extensible</strong> — this contract <em>is</em> the extension surface; a new pack is a
+new document type, no kernel fork. · <strong>③ Locally capable</strong> — a pack <em>declares</em>
+its <code>ContentMode</code> here. · <strong>② Provider-agnostic</strong> — a pack never names a
+provider; it states <em>what</em> content it needs.</p>
 </div>
+<h2 id="documentpack"><code>DocumentPack</code><a class="headerlink" href="#documentpack" title="Permanent link">&para;</a></h2>
+<p>A <a href="https://docs.python.org/3/library/typing.html#typing.runtime_checkable"><code>runtime_checkable</code> <code>Protocol</code></a>
+(<code>core/pack.py</code>). A pack owns its record model, templates, label vocabulary, and
+the record → render-context mapping; the kernel owns locale formatting, the Jinja
+environment, storage, run state, providers, and export.</p>
+<table>
+<thead>
+<tr>
+<th>Member</th>
+<th>Kind</th>
+<th>What it gives the kernel</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>attr</td>
+<td>Stable id used in config (<code>document.pack: invoice</code>) and as the registry key.</td>
+</tr>
+<tr>
+<td><code>template_root</code></td>
+<td>property → <code>Path</code></td>
+<td>Directory of the pack's archetype templates.</td>
+</tr>
+<tr>
+<td><code>labels</code></td>
+<td>property → <code>LabelRegistry</code></td>
+<td>Printed vocabulary for every language the pack supports.</td>
+</tr>
+<tr>
+<td><code>content_capability</code></td>
+<td>property → <code>ContentCapability</code></td>
+<td>Where content comes from and whether it needs a key (below).</td>
+</tr>
+<tr>
+<td><code>table_names</code></td>
+<td>property → <code>tuple[str, …]</code></td>
+<td>The table names <code>to_rows()</code> will produce — declared up front so a sink can create/validate destinations before the first record.</td>
+</tr>
+<tr>
+<td><code>build_context(record)</code></td>
+<td>method → <code>dict</code></td>
+<td>Turns a record into a Jinja context. Must include <code>locale</code>, <code>currency</code>, <code>labels</code> — the kernel's formatting filters read those from the context.</td>
+</tr>
+<tr>
+<td><code>archetype_for(record)</code></td>
+<td>method → <code>str</code></td>
+<td>Template name (no extension) to render this record with.</td>
+</tr>
+<tr>
+<td><code>header_fields(record)</code></td>
+<td>method → <code>RunningHeader</code></td>
+<td>The per-page running header (<code>primary</code> text + localised <code>page_label</code>), so the PDF renderer needs no knowledge of any pack's record shape.</td>
+</tr>
+<tr>
+<td><code>default_source(*, selection, max_line_items, catalogue)</code></td>
+<td>method → <code>DocumentSource</code></td>
+<td>The pack's document source for a run (below).</td>
+</tr>
+</tbody>
+</table>
+<p><code>default_source</code> is where three things meet: an optional <strong><code>catalogue</code></strong> artifact
+URI to draw from (<code>file://</code> / <code>gs://</code> / <code>s3://</code>, credential-free to read); a
+<strong><code>selection</code></strong> the pack must honour or refuse (a slice named <code>french</code> that emits
+English is a wasted run — the pack raises <code>UnsupportedConstraint</code> rather than
+silently ignoring); and the pack's decision of whether that source is key-free
+(invoice returns a procedural sampler; a text-heavy pack returns an LLM-backed
+source behind the same run loop).</p>
+<h2 id="goldenrecord"><code>GoldenRecord</code><a class="headerlink" href="#goldenrecord" title="Permanent link">&para;</a></h2>
+<p>Every document type produces a <strong>record</strong> — the computed ground truth — and the
+document is a <em>projection</em> of it (<code>core/record.py</code>). The surface is deliberately
+tiny; packs carry whatever else they need.</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@runtime_checkable</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">GoldenRecord</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+    <span class="n">record_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">run_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">locale</span><span class="p">:</span> <span class="n">Locale</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_rows</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TableRows</span><span class="p">:</span> <span class="o">...</span>   <span class="c1"># {&quot;invoices&quot;: [...], &quot;line_items&quot;: [...]}</span>
+</code></pre></div>
+<p><code>to_rows()</code> is what makes the <strong>export path document-agnostic</strong> — an invoice
+yields <code>invoices</code> + <code>line_items</code>; a contract might yield <code>contracts</code> + <code>clauses</code>
++ <code>parties</code>, and the exporter never needs to know which. One rule: golden rows
+correspond <strong>1:1 with what appears on the page</strong> (a tiered line prints a parent
+row plus a row per band, so it contributes all of them), or per-row precision/
+recall wouldn't be comparable between the golden set and an extractor's output.
+Records are <em>computed, never extracted</em>: a record that fails to reconcile refuses
+to exist rather than reach a PDF.</p>
+<h2 id="contentcapability-does-this-pack-need-a-key"><code>ContentCapability</code> — does this pack need a key?<a class="headerlink" href="#contentcapability-does-this-pack-need-a-key" title="Permanent link">&para;</a></h2>
+<p>The one thing that decides whether a document type generates on a laptop with no
+cloud account is <strong>where its prose comes from</strong> (<code>core/content.py</code>). A pack
+<em>declares</em> it:</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">ContentMode</span><span class="p">(</span><span class="n">StrEnum</span><span class="p">):</span>
+    <span class="n">PROCEDURAL</span> <span class="o">=</span> <span class="s2">&quot;procedural&quot;</span>   <span class="c1"># built-in + computed; offline, deterministic, no key</span>
+    <span class="n">LLM_BACKED</span> <span class="o">=</span> <span class="s2">&quot;llm_backed&quot;</span>   <span class="c1"># generated by an LLM in a one-time offline catalogue step</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ContentCapability</span><span class="p">:</span>
+    <span class="n">mode</span><span class="p">:</span> <span class="n">ContentMode</span>
+    <span class="n">notes</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+    <span class="n">requires_api_key</span> <span class="o">-&gt;</span> <span class="nb">bool</span>    <span class="c1"># True iff LLM_BACKED</span>
+    <span class="n">local_first</span>      <span class="o">-&gt;</span> <span class="nb">bool</span>    <span class="c1"># True iff PROCEDURAL</span>
+</code></pre></div>
+<p>The kernel reads it through <strong><code>capability_of(pack)</code></strong>, which defaults to
+<code>PROCEDURAL</code> for a pack written before this contract — the kernel keeps narrow
+expectations. Infrastructure (storage, state, export) defaults to local for
+either mode; only <em>content generation</em> differs.</p>
+<p>An <code>LLM_BACKED</code> pack additionally implements <strong><code>LlmContentBuilder</code></strong>
+(<code>catalogue_items()</code> → what to generate, <code>ingest(results)</code> → take the text back),
+kept separate from <code>DocumentPack</code> so a procedural pack never stubs it out.
+<code>build_catalogue(pack, mix, …)</code> drives that offline step (and raises for a
+procedural pack). Invoice is <code>PROCEDURAL</code>, so an invoice run is local-first.</p>
+<h2 id="how-the-kernel-calls-the-pack-during-a-run">How the kernel calls the pack during a run<a class="headerlink" href="#how-the-kernel-calls-the-pack-during-a-run" title="Permanent link">&para;</a></h2>
+<p>The worker drives the pack through the source and the renderer — it never reaches
+into pack internals:</p>
+<pre class="mermaid"><code>sequenceDiagram
+    autonumber
+    participant W as work_run / GenerationWorker
+    participant S as DocumentSource
+    participant R as renderer
+    participant P as DocumentPack
+    participant B as BlobStore + manifest
+    W-&gt;&gt;S: generate(run_id, index)
+    S--&gt;&gt;W: GoldenRecord (computed ground truth)
+    W-&gt;&gt;R: render(record)
+    R-&gt;&gt;P: archetype_for(record)
+    R-&gt;&gt;P: build_context(record)
+    Note over R,P: HTML via Jinja (template_root + context)
+    R-&gt;&gt;P: header_fields(record) · labels
+    Note over R: PDF: Chromium print, then optional degrade / handwriting
+    R--&gt;&gt;W: RenderedDocument (bytes)
+    W-&gt;&gt;B: put(document) · record.to_rows() → golden shards · unit-manifest part</code></pre>
+<p><code>default_source(...)</code> supplies the <code>DocumentSource</code>; <code>render()</code> calls
+<code>render_record(pack, record)</code> = <code>render_template(pack.template_root,
+pack.archetype_for(record), pack.build_context(record))</code>, and the PDF path also
+reads <code>pack.header_fields(record)</code> and <code>pack.labels</code>. Everything the kernel needs
+of a document type flows through those hooks — which is exactly why a new pack is
+a new document type and not a kernel change.</p>
+<p>See <a href="../flows/">Execution flows</a> for the full run/build/export sequences and
+<a href="../../invoice/overview/">Invoice pack → Overview</a> for this contract made concrete.</p>
 
 
 
