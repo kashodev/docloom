@@ -45,13 +45,27 @@ class Mix:
 
 PROCEDURAL = Mix("procedural", "no LLM — the combinatorial pool, no keys, no spend")
 
-# The reference cheap mix from deploy/gcp/run.example.yaml: two cheap OpenAI-
-# compatible models plus a small Anthropic share, with thinking disabled on Qwen
-# (it otherwise ignores max_tokens), and a fallback that leans on the cheap
-# survivor then procedural.
+# The cheapest LLM mix: two low-cost OpenAI-compatible models only, no Anthropic.
+# Thinking is disabled on Qwen (it otherwise ignores max_tokens), and a quarantined
+# provider's share leans on the cheap survivor then procedural.
 CHEAP = Mix(
     "cheap-mix",
-    "deepseek 40 / dashscope 40 / anthropic 20  (thinking off on qwen)",
+    "deepseek 50 / dashscope 50 — cheap OpenAI-compatible only (thinking off on qwen)",
+    providers=(
+        {"name": "deepseek", "model": "deepseek-v4-flash", "weight": 50},
+        {"name": "dashscope", "model": "qwen3.5-flash", "weight": 50,
+         "extra_body": {"enable_thinking": False}},
+    ),
+    fallback=({"name": "dashscope", "share": 70}, {"name": "procedural", "share": 30}),
+    secrets=(("DEEPSEEK_API_KEY", "deepseek-api-key"),
+             ("DASHSCOPE_API_KEY", "dashscope-api-key")),
+)
+
+# The reference mix from deploy/gcp/run.example.yaml: the two cheap models plus a
+# 20% Anthropic slice for a quality floor on the semantic long tail.
+BALANCED = Mix(
+    "balanced",
+    "deepseek 40 / dashscope 40 / anthropic 20 — a 20% Anthropic slice for quality",
     providers=(
         {"name": "deepseek", "model": "deepseek-v4-flash", "weight": 40},
         {"name": "dashscope", "model": "qwen3.5-flash", "weight": 40,
@@ -72,7 +86,7 @@ ANTHROPIC = Mix(
     secrets=(("ANTHROPIC_API_KEY", "anthropic-api-key"),),
 )
 
-_MIXES: dict[str, Mix] = {m.name: m for m in (PROCEDURAL, CHEAP, ANTHROPIC)}
+_MIXES: dict[str, Mix] = {m.name: m for m in (PROCEDURAL, CHEAP, BALANCED, ANTHROPIC)}
 
 
 def mix_names() -> tuple[str, ...]:

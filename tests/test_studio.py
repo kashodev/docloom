@@ -532,15 +532,32 @@ def test_gcp_studio_dry_run_via_the_command(tmp_path: Path) -> None:
 # ── provider mixes (LLM catalogue) ──────────────────────────────────────────
 def test_mixes_procedural_is_keyless_and_llm_mixes_carry_secrets() -> None:
     from docloom.studio.mixes import get_mix, mix_names
-    assert "procedural" in mix_names() and "cheap-mix" in mix_names()
+    assert {"procedural", "cheap-mix", "balanced", "anthropic"} <= set(mix_names())
     assert not get_mix("procedural").is_llm and get_mix("procedural").secrets_map() == {}
+    # cheap-mix is the two cheap OpenAI-compatible models only — no Anthropic.
     cheap = get_mix("cheap-mix")
-    assert cheap.is_llm and {p["name"] for p in cheap.providers_block()} == {
-        "deepseek", "dashscope", "anthropic"}
-    assert set(cheap.secrets_map()) == {
-        "DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY", "ANTHROPIC_API_KEY"}
+    assert cheap.is_llm
+    assert {p["name"] for p in cheap.providers_block()} == {"deepseek", "dashscope"}
+    assert set(cheap.secrets_map()) == {"DEEPSEEK_API_KEY", "DASHSCOPE_API_KEY"}
+    assert {p["weight"] for p in cheap.providers_block()} == {50}
+    # balanced adds the 20% Anthropic slice.
+    balanced = get_mix("balanced")
+    assert {p["name"] for p in balanced.providers_block()} == {"deepseek", "dashscope", "anthropic"}
+    assert "ANTHROPIC_API_KEY" in balanced.secrets_map()
     with pytest.raises(StudioError, match="unknown provider mix"):
         get_mix("nope")
+
+
+def test_every_llm_mix_weights_and_fallback_total_100() -> None:
+    """deploy.sh rejects provider weights or fallback shares that don't total 100."""
+    from docloom.studio.mixes import get_mix, mix_names
+    for name in mix_names():
+        m = get_mix(name)
+        if not m.is_llm:
+            continue
+        assert sum(p["weight"] for p in m.providers_block()) == 100, f"{name} weights"
+        if m.fallback_block():
+            assert sum(f["share"] for f in m.fallback_block()) == 100, f"{name} fallback"
 
 
 def test_gcp_catalogue_procedural_has_no_providers_block() -> None:
@@ -554,13 +571,19 @@ def test_gcp_catalogue_procedural_has_no_providers_block() -> None:
 def test_gcp_catalogue_llm_mix_emits_providers_fallback_secrets_budget() -> None:
     t = GcpTarget()
     p = t.normalise(ProjectSpec(target="gcp", id="acme"))
-    r = t.run_catalogue(p, CatalogueArgs(version="v2", mix="cheap-mix", budget_usd=25),
+    # balanced = the 3-provider mix (includes a 20% Anthropic slice).
+    r = t.run_catalogue(p, CatalogueArgs(version="v2", mix="balanced", budget_usd=25),
                         dry_run=True)
     cfg = _cfg_from(r.command)["catalogue"]
     assert {pr["name"] for pr in cfg["providers"]} == {"deepseek", "dashscope", "anthropic"}
     assert cfg["budget_usd"] == 25 and cfg["secrets"]["ANTHROPIC_API_KEY"] == "anthropic-api-key"
     assert cfg["fallback"][0]["name"] == "dashscope"     # quarantine leans on the cheap survivor
-    assert "cheap-mix" in r.summary
+    assert "balanced" in r.summary
+    # cheap-mix excludes Anthropic entirely.
+    cheap = _cfg_from(t.run_catalogue(p, CatalogueArgs(version="v3", mix="cheap-mix"),
+                                      dry_run=True).command)["catalogue"]
+    assert {pr["name"] for pr in cheap["providers"]} == {"deepseek", "dashscope"}
+    assert "ANTHROPIC_API_KEY" not in cheap["secrets"]
 
 
 def test_local_catalogue_llm_mix_writes_a_providers_file(tmp_path: Path) -> None:
@@ -577,7 +600,7 @@ def test_capture_catalogue_secrets_saves_names_never_values(tmp_path: Path) -> N
     reg = Registry(tmp_path / "projects.yaml")
     proj = Project(target="gcp", id="acme")
     reg.add(proj)
-    updated = _capture_catalogue_secrets(reg, proj, CatalogueArgs(mix="cheap-mix", budget_usd=25))
+    updated = _capture_catalogue_secrets(reg, proj, CatalogueArgs(mix="balanced", budget_usd=25))
     assert set(updated.secrets_present) == {"deepseek-api-key", "dashscope-api-key",
                                             "anthropic-api-key"}
     assert reg.get("gcp:acme").secrets_present == updated.secrets_present   # persisted
@@ -591,12 +614,12 @@ def test_studio_catalog_llm_mix_dry_run_prints_secrets_and_plan(tmp_path: Path) 
         Project(target="gcp", id="acme", region="us-central1", bucket="acme-docloom",
                 resources={"state": "firestore://acme/(default)"}), make_default=True)
     res = runner.invoke(app, ["studio", "-p", "gcp", "--project", "acme", "--step", "catalog",
-                              "--version", "v2", "--mix", "cheap-mix", "--budget", "25",
+                              "--version", "v2", "--mix", "balanced", "--budget", "25",
                               "--dry-run"],
                         env={"DOCLOOM_HOME": str(home)})
     assert res.exit_code == 0, res.output
     assert "Secret Manager secret" in res.output and "anthropic-api-key" in res.output
-    assert "cheap-mix" in res.output
+    assert "balanced" in res.output
 
 
 # ── onboarding an existing gcp project ──────────────────────────────────────

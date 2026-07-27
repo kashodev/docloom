@@ -851,7 +851,8 @@ def studio(
                                               help="SKUs each (catalog)"),
     seed: int = typer.Option(0, "--seed", help="Build seed (catalog)"),
     mix: str = typer.Option("procedural", "--mix",
-                            help="LLM provider mix (catalog): procedural | cheap-mix | anthropic"),
+                            help="LLM provider mix (catalog): procedural | cheap-mix | "
+                                 "balanced | anthropic"),
     budget_usd: float = typer.Option(0.0, "--budget", help="Hard USD cap for an LLM catalogue"),
     sink: str = typer.Option("", "--sink", help="Golden sink uri (export); '' = local DuckDB"),
     yes: bool = typer.Option(False, "--yes", help="Skip the interactive confirmation"),
