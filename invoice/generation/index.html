@@ -834,6 +834,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Invoice generation
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -850,6 +868,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-each-stage-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What each stage is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#driving-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driving it
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1518,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-each-stage-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What each stage is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#driving-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driving it
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1578,73 @@
 
 
 <h1 id="invoice-generation">Invoice generation<a class="headerlink" href="#invoice-generation" title="Permanent link">&para;</a></h1>
-<p>The worker loop: invent, render, persist, shard.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
+<p>Generation is the run: for each document index in a work unit, the pack invents a
+<code>GoldenInvoice</code>, the kernel renders it, and the document plus its golden rows are
+persisted. It is deterministic (a run id + an index seed the whole invoice) and
+makes <strong>no LLM calls</strong> — it reads a finished catalogue, if any.</p>
+<div class="admonition abstract">
+<p class="admonition-title">Principles</p>
+<p><strong>① Realistic — but no PII.</strong> Realism is the sampler's job — coherent product
+lines, cent-exact figures, per-jurisdiction tax/labels, and scanned/handwritten
+captures. PII-freedom is structural: identifying details are <strong>derived at
+generation and never stored</strong>, so there is no PII field to leak.</p>
 </div>
+<h2 id="the-flow">The flow<a class="headerlink" href="#the-flow" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart TB
+    Seed["stable_seed(run_id, index)"] --&gt; Sample["InvoiceSampler.generate&lt;br/&gt;sampler.py"]
+    Sample --&gt; Rec["GoldenInvoice (computed, reconciled)&lt;br/&gt;record.py"]
+    Rec --&gt; Ctx["build_context&lt;br/&gt;context.py (locale, currency, labels)"]
+    Ctx --&gt; Html["Jinja → HTML&lt;br/&gt;archetype template + _base/_macros/_styles"]
+    Html --&gt; Pdf["Chromium print → PDF"]
+    Pdf --&gt; Cond{"capture condition"}
+    Cond -- "clean" --&gt; Persist
+    Cond -- "light/heavy scan" --&gt; Degrade["degrade: rasterise 150dpi,&lt;br/&gt;skew/noise/JPEG, no text layer"]
+    Cond -- "handwritten" --&gt; Hand["handwritten pad: OFL faces,&lt;br/&gt;jitter, signature, stamp"]
+    Degrade --&gt; Persist
+    Hand --&gt; Persist
+    Persist["Persist: blob.put(document)&lt;br/&gt;to_rows() → golden shards&lt;br/&gt;write unit-manifest part"]</code></pre>
+<h2 id="what-each-stage-is">What each stage is<a class="headerlink" href="#what-each-stage-is" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Seed (<code>core/pipeline/source.stable_seed</code>).</strong> <code>run_id</code> + the document index seed
+  every draw, so the same index always yields the same invoice — the property that
+  makes a run resumable and a golden set reproducible.</li>
+<li><strong>Sample (<code>sampler.py</code> → <code>InvoiceSampler</code>).</strong> The pack's <code>DocumentSource</code>. It
+  draws an issuer from the roster (respecting the run's <a href="../composition/"><code>Selection</code></a>),
+  picks a business type / billing model / template, invents line items from the
+  catalogue's product line, and computes tiers, discounts, tax buckets, and totals
+  — cent-exact. It returns a <code>GoldenInvoice</code> (<code>record.py</code>: <code>Party</code>, <code>LineItem</code>,
+  <code>PricingTier</code>, <code>TaxBucket</code>, <code>InvoiceTotals</code>, <code>RenderProfile</code>).</li>
+<li><strong>Reconcile.</strong> A record that doesn't balance <strong>refuses to exist</strong> — the failure
+  surfaces here, not as a wrong number on a PDF.</li>
+<li><strong>Context (<code>context.py</code>).</strong> <code>build_context</code> maps the record to a Jinja context
+  carrying <code>locale</code>, <code>currency</code>, and <code>labels</code> so templates never pass them
+  explicitly. Jurisdiction (<code>jurisdictions.py</code>) decides the tax model, currency,
+  and mandatory issuer fields; <code>labels.py</code> supplies per-locale printed strings.</li>
+<li><strong>Render.</strong> The kernel's Jinja environment renders
+  <code>archetype_for(record)</code> (one of 7 archetypes) over <code>_base</code> / <code>_macros</code> /
+  <code>_styles</code>; Chromium prints it to PDF; the running header comes from
+  <code>header_fields(record)</code>. Brand marks and seals are procedural and key-free
+  (<code>logos.py</code>, <code>stamps.py</code>).</li>
+<li><strong>Capture condition.</strong> <code>RenderProfile</code> selects the finish. <strong>Clean</strong> keeps the
+  text layer intact (no cost). <strong>Light/heavy scan</strong> rasterises at 150 dpi and
+  degrades (skew, blur, noise, JPEG artefacts) with the record's own seed, re-wrapped
+  with <strong>no text layer</strong> so OCR must read pixels. <strong>Handwritten</strong> renders a ruled
+  pad with values in bundled OFL handwriting faces, per-field jitter, a signature,
+  and a company stamp (<code>handwriting.py</code>). Wear (crisp ↔ worn) scales the ink and
+  degradation together. Golden rows are identical across conditions.</li>
+<li><strong>Persist (<code>core/pipeline/worker.py</code>).</strong> The document bytes go to the blob store;
+  <code>record.to_rows()</code> becomes gzipped-JSONL <strong>golden shards</strong>; a <strong>unit-manifest
+  part</strong> (documents + shards, each with a sha256) is written <em>before</em> the unit is
+  marked done. See the <a href="../../core/pipeline/">pipeline</a> and
+  <a href="../../architecture/concurrency/">concurrency</a> pages for the claim/lease/manifest
+  machinery.</li>
+</ul>
+<h2 id="driving-it">Driving it<a class="headerlink" href="#driving-it" title="Permanent link">&para;</a></h2>
+<ul>
+<li>CLI: <code>docloom generate --run-id … --total N [--catalogue &lt;uri&gt;] [--format pdf|html] [composition flags]</code>.</li>
+<li>Studio: the <strong>pdfs</strong> step; a cloud run is <a href="../../studio/dispatch/">dispatched detached</a>.</li>
+<li>Cloud: <code>deploy.sh deploy &amp;&amp; deploy.sh run</code> (or <code>dispatch</code>).</li>
+</ul>
 
 
 

@@ -778,6 +778,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -794,6 +812,47 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-record-is-the-ground-truth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The record is the ground truth
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#component-map-packsinvoice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Component map (packs/invoice/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1507,36 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-record-is-the-ground-truth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The record is the ground truth
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#component-map-packsinvoice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Component map (packs/invoice/)
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1556,84 @@
 
 
 <h1 id="invoice-pack-overview">Invoice pack — Overview<a class="headerlink" href="#invoice-pack-overview" title="Permanent link">&para;</a></h1>
-<p>The whole flow on one page, with diagrams.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
+<p><code>invoice</code> is docloom's first pack (<code>packs/invoice/</code>). It implements the
+<a href="../../architecture/contract/">kernel contract</a> — <code>InvoicePack</code> is a
+<code>DocumentPack</code>, <code>GoldenInvoice</code> is a <code>GoldenRecord</code>, and it declares
+<code>ContentMode.PROCEDURAL</code>, so an invoice run is <strong>local-first and key-free</strong>.</p>
+<p>There are three flows, and they run at different times:</p>
+<pre class="mermaid"><code>flowchart LR
+    subgraph Once["Once, offline (optional)"]
+        Cat["Catalogue build&lt;br/&gt;procedural + LLM overlay"]
+    end
+    subgraph Run["Every run"]
+        Gen["Invoice generation&lt;br/&gt;sampler → record → render → persist"]
+    end
+    subgraph After["After a run"]
+        Exp["Export&lt;br/&gt;golden shards → queryable sink"]
+    end
+    Cat -. "published artifact (read-only)" .-&gt; Gen
+    Gen -- "golden shards + manifest" --&gt; Exp</code></pre>
+<ul>
+<li><strong><a href="../catalogue/">Catalogue building</a></strong> is the one-time, offline content step. A
+  procedural catalogue is free and key-less; an LLM overlay optionally writes
+  richer descriptions. It publishes a <strong>versioned artifact</strong> that generation reads.
+  A run needs it only if you want the LLM-written descriptions — the procedural
+  seed catalogue ships in the pack.</li>
+<li><strong><a href="../generation/">Invoice generation</a></strong> is the run: for each index, the sampler
+  invents a <code>GoldenInvoice</code> deterministically, the kernel renders it to PDF/HTML
+  (optionally degraded or handwritten), and the document + its golden rows are
+  persisted with a per-unit manifest.</li>
+<li><strong><a href="../export/">Export</a></strong> reads a completed run's golden shards and loads them
+  into a queryable sink (Parquet / DuckDB / BigQuery).</li>
+</ul>
+<h2 id="the-record-is-the-ground-truth">The record is the ground truth<a class="headerlink" href="#the-record-is-the-ground-truth" title="Permanent link">&para;</a></h2>
+<p>Every invoice is a <em>projection</em> of a computed <code>GoldenInvoice</code> (<code>record.py</code>:
+<code>Party</code>, <code>LineItem</code>, <code>PricingTier</code>, <code>TaxBucket</code>, <code>InvoiceTotals</code>,
+<code>RenderProfile</code>). The figures are cent-exact and reconciled <strong>before</strong> anything
+renders — a record that doesn't balance refuses to exist rather than reach a PDF.
+<code>GoldenInvoice.to_rows()</code> flattens to <code>invoices</code> + <code>line_items</code>, one row per
+<em>printed</em> row, which is what the <a href="../export/">export</a> and the golden dataset are
+built from.</p>
+<div class="admonition abstract">
+<p class="admonition-title">Principles</p>
+<p><strong>① Realistic — but no PII</strong> is <em>most</em> visible in this pack: the merchant
+sub-category + niche layer keeps a company's catalogue one coherent product
+line, the LLM overlay writes natural descriptions, cent-exact math and
+per-jurisdiction tax models make the figures plausible, and <code>derive_identity</code>
+keeps addresses/phones/tax-IDs <strong>out of the artifact</strong> (derived at generation,
+never stored). · <strong>③ Locally capable</strong> — procedural catalogue + a read-only
+run. · <strong>④ High throughput</strong> — the catalogue build is itself a
+<a href="../catalogue/">sharded run</a>.</p>
 </div>
+<h2 id="component-map-packsinvoice">Component map (<code>packs/invoice/</code>)<a class="headerlink" href="#component-map-packsinvoice" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Modules</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Contract</td>
+<td><code>__init__.py</code> (<code>InvoicePack</code>), <code>record.py</code> (<code>GoldenInvoice</code>), <code>context.py</code></td>
+</tr>
+<tr>
+<td>Generation</td>
+<td><code>sampler.py</code> (<code>InvoiceSampler</code>), <code>enums.py</code>, <code>jurisdictions.py</code>, <code>composition.py</code></td>
+</tr>
+<tr>
+<td>Content</td>
+<td><code>catalog.py</code> (<code>derive_identity</code>, <code>SeedCatalogue</code>), <code>procedural.py</code>, <code>llm_build.py</code>, <code>build_run.py</code>, <code>artifact.py</code>, <code>validation.py</code></td>
+</tr>
+<tr>
+<td>Rendering</td>
+<td><code>templates/</code> (<code>_base</code>/<code>_macros</code>/<code>_styles</code> + 7 archetypes), <code>labels.py</code>, <code>handwriting.py</code>, <code>logos.py</code>, <code>stamps.py</code></td>
+</tr>
+</tbody>
+</table>
+<p>The full <a href="../reference/">Reference</a> lists every component; the three flow pages give
+the detailed diagrams.</p>
 
 
 

@@ -862,6 +862,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Export
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -878,6 +896,69 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sinks-coresinks-uri-scheme-selected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sinks (core/sinks/, URI-scheme selected)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#driving-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driving it
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1529,58 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it does
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sinks-coresinks-uri-scheme-selected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sinks (core/sinks/, URI-scheme selected)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#driving-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driving it
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1600,67 @@
 
 
 <h1 id="export">Export<a class="headerlink" href="#export" title="Permanent link">&para;</a></h1>
-<p>Golden shards to a queryable sink.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
-</div>
+<p>Export takes a completed run's <strong>golden shards</strong> and loads them into a queryable
+sink. It is document-agnostic — it reads the tables <code>to_rows()</code> produced and never
+needs to know they are invoices — and it is a separate, re-runnable step (the run
+already wrote the ground truth; export just makes it queryable).</p>
+<h2 id="the-flow">The flow<a class="headerlink" href="#the-flow" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart TB
+    Keys["iter blob keys under&lt;br/&gt;&amp;lt;prefix&amp;gt;/golden/"] --&gt; Group["Group by table&lt;br/&gt;(invoices, line_items, llm_usage)"]
+    Group --&gt; Loop["For each table, for each shard&lt;br/&gt;in key order"]
+    Loop --&gt; Dec["decode_shard (gzipped JSONL)"]
+    Dec --&gt; Wr["sink.write(table, rows)"]
+    Wr --&gt; Loop
+    Loop --&gt; Reg["sink.register()&lt;br/&gt;make tables queryable"]</code></pre>
+<h2 id="what-it-does">What it does<a class="headerlink" href="#what-it-does" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Discover shards (<code>core/pipeline/export.py</code> → <code>export_run</code>).</strong> Lists blob keys
+  under <code>&lt;storage_prefix or run_id&gt;/golden/</code> and groups them by table name. So a
+  run under a nested prefix (<code>runs/&lt;run&gt;/&lt;slice&gt;/…</code>) exports by pointing
+  <code>--storage-prefix</code> at it.</li>
+<li><strong>Stream in key order.</strong> For each table, each shard (sorted) is decoded and
+  written to the sink. The order is deliberate — a table's Parquet parts land
+  <strong>deterministically</strong>. It is a single sequential reader today (a large export is
+  single-threaded I/O; parallel prefetch is a tracked follow-up).</li>
+<li><strong>Register.</strong> <code>sink.register()</code> runs once at the end to make the tables queryable
+  — create DuckDB views / BigQuery external tables; a no-op for plain Parquet.</li>
+<li><strong>Usage tables ride along.</strong> <code>export_run</code> discovers tables by prefix, so the
+  <code>llm_usage</code> telemetry (if a build recorded any) exports with no export change.</li>
+</ul>
+<h2 id="sinks-coresinks-uri-scheme-selected">Sinks (<code>core/sinks/</code>, URI-scheme selected)<a class="headerlink" href="#sinks-coresinks-uri-scheme-selected" title="Permanent link">&para;</a></h2>
+<p>Chosen by <code>--sink</code> URI — the export code is identical across them (<strong>②
+provider-agnostic</strong>):</p>
+<table>
+<thead>
+<tr>
+<th>Scheme</th>
+<th>Sink</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>parquet://…</code></td>
+<td>Plain Parquet parts on disk / object store.</td>
+</tr>
+<tr>
+<td><code>duckdb://…</code></td>
+<td>Parquet parts + a DuckDB database with views over them.</td>
+</tr>
+<tr>
+<td><code>bigquery://&lt;project&gt;/&lt;dataset&gt;</code></td>
+<td>Parquet in GCS + BigQuery external tables.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="driving-it">Driving it<a class="headerlink" href="#driving-it" title="Permanent link">&para;</a></h2>
+<ul>
+<li>CLI: <code>docloom export --run-id … --sink &lt;uri&gt; [--storage &lt;uri&gt;] [--storage-prefix …]</code>.</li>
+<li>Studio: the <strong>export</strong> step (default sink <code>bigquery://&lt;project&gt;/golden</code> on gcp,
+  a local DuckDB on <code>local</code>).</li>
+<li>Cloud: <code>deploy.sh export</code>.</li>
+</ul>
+<p>See <a href="../../core/storage/">Storage / Sinks / Usage</a> for the sink protocol and
+<a href="../../architecture/data-model/">the golden dataset</a> for what the rows mean.</p>
 
 
 

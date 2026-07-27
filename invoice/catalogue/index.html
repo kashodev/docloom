@@ -806,6 +806,24 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Catalogue building
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
@@ -822,6 +840,58 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-each-stage-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What each stage is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#driving-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driving it
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
       
     </li>
   
@@ -1448,6 +1518,47 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The flow
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-each-stage-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What each stage is
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#driving-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driving it
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -1467,12 +1578,70 @@
 
 
 <h1 id="catalogue-building">Catalogue building<a class="headerlink" href="#catalogue-building" title="Permanent link">&para;</a></h1>
-<p>The offline, one-time content build (procedural + LLM) under a budget.</p>
-<div class="admonition note">
-<p class="admonition-title">Stub</p>
-<p>This page is a scaffold placeholder. Content is written in a later
-build-order step, re-derived from the source (not the stale <code>docs/</code>).</p>
+<p>A <strong>catalogue</strong> is the invoice pack's content artifact — the roster of companies
+and, for each, the product line it sells. It is built <strong>once, offline</strong>, published
+as a versioned artifact, and then read (credential-free) by every run. Building it
+is optional: the procedural pool ships in the pack, so a run is fully local
+without ever building one; you build a catalogue when you want the LLM-written
+descriptions or a larger, more varied pool.</p>
+<div class="admonition abstract">
+<p class="admonition-title">Principles</p>
+<p><strong>③ Locally capable</strong> — the procedural build is key-free and deterministic. ·
+<strong>④ High throughput</strong> — a large build is a <strong>sharded run</strong> over company ranges.
+· <strong>① Realistic — but no PII</strong> — the LLM overlay adds natural descriptions;
+<code>validation.py</code> screens them; <code>derive_identity</code> keeps PII out of the artifact.</p>
 </div>
+<h2 id="the-flow">The flow<a class="headerlink" href="#the-flow" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>flowchart TB
+    Plan["Plan company ranges&lt;br/&gt;(build = a run over the roster)"] --&gt; Claim["Claim a unit&lt;br/&gt;(atomic claim + lease)"]
+    Claim --&gt; Skel["Procedural skeleton&lt;br/&gt;procedural.py: generate_company_range"]
+    Skel --&gt; Overlay{"LLM overlay?"}
+    Overlay -- "no (procedural)" --&gt; Write
+    Overlay -- "yes" --&gt; Mix["Provider mix&lt;br/&gt;llm_build.py + catalogue_runner"]
+    Mix --&gt; Gate["Quality + PII gates&lt;br/&gt;validation.py"]
+    Gate -- "reject" --&gt; Fallback["Fall back to procedural text"]
+    Gate -- "accept" --&gt; Write
+    Fallback --&gt; Write["Write shard + unit-manifest part&lt;br/&gt;artifact.py (per-company parquet, sha256)"]
+    Write --&gt; More{"more units?"}
+    More -- "yes" --&gt; Claim
+    More -- "no" --&gt; Root["Finalize root manifest&lt;br/&gt;(version, provenance, rejection audit)"]</code></pre>
+<h2 id="what-each-stage-is">What each stage is<a class="headerlink" href="#what-each-stage-is" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Plan / claim (<code>build_run.py</code>).</strong> A catalogue build is <em>a run over company
+  ranges</em> — it uses the same <a href="../../architecture/concurrency/">state store, atomic claim, and lease</a>
+  as document generation (<code>build_catalogue_run</code>). Single-task in-memory by default;
+  set <code>catalogue.tasks &gt; 1</code> to shard it across N Cloud Run tasks, resumable.</li>
+<li><strong>Procedural skeleton (<code>procedural.py</code>).</strong> A key-free combinatorial pool
+  (~7,900 base descriptions) produces each company and its products deterministically
+  per index (<code>generate_company</code> / <code>generate_company_range</code>). This is always the
+  baseline — and the fallback for anything the LLM can't fill.</li>
+<li><strong>LLM overlay (<code>llm_build.py</code> + <code>core/providers</code>).</strong> When a provider mix is
+  configured, an LLM rewrites descriptions (and co-generates a price band) in
+  chunks. Routing, batching, the empty-completion <strong>circuit breaker</strong>, the
+  <strong>fallback pool</strong>, and the <strong>budget</strong> are the kernel's <code>CatalogueRunner</code> /
+  <code>ProviderMix</code> / <code>BudgetGuard</code> — see <a href="../../core/providers/">Providers &amp; LLM catalogue</a>.
+  Any slot the LLM can't fill (failed call, rejected text, bad band) keeps its
+  procedural product, so a build is always complete and a provider outage degrades
+  to procedural.</li>
+<li><strong>Quality + PII gates (<code>validation.py</code>).</strong> Every generated description is screened
+  before it is written: emails, URLs, long digit runs, honorific+name, entity
+  suffixes (PII), plus quality rules (empty, assistant preamble, markdown,
+  marketing prose) and cross-item dedup. A flagged description is rejected and
+  falls back to procedural text; too high a rejection rate fails the build. The
+  results are recorded in the manifest as an audit.</li>
+<li><strong>Artifact (<code>artifact.py</code>).</strong> Per-company Parquet, decimal128 money, <strong>sha256 per
+  shard</strong>, sharded read/write, and a root <strong>manifest</strong> carrying the
+  <code>catalogue_version</code> (stamped on every golden row a run produces), <code>created_at</code>,
+  and the build <code>provenance</code>. Identity is <strong>not stored</strong> — it is derived from
+  <code>company_id</code> via <code>derive_identity</code> at generation time.</li>
+</ul>
+<h2 id="driving-it">Driving it<a class="headerlink" href="#driving-it" title="Permanent link">&para;</a></h2>
+<ul>
+<li>CLI: <code>docloom catalogue --out … --version … [--providers &lt;file&gt;] [--budget-usd N] [--concurrency N] [--state &lt;uri&gt; --tasks …]</code>.</li>
+<li>Studio: the <strong>catalog</strong> step, with provider-mix presets and Secret Manager name
+  capture — see <a href="../../studio/catalogue/">Studio → LLM catalogue &amp; secrets</a>.</li>
+<li>Cloud: <code>deploy.sh catalogue</code> — see <a href="../../operations/deploy-tool/">Operations</a>.</li>
+</ul>
 
 
 
