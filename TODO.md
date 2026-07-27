@@ -83,10 +83,10 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         bucket discovery), how the operator/tool knows every slice is complete
         (per-slice roots exist ⇒ complete — that's the building block), and where it
         belongs (a `docloom` subcommand, a `scripts/` helper, or the studio flow).
-      - Separately: **`deploy.sh` on `main` passes `--parallelism=1` to `gcloud run
-        jobs execute` in `status()` and `export_golden()`** (pre-existing, not from
-        #41), which gcloud rejects as an unrecognized argument. Drop it — `--tasks=1`
-        already pins a single task. Small standalone fix, unrelated to the manifest.
+      - Separately (**fixed**): `deploy.sh` passed `--parallelism=1` to `gcloud run
+        jobs execute` in `status()` and `export_golden()`, which gcloud rejects as
+        an unrecognized argument (it's a create/update flag, not an execute-time
+        override). Dropped it — `--tasks=1` already pins a single task.
 
 - [x] **A "crisp" (well-preserved) handwritten variant.** Shipped as the `wear`
       dial (0..1) on the record: one value scales the SVG ink displacement at
