@@ -611,6 +611,71 @@ def test_local_catalogue_llm_mix_writes_a_providers_file(tmp_path: Path) -> None
     assert pf.is_file() and "anthropic" in pf.read_text()
 
 
+# ── project management: projects / provision / teardown ─────────────────────
+def test_registry_remove_drops_project_and_reassigns_default(tmp_path: Path) -> None:
+    reg = Registry(tmp_path / "projects.yaml")
+    reg.add(Project(target="gcp", id="a", bucket="a-b"), make_default=True)
+    reg.add(Project(target="local", id="b", root="/b"))
+    assert reg.remove("gcp:a") is True
+    assert reg.get("gcp:a") is None and reg.default_ref() == "local:b"   # default fell through
+    assert reg.remove("gcp:none") is False                              # absent → False
+
+
+def test_local_teardown_keep_vs_delete_data(tmp_path: Path) -> None:
+    t = LocalTarget()
+    p = t.provision(ProjectSpec(target="local", id="ws", root=str(tmp_path / "ws")))
+    assert Path(p.root).exists()
+    r = t.teardown(p, keep_data=True)                # forget only
+    assert r.ok and Path(p.root).exists()            # workspace untouched
+    r = t.teardown(p, keep_data=False)               # delete the workspace
+    assert r.ok and not Path(p.root).exists()
+
+
+def test_gcp_teardown_sets_bucket_env_only_when_deleting_data() -> None:
+    t = GcpTarget()
+    p = t.normalise(ProjectSpec(target="gcp", id="acme"))
+    assert "job(s)" in t.teardown(p, keep_data=True, dry_run=True).summary
+    assert "bucket" in t.teardown(p, keep_data=False, dry_run=True).summary
+
+
+def test_studio_projects_lists_saved(tmp_path: Path) -> None:
+    home = tmp_path / ".docloom"
+    Registry(home / "projects.yaml").add(
+        Project(target="gcp", id="acme", region="us-central1", bucket="acme-docloom",
+                provisioned_at="2026-07-20"), make_default=True)
+    res = runner.invoke(app, ["studio", "projects"], env={"DOCLOOM_HOME": str(home)})
+    assert res.exit_code == 0, res.output
+    assert "gcp" in res.output and "acme" in res.output and "*" in res.output
+
+
+def test_studio_teardown_dry_run_shows_scope_and_keeps_registry(tmp_path: Path) -> None:
+    home = tmp_path / ".docloom"
+    Registry(home / "projects.yaml").add(Project(target="gcp", id="acme", bucket="acme-docloom"))
+    res = runner.invoke(app, ["studio", "teardown", "--project", "gcp:acme", "--delete-data",
+                              "--dry-run"], env={"DOCLOOM_HOME": str(home)})
+    assert res.exit_code == 0, res.output
+    assert "bucket" in res.output                                  # scope surfaced
+    assert Registry(home / "projects.yaml").get("gcp:acme") is not None   # dry-run kept it
+
+
+def test_studio_teardown_non_interactive_requires_yes(tmp_path: Path) -> None:
+    home = tmp_path / ".docloom"
+    Registry(home / "projects.yaml").add(Project(target="local", id="ws", root=str(tmp_path / "w")))
+    res = runner.invoke(app, ["studio", "teardown", "--project", "local:ws"],
+                        env={"DOCLOOM_HOME": str(home)})
+    assert res.exit_code != 0 and "pass --yes" in res.output
+
+
+def test_studio_teardown_with_yes_removes_from_registry(tmp_path: Path) -> None:
+    home = tmp_path / ".docloom"
+    reg = Registry(home / "projects.yaml")
+    reg.add(Project(target="local", id="ws", root=str(tmp_path / "w")))
+    res = runner.invoke(app, ["studio", "teardown", "--project", "local:ws", "--yes"],
+                        env={"DOCLOOM_HOME": str(home)})
+    assert res.exit_code == 0, res.output
+    assert Registry(home / "projects.yaml").get("local:ws") is None   # forgotten
+
+
 # ── concurrency / tasks control ─────────────────────────────────────────────
 def test_gcp_catalogue_threads_concurrency_and_tasks() -> None:
     t = GcpTarget()

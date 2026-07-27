@@ -132,6 +132,19 @@ class LocalTarget:
             run_id=args.run_id,
         )
 
+    def teardown(self, project: Project, *, keep_data: bool = True,
+                 dry_run: bool = False, capture: bool = False) -> Result:
+        """A local workspace has no cloud resources — 'teardown' just forgets it,
+        and with ``keep_data=False`` deletes its directory (documents + golden)."""
+        root = Path(project.root)
+        scope = "forget only (workspace kept)" if keep_data else f"delete {root}"
+        if dry_run or keep_data:
+            return Result(ok=True, summary=f"teardown {project.ref} — {scope}",
+                          command="" if keep_data else f"rm -rf {root}")
+        import shutil
+        shutil.rmtree(root, ignore_errors=True)
+        return Result(ok=True, summary=f"teardown {project.ref} — removed {root}")
+
     # ── internals ───────────────────────────────────────────────────────────
     def _write_providers(self, project: Project, mix) -> str:
         """Write the mix's provider block to a file for ``--providers``. Lives in

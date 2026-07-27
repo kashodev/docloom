@@ -101,3 +101,16 @@ class Registry:
     def set_last_run(self, ref: str, run_id: str) -> None:
         if (project := self.get(ref)) is not None:
             self.add(replace(project, last_run=run_id))
+
+    def remove(self, ref: str) -> bool:
+        """Forget a project by ref. Returns whether it was present. If it was the
+        default, the default falls to the first remaining project (or clears)."""
+        data = self._read()
+        kept = [d for d in data["projects"] if _from_dict(d).ref != ref]
+        if len(kept) == len(data["projects"]):
+            return False
+        data["projects"] = kept
+        if data.get("default") == ref:
+            data["default"] = _from_dict(kept[0]).ref if kept else ""
+        self._write(data)
+        return True

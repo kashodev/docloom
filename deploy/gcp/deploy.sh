@@ -702,19 +702,36 @@ export_golden() {
 }
 
 teardown() {
-  say "Teardown — deletes this run's output. Not reversible."
-  echo "  job    : ${JOB}"
-  while IFS=$'\x1f' read -r name _; do
-    [[ -n "${name}" ]] && echo "  output : gs://${BUCKET}/runs/$(path_for "${name}")"
-  done < <(each_slice)
-  read -r -p "  proceed? [y/N] " reply
-  [[ "${reply}" == "y" ]] || { echo "  aborted"; exit 0; }
+  # The studio drives this non-interactively: ASSUME_YES=1 skips the prompt, and
+  # TEARDOWN_BUCKET=1 deletes the *whole* bucket (documents + golden + catalogues)
+  # instead of just this run's output. With neither set it is the interactive,
+  # run-scoped default a hand-run expects.
+  local del_bucket="${TEARDOWN_BUCKET:-}"
+  say "Teardown — deletes the Cloud Run job(s)${del_bucket:+ and the entire bucket}. Not reversible."
+  echo "  jobs   : ${JOB}, ${JOB}-catalogue"
+  if [[ -n "${del_bucket}" ]]; then
+    echo "  bucket : gs://${BUCKET}  (documents + golden + catalogues)"
+  else
+    while IFS=$'\x1f' read -r name _; do
+      [[ -n "${name}" ]] && echo "  output : gs://${BUCKET}/runs/$(path_for "${name}")"
+    done < <(each_slice)
+  fi
+  if [[ -z "${ASSUME_YES:-}" ]]; then
+    read -r -p "  proceed? [y/N] " reply
+    [[ "${reply}" == "y" ]] || { echo "  aborted"; exit 0; }
+  fi
   gcloud run jobs delete "${JOB}" --region="${REGION}" --project="${PROJECT}" --quiet || true
-  while IFS=$'\x1f' read -r name _; do
-    [[ -n "${name}" ]] && gcloud storage rm -r "gs://${BUCKET}/runs/$(path_for "${name}")" \
-      --project="${PROJECT}" || true
-  done < <(each_slice)
-  echo "  bucket, Firestore database and service account left in place"
+  gcloud run jobs delete "${JOB}-catalogue" --region="${REGION}" --project="${PROJECT}" \
+    --quiet 2>/dev/null || true
+  if [[ -n "${del_bucket}" ]]; then
+    gcloud storage rm -r "gs://${BUCKET}" --project="${PROJECT}" || true
+  else
+    while IFS=$'\x1f' read -r name _; do
+      [[ -n "${name}" ]] && gcloud storage rm -r "gs://${BUCKET}/runs/$(path_for "${name}")" \
+        --project="${PROJECT}" || true
+    done < <(each_slice)
+  fi
+  echo "  Firestore database and service account left in place"
 }
 
 build_catalogue() {

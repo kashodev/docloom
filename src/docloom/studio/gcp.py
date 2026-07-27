@@ -163,6 +163,19 @@ class GcpTarget:
         return self._run(config, ["export"], dry_run, capture, run_id=args.run_id,
                          summary=f"export {args.run_id} → {sink}", links=links)
 
+    def teardown(self, project: Project, *, keep_data: bool = True,
+                 dry_run: bool = False, capture: bool = False) -> Result:
+        """Delete the project's Cloud Run job(s), and — unless keep_data — the whole
+        bucket. Runs deploy.sh's teardown non-interactively (the studio does its own
+        confirmation); Firestore and the service account are left in place."""
+        config = self._base_config(project)
+        env_extra = {"ASSUME_YES": "1"}
+        if not keep_data:
+            env_extra["TEARDOWN_BUCKET"] = "1"
+        scope = "job(s)" if keep_data else "job(s) + bucket (all documents + golden)"
+        return self._run(config, ["teardown"], dry_run, capture, env_extra=env_extra,
+                         summary=f"teardown {project.ref} — {scope}")
+
     # ── internals ───────────────────────────────────────────────────────────
     def _base_config(self, project: Project) -> dict:
         return {
@@ -188,21 +201,23 @@ class GcpTarget:
                              for sub in subcommands)
 
     def _run(self, config: dict, subcommands: list[str], dry_run: bool, capture: bool, *,
-             summary: str, links: tuple[Link, ...] = (), run_id: str = "") -> Result:
+             summary: str, links: tuple[Link, ...] = (), run_id: str = "",
+             env_extra: dict[str, str] | None = None) -> Result:
         cfg = self._write_config(config)
         command = self._display(cfg, subcommands)
         if dry_run:
             return Result(ok=True, summary=summary, command=command, links=links, run_id=run_id)
-        ok, detail = self._sh(cfg, subcommands, capture=capture)
+        ok, detail = self._sh(cfg, subcommands, capture=capture, env_extra=env_extra)
         return Result(
             ok=ok, summary=summary if ok else f"failed: {summary}", command=command,
             links=links if ok else (), run_id=run_id, detail=detail,
         )
 
-    def _sh(self, cfg: Path, subcommands: list[str], *, capture: bool) -> tuple[bool, str]:
+    def _sh(self, cfg: Path, subcommands: list[str], *, capture: bool,
+            env_extra: dict[str, str] | None = None) -> tuple[bool, str]:
         """Run each ``deploy.sh -c <cfg> <sub>`` in order; stop at the first failure."""
         script = _deploy_script()
-        env = {**os.environ, "PYTHON": sys.executable}
+        env = {**os.environ, "PYTHON": sys.executable, **(env_extra or {})}
         for sub in subcommands:
             proc = subprocess.run(
                 [str(script), "-c", str(cfg), sub], cwd=str(script.parent), env=env,
