@@ -176,6 +176,41 @@ class GcpTarget:
         return self._run(config, ["teardown"], dry_run, capture, env_extra=env_extra,
                          summary=f"teardown {project.ref} — {scope}")
 
+    # ── catalogue re-use ──────────────────────────────────────────────────────
+    def catalogue_location(self, project: Project, pack: str, version: str) -> str:
+        return f"gs://{project.bucket}/catalogues/{pack}/{version}"
+
+    def catalogue_info(self, project: Project, pack: str, version: str) -> dict | None:
+        """The catalogue's manifest if one is already built for this version, else
+        None. Read straight from GCS with `gcloud storage cat` (no local gcp extra
+        needed); a missing object or absent gcloud is simply 'no catalogue'."""
+        import json
+        uri = f"{self.catalogue_location(project, pack, version)}/manifest.json"
+        try:
+            proc = subprocess.run(["gcloud", "storage", "cat", uri, "--project", project.id],
+                                  capture_output=True, text=True, check=False)
+        except (FileNotFoundError, OSError):
+            return None
+        if proc.returncode != 0:
+            return None
+        try:
+            return json.loads(proc.stdout)
+        except ValueError:
+            return None
+
+    # ── run.yaml scaffolding ──────────────────────────────────────────────────
+    def scaffold(self, step: str, project: Project, args: object, path: str) -> Result:
+        """Write the deploy.sh config for a step to ``path`` as a reusable run.yaml
+        (instead of a temp file), so the operator can drive `deploy.sh -c <path>`
+        directly. Reuses the exact config the run_* methods build."""
+        runners = {"catalog": self.run_catalogue, "pdfs": self.run_generate,
+                   "export": self.run_export}
+        self._config_out = Path(path)
+        try:
+            return runners[str(step)](project, args, dry_run=True)   # type: ignore[operator]
+        finally:
+            self._config_out = None
+
     # ── internals ───────────────────────────────────────────────────────────
     def _base_config(self, project: Project) -> dict:
         return {
@@ -190,9 +225,19 @@ class GcpTarget:
 
     def _write_config(self, config: dict) -> Path:
         import yaml
+        text = yaml.safe_dump(config, sort_keys=False)
+        # `scaffold` sets _config_out to write a named, commented run.yaml instead
+        # of a throwaway temp file.
+        out = getattr(self, "_config_out", None)
+        if out is not None:
+            out = Path(out)
+            out.write_text("# docloom run.yaml — scaffolded by `docloom studio … --scaffold`.\n"
+                           "# Drive it directly:  deploy/gcp/deploy.sh -c <this file> <command>\n\n"
+                           + text)
+            return out
         fd, path = tempfile.mkstemp(suffix=".studio.yaml")
         with os.fdopen(fd, "w") as fh:
-            fh.write(yaml.safe_dump(config, sort_keys=False))
+            fh.write(text)
         return Path(path)
 
     def _display(self, cfg: Path, subcommands: list[str]) -> str:

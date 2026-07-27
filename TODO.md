@@ -271,6 +271,19 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       - Repro: `scratchpad/smoke_catalogue.py` (unmerged); `--raw` dumps the
         message shape that proved the diagnosis.
 
+- [ ] **Studio cost preview before the catalogue confirm (Phase 4 item 11).**
+      Show an estimated spend (`companies × products → chunks → calls × per-call
+      cost for the mix`) next to the hard `--budget` cap, so the operator sees the
+      likely cost, not just the ceiling. **Deferred deliberately:** a naive estimate
+      is fragile — per-token prices change, and a reasoning model that ignores
+      `max_tokens` (the exact failure that produced empty completions) blows the
+      estimate open, so a wrong-but-confident number is worse than none. Wants a
+      better basis first: current published prices (from `pricing.py`, kept fresh),
+      an observed-cost feedback loop (use the last build's actual $/item for this
+      mix as the estimate), and a clear "estimate, not a quote" framing. Until then
+      the **hard cap** (`--budget`, enforced by `BudgetGuard`) is the real
+      protection; the preview is a nicety, not a safety mechanism.
+
 - [ ] **A separate budget for empty completions, independent of retries.** An
       empty completion still *costs* — a reasoning model that spends its whole
       token budget on `reasoning_content` and returns `content: ""` is billed for

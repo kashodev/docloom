@@ -665,8 +665,8 @@ def _run_studio(*, provider: str = "", project: str = "", step: str = "", pack: 
                 issue_date_to: str = "", version: str = "v1", companies: int = 1000,
                 products_per_company: int = 300, seed: int = 0, sink: str = "",
                 mix: str = "procedural", budget_usd: float = 0.0, concurrency: int = 0,
-                tasks: int = 0, parallelism: int = 0,
-                onboard: bool = False, region: str = "", bucket: str = "",
+                tasks: int = 0, parallelism: int = 0, rebuild_catalogue: bool = False,
+                scaffold: str = "", onboard: bool = False, region: str = "", bucket: str = "",
                 yes: bool = False, wait: bool = False, dry_run: bool = False) -> None:
     """The studio flow with real defaults — the `studio` command and a bare
     interactive `docloom` both call this. Walks target → project → pack → step →
@@ -766,6 +766,42 @@ def _run_studio(*, provider: str = "", project: str = "", step: str = "", pack: 
                 continue
             first = False
 
+            # Catalogue re-use: a rebuild costs money, so if one already exists for
+            # this version, reuse it by default — scripted, --rebuild-catalogue
+            # forces a rebuild; interactive, ask. (Skipped in --dry-run, which just
+            # shows the build plan and shouldn't probe the target.)
+            if step_enum is Step.CATALOG and not dry_run and not scaffold:
+                existing = target.catalogue_info(proj, pack_name, args.version)
+                if existing is not None:
+                    rebuild = rebuild_catalogue
+                    if interactive and prompter is not None and not rebuild_catalogue:
+                        rebuild = prompter.confirm(
+                            f"  catalogue '{args.version}' already exists "
+                            f"({_catalogue_summary(existing)}) — rebuild (costs money)?",
+                            default=False)
+                    if not rebuild:
+                        loc = target.catalogue_location(proj, pack_name, args.version)
+                        typer.echo(f"\n  ✔ using existing catalogue '{args.version}' "
+                                   f"({_catalogue_summary(existing)})\n    {loc}")
+                        if not loop:
+                            return
+                        typer.echo("")
+                        continue
+
+            # --scaffold: write this step's config to a reusable deploy.sh run.yaml
+            # and stop (gcp only — local has no run.yaml).
+            if scaffold:
+                if provider_name == "gcp":
+                    target.scaffold(step_enum.value, proj, args, scaffold)
+                    typer.echo(f"\n  ✔ scaffolded {step_enum.value} → {scaffold}"
+                               f"\n    drive it:  deploy/gcp/deploy.sh -c {scaffold} <command>")
+                else:
+                    typer.echo("  --scaffold writes a deploy.sh run.yaml — gcp target only")
+                if not loop:
+                    return
+                typer.echo("")
+                continue
+
             # An LLM catalogue on a cloud target needs API keys in Secret Manager.
             # Record the secret *names* on the project (never a value), and tell the
             # operator how to create any that are missing — deploy.sh then verifies
@@ -864,6 +900,12 @@ def studio(
                                    "(default catalog 1, pdfs 4)"),
     parallelism: int = typer.Option(0, "--parallelism",
                                     help="Max pdfs tasks running at once (default = --tasks)"),
+    rebuild_catalogue: bool = typer.Option(
+        False, "--rebuild-catalogue",
+        help="Rebuild the catalog even if one exists for this version (costs money)"),
+    scaffold: str = typer.Option(
+        "", "--scaffold",
+        help="Write the step's deploy.sh run.yaml to this path and stop (gcp only)"),
     sink: str = typer.Option("", "--sink", help="Golden sink uri (export); '' = local DuckDB"),
     yes: bool = typer.Option(False, "--yes", help="Skip the interactive confirmation"),
     wait: bool = typer.Option(False, "--wait",
@@ -885,7 +927,8 @@ def studio(
                 issue_date_from=issue_date_from, issue_date_to=issue_date_to, version=version,
                 companies=companies, products_per_company=products_per_company, seed=seed,
                 mix=mix, budget_usd=budget_usd, concurrency=concurrency, tasks=tasks,
-                parallelism=parallelism, sink=sink, onboard=onboard, region=region,
+                parallelism=parallelism, rebuild_catalogue=rebuild_catalogue, scaffold=scaffold,
+                sink=sink, onboard=onboard, region=region,
                 bucket=bucket, yes=yes, wait=wait, dry_run=dry_run)
 
 
@@ -1003,6 +1046,19 @@ def studio_teardown(
         raise typer.Exit(1)
     reg.remove(proj.ref)
     typer.echo(f"  ✔ {result.summary} · removed from the registry")
+
+
+def _catalogue_summary(info: dict) -> str:
+    """A one-line description of an existing catalogue for the reuse prompt."""
+    bits = []
+    if info.get("created_at"):
+        bits.append(f"built {str(info['created_at'])[:10]}")
+    prov = info.get("provenance") or {}
+    for key in ("total_cost", "cost", "spend"):
+        if prov.get(key) is not None:
+            bits.append(f"${prov[key]}")
+            break
+    return " · ".join(bits) or "exists"
 
 
 def _capture_catalogue_secrets(registry, project, args):

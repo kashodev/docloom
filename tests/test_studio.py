@@ -676,6 +676,72 @@ def test_studio_teardown_with_yes_removes_from_registry(tmp_path: Path) -> None:
     assert Registry(home / "projects.yaml").get("local:ws") is None   # forgotten
 
 
+# ── catalogue re-use + run.yaml scaffolding ─────────────────────────────────
+def test_local_catalogue_info_none_then_found(tmp_path: Path) -> None:
+    t = LocalTarget()
+    p = t.normalise(ProjectSpec(target="local", id="ws", root=str(tmp_path)))
+    assert t.catalogue_info(p, "invoice", "v1") is None          # nothing built yet
+    mf = Path(t.catalogue_location(p, "invoice", "v1"), "manifest.json")
+    mf.parent.mkdir(parents=True)
+    mf.write_text('{"catalogue_version": "v1", "created_at": "2026-07-20T00:00:00Z",'
+                  ' "provenance": {"total_cost": "3.41"}}')
+    info = t.catalogue_info(p, "invoice", "v1")
+    assert info["catalogue_version"] == "v1"
+
+
+def test_catalogue_summary_formats_provenance() -> None:
+    from docloom.cli import _catalogue_summary
+    s = _catalogue_summary({"created_at": "2026-07-20T09:00:00Z",
+                            "provenance": {"total_cost": "3.41"}})
+    assert "built 2026-07-20" in s and "$3.41" in s
+    assert _catalogue_summary({}) == "exists"
+
+
+def test_studio_catalog_reuses_existing_catalogue_by_default(tmp_path: Path) -> None:
+    home = tmp_path / ".docloom"
+    ws = tmp_path / "ws"
+    LocalTarget().provision(ProjectSpec(target="local", id="ws", root=str(ws)))
+    Registry(home / "projects.yaml").add(
+        Project(target="local", id="ws", root=str(ws)), make_default=True)
+    mf = Path(ws, "catalogues", "invoice", "v1", "manifest.json")
+    mf.parent.mkdir(parents=True)
+    mf.write_text('{"catalogue_version": "v1", "created_at": "2026-07-20T00:00:00Z"}')
+    res = runner.invoke(app, ["studio", "-p", "local", "--project", str(ws),
+                              "--step", "catalog", "--version", "v1"],
+                        env={"DOCLOOM_HOME": str(home)})
+    assert res.exit_code == 0, res.output
+    assert "using existing catalogue 'v1'" in res.output          # reused, no rebuild
+
+
+def test_gcp_scaffold_writes_a_reusable_run_yaml(tmp_path: Path) -> None:
+    import yaml
+    t = GcpTarget()
+    p = t.normalise(ProjectSpec(target="gcp", id="acme"))
+    out = tmp_path / "run.yaml"
+    t.scaffold("catalog", p, CatalogueArgs(version="v2", mix="cheap-mix", budget_usd=5), str(out))
+    text = out.read_text()
+    assert text.startswith("# docloom run.yaml")                  # commented header
+    cfg = yaml.safe_load(text)
+    assert cfg["project"] == "acme" and cfg["catalogue"]["version"] == "v2"
+    assert cfg["catalogue"]["providers"]                          # the mix expanded in
+
+
+def test_studio_scaffold_flag_writes_run_yaml_and_stops(tmp_path: Path) -> None:
+    import yaml
+    home = tmp_path / ".docloom"
+    Registry(home / "projects.yaml").add(
+        Project(target="gcp", id="acme", region="us-central1", bucket="acme-docloom"),
+        make_default=True)
+    out = tmp_path / "run.yaml"
+    res = runner.invoke(app, ["studio", "-p", "gcp", "--project", "acme", "--step", "pdfs",
+                              "--run-id", "r1", "--total", "500", "--scaffold", str(out)],
+                        env={"DOCLOOM_HOME": str(home)})
+    assert res.exit_code == 0, res.output
+    assert "scaffolded pdfs" in res.output and out.is_file()
+    cfg = yaml.safe_load(out.read_text())
+    assert cfg["run"]["id"] == "r1" and cfg["documents"][0]["count"] == 500
+
+
 # ── concurrency / tasks control ─────────────────────────────────────────────
 def test_gcp_catalogue_threads_concurrency_and_tasks() -> None:
     t = GcpTarget()

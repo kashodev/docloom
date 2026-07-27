@@ -145,6 +145,22 @@ class LocalTarget:
         shutil.rmtree(root, ignore_errors=True)
         return Result(ok=True, summary=f"teardown {project.ref} — removed {root}")
 
+    # ── catalogue re-use ──────────────────────────────────────────────────────
+    def catalogue_location(self, project: Project, pack: str, version: str) -> str:
+        return str(Path(project.root, "catalogues", pack, version))
+
+    def catalogue_info(self, project: Project, pack: str, version: str) -> dict | None:
+        """The catalogue's manifest if one is already built for this version, else
+        None — so the studio can offer to reuse it rather than rebuild (spend)."""
+        import json
+        mf = Path(self.catalogue_location(project, pack, version), "manifest.json")
+        if not mf.is_file():
+            return None
+        try:
+            return json.loads(mf.read_text())
+        except (OSError, ValueError):
+            return None
+
     # ── internals ───────────────────────────────────────────────────────────
     def _write_providers(self, project: Project, mix) -> str:
         """Write the mix's provider block to a file for ``--providers``. Lives in
