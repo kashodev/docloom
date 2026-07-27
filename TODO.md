@@ -417,6 +417,40 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         it covers the whole class rather than this one instance.
 
 ## Concurrency & multi-cloud portability
+- [ ] **Surface task/concurrency control in the studio (catalogue + generate),
+      and reconsider export parallelism.** The knobs exist in the kernel and
+      `deploy.sh` but the studio bakes in fixed values, so a `docloom studio` run
+      can't scale up without hand-editing config. Split into three parts:
+      - **Catalogue is single-task unless sharded — and the studio never shards.**
+        `docloom catalogue` runs a single-process, in-memory build **unless
+        `--state` is given**, which switches it to `_sharded_catalogue` (a
+        resumable build over company ranges, worked by N Cloud Run tasks via the
+        same atomic claim as generation). Within the single task it still runs
+        `--concurrency` LLM calls at once (default **8**). `deploy.sh` shards when
+        `catalogue.tasks > 1` (`CAT_TASKS`), but `GcpTarget.run_catalogue` sets
+        `concurrency: 8` and **omits `catalogue.tasks`**, so a studio catalogue is
+        always **1 task × 8 concurrent calls**. (This is why "100×300 ran one
+        task" — expected, not a bug: 30k items is within the single-task budget,
+        and 8 calls were in flight the whole time.) *Wanted:* studio `--concurrency`
+        (→ `catalogue.concurrency`) and `--tasks` (→ `catalogue.tasks`, which pulls
+        in the Firestore state store the base config already has, so tasks > 1
+        becomes a sharded resumable build).
+      - **Generate workers are hardcoded to 4.** `GcpTarget._base_config` pins
+        `job: {tasks: 4, parallelism: 4}`; `deploy.sh` reads `job.tasks` /
+        `job.parallelism` (default 1). No studio flag exposes them. *Wanted:*
+        studio `--tasks` / `--parallelism` for the pdfs step (→ `job.*`).
+      - **Export has no concurrency at all.** `export_run` is a plain sequential
+        nested loop (`for table: for shard: decode → sink.write`,
+        `core/pipeline/export.py`), and `deploy.sh` runs it single-task per slice.
+        It's deliberate — a table's Parquet parts land in deterministic key order —
+        so any parallelism must preserve that (e.g. bounded-parallel *reads* with
+        ordered writes, or per-table workers). *Investigate whether it's worth it*
+        before adding knobs; a large export is currently single-threaded I/O.
+      - Shape: thread the flags through `_run_studio` → the `*Args` dataclasses →
+        `GcpTarget`/`LocalTarget` (catalogue.concurrency/tasks, job.tasks/parallelism);
+        `deploy.sh --set` already proves the config path, the studio just doesn't
+        reach it. Separate PR from the LLM-catalogue-mix work.
+
 - [x] **Concurrent cold start races the run plan.** Every worker checked
       `get_run(run_id) is None` and created the run if so. When N tasks start
       simultaneously — which is exactly what Cloud Run Jobs does — two could both
