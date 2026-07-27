@@ -205,9 +205,18 @@ def build_catalogue_args(prompter: Prompter | None, interactive: bool, *, pack: 
             if raw == BACK:
                 return BACK
             budget_usd = float(raw) if raw.replace(".", "", 1).isdigit() else (budget_usd or 20.0)
+            raw = prompter.text("Concurrency (LLM calls in flight)",
+                                default=str(concurrency or 8), allow_back=True)
+            if raw == BACK:
+                return BACK
+            concurrency = _as_int(raw, concurrency or 8)
+            raw = prompter.text("Tasks (parallel Cloud Run shards; 1 = single build)",
+                                default=str(tasks or 1), allow_back=True)
+            if raw == BACK:
+                return BACK
+            tasks = _as_int(raw, tasks or 1)
     else:
         budget_usd = 0.0
-    # concurrency/tasks are advanced tuning — taken from flags, never prompted.
     return CatalogueArgs(version=version, pack=pack, companies=companies,
                          products_per_company=products_per_company, seed=seed,
                          mix=mix, budget_usd=budget_usd,
@@ -244,6 +253,11 @@ def build_generate_args(prompter: Prompter | None, interactive: bool, *, pack: s
                                         allow_back=True)
                 if date_to == BACK:
                     return BACK
+        raw = prompter.text("Tasks (parallel Cloud Run workers)",
+                            default=str(tasks or 4), allow_back=True)
+        if raw == BACK:
+            return BACK
+        tasks = _as_int(raw, tasks or 4)
     return GenerateArgs(run_id=run_id, total=total, pack=pack, fmt=fmt,  # type: ignore[arg-type]
                         catalogue=catalogue, selection_file=selection_file,
                         condition=condition, date_from=date_from, date_to=date_to,

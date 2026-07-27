@@ -256,10 +256,11 @@ def test_build_generate_args_missing_required_is_an_error() -> None:
 
 
 def test_build_generate_args_prompts_when_interactive() -> None:
-    p = ScriptedPrompter(["demo", "5", "", "clean", ""])   # run_id/total/catalogue/condition/from
+    # run_id/total/catalogue/condition/from, then tasks
+    p = ScriptedPrompter(["demo", "5", "", "clean", "", "12"])
     a = wizard.build_generate_args(p, True, pack="invoice", run_id="", total=0,
                                    catalogue="", fmt="pdf", condition="", date_from="", date_to="")
-    assert a.run_id == "demo" and a.total == 5 and a.condition == "clean"
+    assert a.run_id == "demo" and a.total == 5 and a.condition == "clean" and a.tasks == 12
 
 
 def test_build_catalogue_args_prompts_with_defaults() -> None:
@@ -270,11 +271,13 @@ def test_build_catalogue_args_prompts_with_defaults() -> None:
     assert a.mix == "procedural" and a.budget_usd == 0.0     # procedural never asks for a budget
 
 
-def test_build_catalogue_args_llm_mix_then_prompts_budget() -> None:
-    p = ScriptedPrompter(["v2", "50", "20", "cheap-mix", "12.5"])   # mix, then budget
+def test_build_catalogue_args_llm_mix_then_prompts_budget_concurrency_tasks() -> None:
+    # mix, then budget, concurrency, tasks
+    p = ScriptedPrompter(["v2", "50", "20", "cheap-mix", "12.5", "16", "8"])
     a = wizard.build_catalogue_args(p, True, pack="invoice", version="v1", companies=1000,
                                     products_per_company=300, seed=0)
     assert a.mix == "cheap-mix" and a.budget_usd == 12.5
+    assert a.concurrency == 16 and a.tasks == 8
 
 
 def test_build_catalogue_args_mix_flag_bypasses_prompts() -> None:
