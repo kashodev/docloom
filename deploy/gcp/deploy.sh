@@ -675,7 +675,7 @@ status() {
     [[ -n "${name}" ]] || continue
     say "Status — $(run_id_for "${name}")"
     gcloud run jobs execute "${JOB}" --region="${REGION}" --project="${PROJECT}" \
-      --wait --tasks=1 --parallelism=1 \
+      --wait --tasks=1 \
       --args="^|^status|--run-id=$(run_id_for "${name}")|--state=${STATE_URI}"
   done < <(each_slice)
 }
@@ -696,7 +696,7 @@ export_golden() {
     local prefix_arg=""; p="$(prefix_for "${name}")"; [[ -n "${p}" ]] && prefix_arg="|--storage-prefix=${p}"
     # One task: export is a single sequential read of the shards.
     gcloud run jobs execute "${JOB}" --region="${REGION}" --project="${PROJECT}" \
-      --wait --tasks=1 --parallelism=1 \
+      --wait --tasks=1 \
       --args="^|^export|--run-id=$(run_id_for "${name}")|--storage=${STORAGE_URI}|--sink=${SINK_URI}${prefix_arg}"
   done < <(each_slice)
 }
