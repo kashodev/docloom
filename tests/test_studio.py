@@ -40,6 +40,14 @@ from docloom.studio.prompts import (
 runner = CliRunner()
 
 
+def _plain(text: str) -> str:
+    """CLI output with ANSI escape codes stripped. Typer/Rich colourises error
+    panels (and bolds options like ``--yes``) in a forced-colour environment such
+    as CI, inserting codes that would break a plain substring check."""
+    import re
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
 # ── registry ────────────────────────────────────────────────────────────────
 def test_registry_round_trips_a_project(tmp_path: Path) -> None:
     reg = Registry(tmp_path / "projects.yaml")
@@ -188,7 +196,7 @@ def test_studio_export_needs_a_run_id(tmp_path: Path) -> None:
     res = runner.invoke(app, ["studio", "-p", "local", "--project", str(tmp_path / "ws"),
                               "--step", "export", "--dry-run"], env=env)
     assert res.exit_code != 0
-    assert "run-id" in res.output
+    assert "run-id" in _plain(res.output)
 
 
 # ── prompts ─────────────────────────────────────────────────────────────────
@@ -663,7 +671,7 @@ def test_studio_teardown_non_interactive_requires_yes(tmp_path: Path) -> None:
     Registry(home / "projects.yaml").add(Project(target="local", id="ws", root=str(tmp_path / "w")))
     res = runner.invoke(app, ["studio", "teardown", "--project", "local:ws"],
                         env={"DOCLOOM_HOME": str(home)})
-    assert res.exit_code != 0 and "pass --yes" in res.output
+    assert res.exit_code != 0 and "pass --yes" in _plain(res.output)
 
 
 def test_studio_teardown_with_yes_removes_from_registry(tmp_path: Path) -> None:
