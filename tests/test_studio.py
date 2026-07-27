@@ -608,6 +608,61 @@ def test_local_catalogue_llm_mix_writes_a_providers_file(tmp_path: Path) -> None
     assert pf.is_file() and "anthropic" in pf.read_text()
 
 
+# ── concurrency / tasks control ─────────────────────────────────────────────
+def test_gcp_catalogue_threads_concurrency_and_tasks() -> None:
+    t = GcpTarget()
+    p = t.normalise(ProjectSpec(target="gcp", id="acme"))
+    r = t.run_catalogue(p, CatalogueArgs(version="v2", mix="cheap-mix", concurrency=16, tasks=8),
+                        dry_run=True)
+    cat = _cfg_from(r.command)["catalogue"]
+    assert cat["concurrency"] == 16 and cat["tasks"] == 8      # sharded across 8 tasks
+    # tasks == 1 (default) is a single in-memory build → no `tasks` key, default concurrency
+    solo = _cfg_from(t.run_catalogue(p, CatalogueArgs(version="v3", mix="cheap-mix"),
+                                     dry_run=True).command)["catalogue"]
+    assert "tasks" not in solo and solo["concurrency"] == 8
+
+
+def test_gcp_generate_threads_job_tasks_and_parallelism() -> None:
+    t = GcpTarget()
+    p = t.normalise(ProjectSpec(target="gcp", id="acme"))
+    r = t.run_generate(p, GenerateArgs(run_id="r", total=100, tasks=16, parallelism=8),
+                       dry_run=True)
+    job = _cfg_from(r.command)["job"]
+    assert job["tasks"] == 16 and job["parallelism"] == 8
+    # parallelism 0 ⇒ = tasks
+    j2 = _cfg_from(t.run_generate(p, GenerateArgs(run_id="r", total=100, tasks=6),
+                                  dry_run=True).command)["job"]
+    assert j2["tasks"] == 6 and j2["parallelism"] == 6
+
+
+def test_local_catalogue_passes_concurrency_but_not_tasks(tmp_path: Path) -> None:
+    t = LocalTarget()
+    p = t.provision(ProjectSpec(target="local", id="ws", root=str(tmp_path / "ws")))
+    r = t.run_catalogue(p, CatalogueArgs(version="v1", mix="anthropic", concurrency=12, tasks=8),
+                        dry_run=True)
+    assert r.argv[r.argv.index("--concurrency") + 1] == "12"
+    assert "--tasks" not in r.argv and "--state" not in r.argv   # single local process
+
+
+def test_build_args_thread_concurrency_tasks_parallelism_and_zero_defaults() -> None:
+    c = wizard.build_catalogue_args(None, False, pack="invoice", version="v1", companies=10,
+                                    products_per_company=5, seed=0, mix="cheap-mix",
+                                    concurrency=16, tasks=8)
+    assert c.concurrency == 16 and c.tasks == 8
+    # 0 flags fall back to the step defaults (catalog: concurrency 8, tasks 1)
+    d = wizard.build_catalogue_args(None, False, pack="invoice", version="v1", companies=10,
+                                    products_per_company=5, seed=0, mix="cheap-mix",
+                                    concurrency=0, tasks=0)
+    assert d.concurrency == 8 and d.tasks == 1
+    g = wizard.build_generate_args(None, False, pack="invoice", run_id="r", total=3, catalogue="",
+                                   fmt="pdf", condition="", date_from="", date_to="",
+                                   tasks=16, parallelism=8)
+    assert g.tasks == 16 and g.parallelism == 8
+    g0 = wizard.build_generate_args(None, False, pack="invoice", run_id="r", total=3, catalogue="",
+                                    fmt="pdf", condition="", date_from="", date_to="", tasks=0)
+    assert g0.tasks == 4 and g0.parallelism == 0    # pdfs default 4 tasks; 0 ⇒ = tasks downstream
+
+
 def test_capture_catalogue_secrets_saves_names_never_values(tmp_path: Path) -> None:
     from docloom.cli import _capture_catalogue_secrets
     reg = Registry(tmp_path / "projects.yaml")

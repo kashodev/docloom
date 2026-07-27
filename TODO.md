@@ -445,11 +445,19 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         it covers the whole class rather than this one instance.
 
 ## Concurrency & multi-cloud portability
-- [ ] **Surface task/concurrency control in the studio (catalogue + generate),
-      and reconsider export parallelism.** The knobs exist in the kernel and
+- [~] **Surface task/concurrency control in the studio (catalogue + generate),
+      and reconsider export parallelism.** *Catalogue + generate flags **done**
+      (`feat/studio-concurrency-flags`): `docloom studio --concurrency`
+      (→ `catalogue.concurrency`), `--tasks` (→ `catalogue.tasks` for catalog =
+      sharded resumable build, `job.tasks` for pdfs), `--parallelism`
+      (→ `job.parallelism`); 0 ⇒ each step's default (catalog 8/1, pdfs 4/=tasks).
+      Threaded through `_run_studio` → the `*Args` dataclasses → `GcpTarget` +
+      `LocalTarget` (local honours `--concurrency`; `tasks` is a Cloud-Run concept,
+      not threaded there). **Export parallelism still open — see the last bullet.***
+      The knobs exist in the kernel and
       `deploy.sh` but the studio bakes in fixed values, so a `docloom studio` run
       can't scale up without hand-editing config. Split into three parts:
-      - **Catalogue is single-task unless sharded — and the studio never shards.**
+      - **[done] Catalogue is single-task unless sharded — and the studio never shards.**
         `docloom catalogue` runs a single-process, in-memory build **unless
         `--state` is given**, which switches it to `_sharded_catalogue` (a
         resumable build over company ranges, worked by N Cloud Run tasks via the
@@ -463,21 +471,22 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         (→ `catalogue.concurrency`) and `--tasks` (→ `catalogue.tasks`, which pulls
         in the Firestore state store the base config already has, so tasks > 1
         becomes a sharded resumable build).
-      - **Generate workers are hardcoded to 4.** `GcpTarget._base_config` pins
-        `job: {tasks: 4, parallelism: 4}`; `deploy.sh` reads `job.tasks` /
-        `job.parallelism` (default 1). No studio flag exposes them. *Wanted:*
-        studio `--tasks` / `--parallelism` for the pdfs step (→ `job.*`).
-      - **Export has no concurrency at all.** `export_run` is a plain sequential
-        nested loop (`for table: for shard: decode → sink.write`,
-        `core/pipeline/export.py`), and `deploy.sh` runs it single-task per slice.
-        It's deliberate — a table's Parquet parts land in deterministic key order —
-        so any parallelism must preserve that (e.g. bounded-parallel *reads* with
-        ordered writes, or per-table workers). *Investigate whether it's worth it*
-        before adding knobs; a large export is currently single-threaded I/O.
-      - Shape: thread the flags through `_run_studio` → the `*Args` dataclasses →
-        `GcpTarget`/`LocalTarget` (catalogue.concurrency/tasks, job.tasks/parallelism);
-        `deploy.sh --set` already proves the config path, the studio just doesn't
-        reach it. Separate PR from the LLM-catalogue-mix work.
+      - **[done] Generate workers were hardcoded to 4.** `GcpTarget.run_generate`
+        now overrides `job.tasks` / `job.parallelism` from `GenerateArgs`.
+      - **[open] Export parallelism — investigated, deferred as its own change.**
+        `export_run` is a sequential nested loop (`for table: for shard:
+        blob.get → decode → sink.write`, `core/pipeline/export.py`) — the slow part
+        is `blob.get` (network I/O per shard); the writes must stay ordered because
+        a table's Parquet parts land in deterministic key order. **Recommended
+        approach:** concurrent *prefetch* of shards (a bounded thread pool over
+        `blob.get`, e.g. `ThreadPoolExecutor(max_workers=N)`) feeding an
+        **ordered** writer that still calls `sink.write` in sorted key order — so
+        reads overlap while determinism is preserved. Kept out of the studio-flags
+        PR on purpose: it touches the core pipeline and is determinism-sensitive, so
+        it wants its own change + tests (verify byte-identical Parquet vs the
+        sequential path, and that an empty/failed shard read doesn't reorder). Only
+        worth it if export becomes a real bottleneck; a whole run's shards are
+        typically dwarfed by generation time.
 
 - [x] **Concurrent cold start races the run plan.** Every worker checked
       `get_run(run_id) is None` and created the run if so. When N tasks start
