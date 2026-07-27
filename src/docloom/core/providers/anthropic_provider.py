@@ -7,7 +7,7 @@ module imports with the SDK absent and is tested against a fake client.
 
 In the catalogue mix this is the ~20% "diversity" slice: a different model's
 voice mixed into the corpus so an extraction pipeline cannot learn a single
-generator's style. See DESIGN.md.
+generator's style.
 """
 
 from __future__ import annotations

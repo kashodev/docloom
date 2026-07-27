@@ -1,6 +1,6 @@
 """Weighted provider mix.
 
-The 40/40/20 DeepSeek/Qwen/Haiku split from DESIGN.md, expressed as data. Two
+The weighted provider split (e.g. 40/40/20 DeepSeek/Qwen/Haiku), expressed as data. Two
 properties matter:
 
 * **Deterministic per item.** A catalogue item's provider is chosen from a seed

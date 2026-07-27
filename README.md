@@ -147,11 +147,11 @@ Two rules keep this from eroding the design:
   and then share code through a **library dependency, not an inherited base
   pack** (has-a, not is-a), extracted only when a second pack actually needs it.
 
-See [DESIGN.md](DESIGN.md) for the full architecture and rationale,
-[docs/concurrency.md](docs/concurrency.md) for the sharding + multi-worker model
-(how one run scales across a fleet without a broker or a leader), and
-[docs/deployment.md](docs/deployment.md) for per-platform wiring (local, GCP,
-AWS, Azure) with the URIs to point at.
+See the **documentation site** — built from [`site-docs/`](site-docs/) and
+deployed to GitHub Pages — for the full architecture and rationale, the
+concurrency & coordination model (how one run scales across a fleet without a
+broker or a leader), and per-platform deployment (local, GCP, AWS, Azure) with the
+URIs to point at.
 
 ## Status
 

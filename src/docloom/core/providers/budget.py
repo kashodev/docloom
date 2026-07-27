@@ -1,6 +1,6 @@
 """Budget guard.
 
-A catalogue run has a hard dollar ceiling (the $50 in DESIGN.md). The guard
+A catalogue run has a hard dollar ceiling (the configured budget). The guard
 accumulates spend and, when configured to abort, refuses to start work it cannot
 afford — a pre-flight estimate check before each call, plus the actual cost
 after. It is the difference between a run that stops at $50 and one that
