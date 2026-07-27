@@ -32,7 +32,9 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - run: pip install -e '.[dev]'
-      - run: pytest -q
+      # `python -m pytest` (not bare `pytest`) puts the repo root on sys.path, which
+      # the suite needs — some tests import helpers via `from tests.… import …`.
+      - run: python -m pytest -q
 
   lint:
     name: ruff (changed files)
