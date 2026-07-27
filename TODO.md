@@ -271,6 +271,34 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       - Repro: `scratchpad/smoke_catalogue.py` (unmerged); `--raw` dumps the
         message shape that proved the diagnosis.
 
+- [ ] **A separate budget for empty completions, independent of retries.** An
+      empty completion still *costs* — a reasoning model that spends its whole
+      token budget on `reasoning_content` and returns `content: ""` is billed for
+      those output tokens (observed live: deepseek-v4-flash, 2,000 output tokens
+      per empty, execution `docloom-generate-catalogue-h6w2x`). The circuit-breaker
+      (`empty_streak_limit`, default 10) quarantines a provider that returns empties
+      — but it does **not cap the money spent getting there**, and it is weak
+      *within a round*: `build_llm_catalogue` submits a whole round's chunks in one
+      `CatalogueRunner.run()`, and routing captures the quarantine set per-run, so a
+      newly-quarantined provider is not actually diverted until the **next** round.
+      On a large multi-slice run (each slice its own build, each round hundreds of
+      chunks), that is a lot of tokens paid for blank answers before quarantine
+      bites.
+      - **Wanted:** a dedicated *empty-completion budget* — a hard cap (absolute
+        USD, or a fraction of the main budget) on cumulative spend attributable to
+        empty completions, tracked separately from the normal token budget and from
+        retry accounting. Crossing it stops issuing LLM calls for the offending
+        provider(s) immediately (fail the affected slots to procedural), regardless
+        of the streak counter — so a misconfigured reasoning model can waste at most
+        that cap, not a whole round.
+      - Relate to / possibly subsume the streak quarantine: the streak decides
+        *which* provider is bad; the empty-budget decides *how much* you will pay to
+        find out. Consider making quarantine react within a round too (re-read the
+        quarantine set per chunk, not per run).
+      - Cross-references the reasoning-model item above (disabling thinking removes
+        the *cause*; this bounds the *cost* when a mix is still misconfigured) and
+        the `DistributedBudgetGuard` for the fleet-wide/sharded case.
+
 - [x] **The budget pre-flight estimate is defeated by output that exceeds
       `max_tokens`.** *(Correction: an earlier version of this entry claimed the
       guard did not enforce on actual spend. It does — `BudgetGuard.add` raises
