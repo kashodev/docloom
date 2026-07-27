@@ -917,6 +917,94 @@ def studio_status(
         raise typer.Exit(1)
 
 
+@studio_app.command("projects")
+def studio_projects() -> None:
+    """List the saved projects (from ~/.docloom/projects.yaml)."""
+    from docloom.studio import Registry
+    reg = Registry()
+    projects = reg.projects()
+    if not projects:
+        typer.echo("  no saved projects — run `docloom studio` to create or onboard one")
+        return
+    default = reg.default_ref()
+    for p in projects:
+        where = p.root or (f"{p.region} · gs://{p.bucket}" if p.bucket else "")
+        when = (f"provisioned {p.provisioned_at}" if p.provisioned_at
+                else f"created {p.created_at}" if p.created_at else "")
+        last = f" · last run {p.last_run}" if p.last_run else ""
+        star = " *" if p.ref == default else ""
+        typer.echo(f"  {p.target:<6} {p.id:<24} {where}  {when}{last}{star}")
+
+
+@studio_app.command("provision")
+def studio_provision(
+    project: str = typer.Option("", "--project", help="Saved project ref or id; '' = the default"),
+    provider: str = typer.Option("", "--provider", "-p", help="Target for a bare --project id"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Resolve the project; run nothing"),
+) -> None:
+    """(Re)provision the selected project — idempotent, safe to re-run."""
+    from docloom.studio import Registry, StudioError, get_target
+    from docloom.studio.types import ProjectSpec
+    reg = Registry()
+    try:
+        proj = _resolve_saved_project(reg, project, provider)
+        target = get_target(proj.target)
+    except StudioError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(f"  provisioning {proj.ref}…")
+    if dry_run:
+        typer.echo("  (dry run — nothing created)")
+        return
+    spec = ProjectSpec(target=proj.target, id=proj.id, region=proj.region,
+                       bucket=proj.bucket, root=proj.root)
+    updated = target.provision(spec)
+    reg.add(updated)
+    typer.echo(f"  ✔ provisioned {proj.ref}")
+
+
+@studio_app.command("teardown")
+def studio_teardown(
+    project: str = typer.Option(..., "--project", help="Saved project ref or id (required)"),
+    provider: str = typer.Option("", "--provider", "-p", help="Target for a bare --project id"),
+    delete_data: bool = typer.Option(
+        False, "--delete-data",
+        help="Also delete the bucket / local workspace (documents + golden) — irreversible"),
+    yes: bool = typer.Option(False, "--yes", help="Skip the confirmation prompt"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the plan; delete nothing"),
+) -> None:
+    """Delete a project's resources and forget it. Keeps its data unless
+    --delete-data. Cloud teardown leaves Firestore + the service account in place."""
+    from docloom.studio import Registry, StudioError, get_target
+    from docloom.studio.prompts import get_prompter, is_interactive
+    reg = Registry()
+    try:
+        proj = _resolve_saved_project(reg, project, provider)
+        target = get_target(proj.target)
+    except StudioError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    scope = "DELETES ALL DATA (bucket/workspace)" if delete_data else "keeps the data"
+    if not dry_run and not yes:
+        # Destructive — require an explicit confirmation, interactively or via --yes.
+        if not is_interactive():
+            raise typer.BadParameter(f"teardown of {proj.ref} needs confirmation — pass --yes")
+        if not get_prompter().confirm(f"  Tear down {proj.ref} — {scope}?", default=False):
+            typer.echo("  aborted")
+            return
+    result = target.teardown(proj, keep_data=not delete_data, dry_run=dry_run)
+    if dry_run:
+        typer.echo(f"  project  {proj.ref}\n  summary  {result.summary}")
+        if result.command:
+            typer.echo(f"  plan\n    {result.command}")
+        return
+    if not result.ok:
+        for line in result.detail.splitlines():
+            typer.echo(f"    {line}")
+        raise typer.Exit(1)
+    reg.remove(proj.ref)
+    typer.echo(f"  ✔ {result.summary} · removed from the registry")
+
+
 def _capture_catalogue_secrets(registry, project, args):
     """For an LLM catalogue on a cloud target: record the mix's secret *names* on
     the project (never a value) and print how to create any missing ones. Returns

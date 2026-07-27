@@ -144,3 +144,6 @@ class DeploymentTarget(Protocol):
 
     def run_export(self, project: Project, args: ExportArgs, *,
                    dry_run: bool = False, capture: bool = False) -> Result: ...
+
+    def teardown(self, project: Project, *, keep_data: bool = True,       # delete resources
+                 dry_run: bool = False, capture: bool = False) -> Result: ...
