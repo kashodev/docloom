@@ -1,0 +1,50 @@
+name: release
+
+# Publish to PyPI via Trusted Publishing (OIDC) — no stored API token.
+# Fires when a GitHub Release is published; build the sdist+wheel and upload.
+# One-time PyPI + GitHub setup is documented in
+# site-docs/docs/operations/publishing.md.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tag must match [project].version
+        run: |
+          ver=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$ver" != "$tag" ]; then
+            echo "release tag '$tag' != pyproject version '$ver'"; exit 1
+          fi
+          echo "publishing version $ver"
+      - run: pip install build
+      - run: python -m build
+      - run: pipx run twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # The trusted publisher on PyPI is scoped to this environment.
+    environment: pypi
+    permissions:
+      id-token: write        # mint the OIDC token PyPI verifies
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
