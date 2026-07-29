@@ -2,6 +2,11 @@
 
 Tracked follow-ups that are deliberately deferred, not forgotten.
 
+> **Outstanding (unchecked) items are now tracked as GitHub issues** — each is
+> annotated inline with its issue number, e.g. `(#68)`. This file stays as the
+> historical ledger; new work lives in
+> [Issues](https://github.com/kashodev/docsynth/issues).
+
 ## Before / soon after first public push
 - [x] **Add a `LICENSE` file.** MIT `LICENSE` added and declared via PEP 639
       (`license = "MIT"`, `license-files = ["LICENSE"]`) with authors, readme,
@@ -11,7 +16,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
 - [x] **Add the project logo to the README.** A slate logo led the README.
       Removed in the `docloom` → `docsynth` rename — it was docloom-branded and
       the file was deleted. See the follow-up below.
-- [ ] **Add a new `docsynth` logo to the README.** Design a docsynth logo and
+- [ ] (#68) **Add a new `docsynth` logo to the README.** Design a docsynth logo and
       restore a centered banner at the top of the README (replacing the current
       plain `# docsynth` H1); consider reusing it for the docs-site header too.
 - [x] **Check the generated `samples/` PDFs into git.** Dropped the stale
@@ -46,7 +51,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       - Export is untouched — it walks `<run>/golden/`; the manifest lives under
         `<run>/manifest/` and `<run>/manifest.json`.
 
-- [ ] **Incremental (pull-while-generating) manifest consumption.** Today the
+- [ ] (#69) **Incremental (pull-while-generating) manifest consumption.** Today the
       contract is pull-on-complete: the root manifest appears only when the run
       finishes, so a consumer cannot start processing a large run's early units
       while later ones are still generating. The per-unit parts already exist and
@@ -62,7 +67,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         progress marker in the bucket) tells it the expected unit count so it can
         tell "not done yet" from "done, here is everything".
 
-- [ ] **Aggregate root manifest over a multi-slice run.** A single `generate` now
+- [ ] (#70) **Aggregate root manifest over a multi-slice run.** A single `generate` now
       nests its slices under one folder — `runs/<run>/<slice>/…`, each with its own
       root manifest (shipped in #40) — but there is still no single top-level
       `runs/<run>/manifest.json` describing the whole run. A first attempt at that
@@ -239,7 +244,11 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
            output by hand, then compare variety against the procedural baseline
            to confirm the LLM is buying the semantic long tail it costs.
 
-- [ ] **The OpenAI-compatible provider does not handle reasoning models.** Found
+- [x] **The OpenAI-compatible provider does not handle reasoning models.** *(Done:
+      empty-completion-is-failure with a test, thinking disabled for deepseek/qwen in
+      `studio/mixes.py`, and `max_completion_tokens` handled via the `extra_body`
+      override; now reachable through the shipped catalogue CLI + LLM-backed build.)*
+      Found
       by a direct smoke test against the three real endpoints in the deploy
       config (deepseek-v4-flash / qwen3.5-flash / claude-haiku-4-5, 40/40/20) —
       the first time the provider layer ran against live APIs rather than the
@@ -275,7 +284,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       - Repro: `scratchpad/smoke_catalogue.py` (unmerged); `--raw` dumps the
         message shape that proved the diagnosis.
 
-- [ ] **Studio cost preview before the catalogue confirm (Phase 4 item 11).**
+- [ ] (#71) **Studio cost preview before the catalogue confirm (Phase 4 item 11).**
       Show an estimated spend (`companies × products → chunks → calls × per-call
       cost for the mix`) next to the hard `--budget` cap, so the operator sees the
       likely cost, not just the ceiling. **Deferred deliberately:** a naive estimate
@@ -288,7 +297,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       the **hard cap** (`--budget`, enforced by `BudgetGuard`) is the real
       protection; the preview is a nicety, not a safety mechanism.
 
-- [ ] **A separate budget for empty completions, independent of retries.** An
+- [ ] (#72) **A separate budget for empty completions, independent of retries.** An
       empty completion still *costs* — a reasoning model that spends its whole
       token budget on `reasoning_content` and returns `content: ""` is billed for
       those output tokens (observed live: deepseek-v4-flash, 2,000 output tokens
@@ -332,7 +341,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         Self-correcting after one call and conservative in the direction that
         protects the budget.
 
-- [ ] **Exercise the provider layer against real endpoints in CI (gated).** The
+- [ ] (#73) **Exercise the provider layer against real endpoints in CI (gated).** The
       provider/catalogue code is unit-tested only against a fake httpx transport,
       which is why the two bugs above survived — the fake echoes a well-formed
       `content` and never reasons, ignores `max_tokens`, or returns empty. This
@@ -343,7 +352,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       the token cap would have caught both on the first run. `smoke_catalogue.py`
       is the manual version of exactly this.
 
-- [ ] **Investigate logging and metrics.** The project has `structlog` as a
+- [ ] (#74) **Investigate logging and metrics.** The project has `structlog` as a
       dependency but no deliberate logging or metrics story: what a run should
       emit, at what level, in what format, and where it goes on each platform.
       Worth covering when investigated — structured vs human-readable output and
@@ -358,7 +367,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       data, not operational signal — though the two should agree on how a run is
       identified. Investigation first, no implementation.
 
-- [ ] **Stroke-level handwriting synthesis (top realism tier, optional extra).**
+- [ ] (#75) **Stroke-level handwriting synthesis (top realism tier, optional extra).**
       The font-based approach (bundled OFL handwriting faces + per-field jitter)
       gets a convincing *filled-in form*, but every occurrence of a letter is the
       same glyph — a trained eye, and a discriminative model, can detect the
@@ -386,8 +395,12 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       - Depends on the `handwritten-form` archetype (built) supplying the field
         geometry the strokes get drawn into.
 
-- [ ] **Separately deployable landing page + developer-docs app, in this repo,
-      backed by mkdocs-material.** One site that houses *all* the documentation:
+- [x] **Separately deployable landing page + developer-docs app, in this repo,
+      backed by mkdocs-material.** *(Done: built under `site-docs/` with its own
+      `mkdocs.yml`, deployed to GitHub Pages via `.github/workflows/docs.yml` on
+      merge, live at https://kashodev.github.io/docsynth/ — in-repo and
+      independently deployable, existing Markdown docs folded in, landing page +
+      full developer docs.)* One site that houses *all* the documentation:
       a marketing/landing front page plus the full developer docs (getting
       started, architecture, the pack contract, the concurrency model, the
       deployment guide, API/reference). Requirements to work out when actioned:
@@ -444,7 +457,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
       resolve from their semantic fallback stack; add more the same way (drop
       woff2 into `fonts/files/`, extend `BUNDLED`, note it in `OFL.txt`).
 
-- [ ] **The test suite never exercises the installed wheel.** Everything runs
+- [ ] (#76) **The test suite never exercises the installed wheel.** Everything runs
       from a source checkout (`PYTHONPATH=src`), where no entry points are
       declared. That hid a bug which broke *every* installed copy of docsynth:
       the invoice pack is registered both on import and through its
@@ -462,8 +475,9 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         it covers the whole class rather than this one instance.
 
 ## Concurrency & multi-cloud portability
-- [~] **Surface task/concurrency control in the studio (catalogue + generate),
-      and reconsider export parallelism.** *Catalogue + generate flags **done**
+- [~] (studio flags done; export parallelism → #77) **Surface task/concurrency
+      control in the studio (catalogue + generate), and reconsider export
+      parallelism.** *Catalogue + generate flags **done**
       (`feat/studio-concurrency-flags`): `docsynth studio --concurrency`
       (→ `catalogue.concurrency`), `--tasks` (→ `catalogue.tasks` for catalog =
       sharded resumable build, `job.tasks` for pdfs), `--parallelism`
@@ -539,7 +553,7 @@ Tracked follow-ups that are deliberately deferred, not forgotten.
         close, which is why it survived. All batch paths (`_write_units`,
         `reset_failed_units`, `reclaim_expired_units`) now chunk.
 
-- [ ] **DynamoDB `add_spend` writes two rows non-atomically.** The spend rollup
+- [ ] (#78) **DynamoDB `add_spend` writes two rows non-atomically.** The spend rollup
       increments a `(run, model)` row and the `(run, "*")` total. SQLite does both
       in one `BEGIN IMMEDIATE` transaction and Firestore in one batch, but
       DynamoDB issues two `UpdateItem` calls — each atomic on its own, **not
